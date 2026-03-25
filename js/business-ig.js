@@ -15,7 +15,7 @@ function bizConnectInstagram() {
 
   const redirectUri = encodeURIComponent(_bizIgRedirectUri());
   // Facebook Login for Business with config_id (contains permissions + elements)
-  const configId = '813780651153521';
+  const configId = '1473384817846897';
   const authUrl = `https://www.facebook.com/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&response_type=code&config_id=${configId}`;
 
   devError('[IG OAuth] Redirecting to:', authUrl);
