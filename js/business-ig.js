@@ -80,22 +80,22 @@ async function bizSyncIgData() {
           const comments = item.comments_count || 0;
 
           // Try to fetch insights (may fail depending on token permissions)
-          let reach = 0, plays = 0, saved = 0, shares = 0;
+          let reach = 0, views = 0, saved = 0, shares = 0;
           try {
-            const iRes = await fetch(`https://graph.instagram.com/v25.0/${item.id}/insights?metric=ig_reels_aggregated_all_plays_count,reach,saved,shares&access_token=${acct.access_token}`);
+            const iRes = await fetch(`https://graph.instagram.com/v25.0/${item.id}/insights?metric=reach,saved,shares,views,total_interactions&access_token=${acct.access_token}`);
             const iData = await iRes.json();
             if (iData.data) {
               iData.data.forEach(m => {
                 if (m.name === 'reach') reach = m.values?.[0]?.value || 0;
                 if (m.name === 'saved') saved = m.values?.[0]?.value || 0;
                 if (m.name === 'shares') shares = m.values?.[0]?.value || 0;
-                if (m.name === 'ig_reels_aggregated_all_plays_count') plays = m.values?.[0]?.value || 0;
+                if (m.name === 'views') views = m.values?.[0]?.value || 0;
               });
             }
           } catch {}
 
           const totalEng = likes + comments + saved + shares;
-          const engRate = reach > 0 ? (totalEng / reach * 100) : (likes + comments > 0 ? 1 : 0);
+          const engRate = reach > 0 ? (totalEng / reach * 100) : 0;
 
           await supabaseClient.from('ig_reels').upsert({
             user_id: currentUser.id,
@@ -103,13 +103,13 @@ async function bizSyncIgData() {
             caption: item.caption || null,
             thumbnail_url: item.thumbnail_url || null,
             video_url: item.media_url || null,
-            views: plays || likes,
+            views,
             likes,
             comments,
             shares,
             saves: saved,
             reach,
-            plays,
+            plays: views,
             engagement_rate: parseFloat(engRate.toFixed(2)),
             published_at: item.timestamp,
           }, { onConflict: 'ig_media_id' });
@@ -123,29 +123,53 @@ async function bizSyncIgData() {
       const storiesData = await storiesRes.json();
       if (!storiesData.error && storiesData.data) {
         for (const story of storiesData.data) {
+          // Check if story already exists in DB
+          const { data: existing } = await supabaseClient.from('ig_stories').select('id').eq('ig_story_id', story.id).maybeSingle();
+
           let ins = {};
+          let insightsOk = false;
           try {
-            const iRes = await fetch(`https://graph.instagram.com/v25.0/${story.id}/insights?metric=impressions,reach,replies,exits,taps_forward,taps_back&access_token=${acct.access_token}`);
+            const iRes = await fetch(`https://graph.instagram.com/v25.0/${story.id}/insights?metric=views,reach,replies,shares,total_interactions,navigation&access_token=${acct.access_token}`);
             const iData = await iRes.json();
-            (iData.data || []).forEach(m => { ins[m.name] = m.values?.[0]?.value || 0; });
+            if (iData.data) {
+              insightsOk = true;
+              iData.data.forEach(m => { ins[m.name] = m.values?.[0]?.value || 0; });
+            }
           } catch {}
 
-          await supabaseClient.from('ig_stories').upsert({
-            user_id: currentUser.id,
-            ig_story_id: story.id,
-            ig_media_url: story.media_url || null,
-            thumbnail_url: story.thumbnail_url || null,
-            caption: story.caption || null,
-            story_type: story.media_type === 'VIDEO' ? 'video' : 'image',
-            impressions: ins.impressions || 0,
-            reach: ins.reach || 0,
-            replies: ins.replies || 0,
-            exits: ins.exits || 0,
-            taps_forward: ins.taps_forward || 0,
-            taps_back: ins.taps_back || 0,
-            published_at: story.timestamp,
-            expires_at: new Date(new Date(story.timestamp).getTime() + 24 * 60 * 60 * 1000).toISOString(),
-          }, { onConflict: 'ig_story_id' });
+          if (existing) {
+            // Story exists — only update if we have insights
+            if (insightsOk) {
+              await supabaseClient.from('ig_stories').update({
+                ig_media_url: story.media_url || null,
+                thumbnail_url: story.thumbnail_url || null,
+                impressions: ins.views || 0,
+                reach: ins.reach || 0,
+                replies: ins.replies || 0,
+                exits: ins.navigation || 0,
+                taps_forward: ins.total_interactions || 0,
+                taps_back: ins.shares || 0,
+              }).eq('ig_story_id', story.id);
+            }
+          } else {
+            // New story — insert with whatever data we have
+            await supabaseClient.from('ig_stories').insert({
+              user_id: currentUser.id,
+              ig_story_id: story.id,
+              ig_media_url: story.media_url || null,
+              thumbnail_url: story.thumbnail_url || null,
+              caption: story.caption || null,
+              story_type: story.media_type === 'VIDEO' ? 'video' : 'image',
+              impressions: insightsOk ? (ins.views || 0) : 0,
+              reach: insightsOk ? (ins.reach || 0) : 0,
+              replies: insightsOk ? (ins.replies || 0) : 0,
+              exits: insightsOk ? (ins.navigation || 0) : 0,
+              taps_forward: insightsOk ? (ins.total_interactions || 0) : 0,
+              taps_back: insightsOk ? (ins.shares || 0) : 0,
+              published_at: story.timestamp,
+              expires_at: new Date(new Date(story.timestamp).getTime() + 24 * 60 * 60 * 1000).toISOString(),
+            });
+          }
         }
       }
     } catch {}
@@ -184,9 +208,56 @@ const IG_SEQ_TYPES = {
   éducation:       { label: 'Éducation',       color: '#06b6d4' },
 };
 
+// ── Auto-sync stories silently (captures stories before they expire) ──
+let _bizIgLastSync = 0;
+async function _bizIgAutoSync() {
+  // Only sync once per 30min to avoid spamming API
+  if (Date.now() - _bizIgLastSync < 30 * 60 * 1000) return;
+  _bizIgLastSync = Date.now();
+
+  try {
+    const { data: acct } = await supabaseClient.from('ig_accounts').select('*').eq('user_id', currentUser.id).single();
+    if (!acct?.access_token) return;
+
+    // Silent story sync
+    const storiesRes = await fetch(`https://graph.instagram.com/v25.0/me/stories?fields=id,media_url,thumbnail_url,caption,media_type,timestamp&access_token=${acct.access_token}`);
+    const storiesData = await storiesRes.json();
+    if (!storiesData.error && storiesData.data) {
+      for (const story of storiesData.data) {
+        let ins = {};
+        try {
+          const iRes = await fetch(`https://graph.instagram.com/v25.0/${story.id}/insights?metric=impressions,reach,replies,exits,taps_forward,taps_back&access_token=${acct.access_token}`);
+          const iData = await iRes.json();
+          (iData.data || []).forEach(m => { ins[m.name] = m.values?.[0]?.value || 0; });
+        } catch {}
+
+        await supabaseClient.from('ig_stories').upsert({
+          user_id: currentUser.id,
+          ig_story_id: story.id,
+          ig_media_url: story.media_url || null,
+          thumbnail_url: story.thumbnail_url || null,
+          caption: story.caption || null,
+          story_type: story.media_type === 'VIDEO' ? 'video' : 'image',
+          impressions: ins.impressions || 0,
+          reach: ins.reach || 0,
+          replies: ins.replies || 0,
+          exits: ins.exits || 0,
+          taps_forward: ins.taps_forward || 0,
+          taps_back: ins.taps_back || 0,
+          published_at: story.timestamp,
+          expires_at: new Date(new Date(story.timestamp).getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        }, { onConflict: 'ig_story_id' });
+      }
+    }
+  } catch (e) { devError('[IG AutoSync]', e); }
+}
+
 // ── Main render ──
 async function bizRenderInstagram() {
   const el = document.getElementById('biz-tab-content');
+
+  // Auto-sync stories silently in background
+  _bizIgAutoSync();
 
   el.innerHTML = `
     <div style="display:flex;gap:6px;margin-bottom:20px;">
@@ -233,75 +304,259 @@ async function bizRenderIgStories() {
   _renderIgStoriesView(ct);
 }
 
+window._bizIgStoryWeekOffset = 0;
+window._bizIgSelectedDay = null;
+
 function _renderIgStoriesView(ct) {
   if (!ct) ct = document.getElementById('biz-ig-content');
   const sequences = window._bizIgSequences || [];
   const items = window._bizIgSequenceItems || [];
-  const stories = window._bizIgStories || [];
 
-  // ── Sequences section ──
-  const seqCards = sequences.map(seq => {
-    const seqItems = items.filter(i => i.sequence_id === seq.id);
-    const t = IG_SEQ_TYPES[seq.sequence_type] || { label: seq.sequence_type, color: '#6b7280' };
-    const date = seq.created_at ? new Date(seq.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—';
-    return `
-      <div onclick="_bizIgShowSequenceDetail('${seq.id}')" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;cursor:pointer;transition:border-color 0.15s;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <span style="font-weight:600;font-size:14px;color:var(--text);">${escHtml(seq.name)}</span>
-          <span style="font-size:10px;padding:2px 8px;border-radius:8px;background:${t.color}20;color:${t.color};font-weight:600;">${escHtml(t.label)}</span>
-        </div>
-        <div style="display:flex;gap:16px;font-size:11px;color:var(--text3);">
-          <span><i class="fas fa-layer-group" style="margin-right:3px;"></i>${seqItems.length} stories</span>
-          <span><i class="fas fa-eye" style="margin-right:3px;"></i>${seq.total_impressions || 0}</span>
-          <span><i class="fas fa-chart-line" style="margin-right:3px;"></i>${seq.overall_dropoff_rate != null ? seq.overall_dropoff_rate + '%' : '—'}</span>
-          <span><i class="fas fa-reply" style="margin-right:3px;"></i>${seq.total_replies || 0}</span>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--text3);">
-          <span>${seq.status === 'active' ? '<span style="color:var(--success);"><i class="fas fa-circle" style="font-size:6px;margin-right:3px;"></i>Actif</span>' : '<span><i class="fas fa-circle" style="font-size:6px;margin-right:3px;"></i>Brouillon</span>'}</span>
-          <span>${date}</span>
-        </div>
-      </div>`;
+  // ── Week navigation ──
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1 + (window._bizIgStoryWeekOffset * 7));
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+
+  const weekLabel = weekStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' — ' + weekEnd.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  const todayStr = now.toISOString().slice(0, 10);
+  const wsStr = weekStart.toISOString().slice(0, 10);
+  const weStr = weekEnd.toISOString().slice(0, 10);
+
+  if (!window._bizIgSelectedDay || window._bizIgSelectedDay < wsStr || window._bizIgSelectedDay > weStr) {
+    window._bizIgSelectedDay = todayStr >= wsStr && todayStr <= weStr ? todayStr : wsStr;
+  }
+  const selDay = window._bizIgSelectedDay;
+
+  // Build days
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    days.push({ date: d.toISOString().slice(0, 10), label: d.toLocaleDateString('fr-FR', { weekday: 'short' }), num: d.getDate() });
+  }
+
+  // Find sequences for selected day (by published_at or created_at date)
+  const daySequences = sequences.filter(seq => {
+    const seqDate = (seq.published_at || seq.created_at || '').slice(0, 10);
+    return seqDate === selDay;
+  });
+
+  // Check which days have sequences
+  const seqDates = new Set(sequences.map(s => (s.published_at || s.created_at || '').slice(0, 10)));
+
+  // ── Day buttons (full-width like diet history) ──
+  const daysHtml = days.map(d => {
+    const hasSeq = seqDates.has(d.date);
+    const isSel = d.date === selDay;
+    return `<button onclick="window._bizIgSelectedDay='${d.date}';_renderIgStoriesView()" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 0;border-radius:12px;border:none;background:${isSel ? 'var(--primary)' : 'transparent'};cursor:pointer;transition:all 0.15s;">
+      <span style="font-size:11px;font-weight:600;color:${isSel ? '#fff' : 'var(--text3)'};text-transform:uppercase;letter-spacing:0.5px;">${d.label.replace('.','')}</span>
+      <span style="font-size:22px;font-weight:800;color:${isSel ? '#fff' : 'var(--text)'};">${d.num}</span>
+      ${hasSeq ? `<span style="width:6px;height:6px;border-radius:50%;background:${isSel ? '#fff' : 'var(--success)'};"></span>` : '<span style="width:6px;height:6px;"></span>'}
+    </button>`;
   }).join('');
 
-  // ── Stories grid ──
-  const storyCards = stories.map(s => {
-    return `
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
-        <div style="width:100%;aspect-ratio:9/16;background:var(--bg3);display:flex;align-items:center;justify-content:center;">
-          ${s.thumbnail_url
-            ? `<img src="${escHtml(s.thumbnail_url)}" style="width:100%;height:100%;object-fit:cover;">`
-            : '<i class="fas fa-image" style="font-size:24px;color:var(--text3);opacity:0.3;"></i>'}
-        </div>
-        <div style="padding:10px;">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;color:var(--text3);">
-            <span><i class="fas fa-eye" style="margin-right:2px;"></i>${s.impressions || 0}</span>
-            <span><i class="fas fa-users" style="margin-right:2px;"></i>${s.reach || 0}</span>
-            <span><i class="fas fa-reply" style="margin-right:2px;"></i>${s.replies || 0}</span>
-            <span><i class="fas fa-sign-out-alt" style="margin-right:2px;"></i>${s.exits || 0}</span>
+  // ── Day content: sequences for selected day ──
+  let dayContent = '';
+  if (daySequences.length) {
+    dayContent = daySequences.map(seq => {
+      // Reverse sort: Story 1 = last published (rightmost in IG), display left to right = newest to oldest
+      const seqItems = items.filter(i => i.sequence_id === seq.id).sort((a, b) => (b.position || 0) - (a.position || 0));
+      const t = IG_SEQ_TYPES[seq.sequence_type] || { label: seq.sequence_type, color: '#6b7280' };
+      const allStories = window._bizIgStories || [];
+      const totalItems = seqItems.length;
+
+      // Big story cards with drop-off arrows between them
+      const storyCards = seqItems.map((item, idx) => {
+        const story = allStories.find(s => s.id === item.story_id);
+        const views = item.impressions || story?.impressions || 0;
+        const replies = item.replies || story?.replies || 0;
+        const exits = item.exits || story?.exits || 0;
+        const reach = story?.reach || 0;
+        const tapsF = story?.taps_forward || 0;
+        const tapsB = story?.taps_back || 0;
+        const storyNum = idx + 1;
+
+        // Drop-off arrow between stories (reading left to right)
+        let dropoffArrow = '';
+        if (idx > 0) {
+          const prevItem = seqItems[idx - 1];
+          const prevViews = prevItem.impressions || (allStories.find(s => s.id === prevItem.story_id)?.impressions) || 0;
+          const dropPct = prevViews > 0 ? Math.round((1 - views / prevViews) * 100) : 0;
+          const dropColor = dropPct > 30 ? 'var(--danger)' : dropPct > 15 ? 'var(--warning)' : 'var(--success)';
+          dropoffArrow = `
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:44px;">
+              <i class="fas fa-chevron-right" style="font-size:16px;color:${dropColor};margin-bottom:2px;"></i>
+              <span style="font-size:13px;font-weight:700;color:${dropColor};">${dropPct > 0 ? '-' : ''}${dropPct}%</span>
+            </div>`;
+        }
+
+        const card = `
+          <div style="display:flex;flex-direction:column;align-items:center;min-width:200px;">
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;width:200px;">
+              <div style="width:100%;aspect-ratio:9/16;background:var(--bg3);display:flex;align-items:center;justify-content:center;position:relative;">
+                ${story?.thumbnail_url || story?.ig_media_url
+                  ? `<img src="${escHtml(story.thumbnail_url || story.ig_media_url)}" style="width:100%;height:100%;object-fit:cover;">`
+                  : '<i class="fas fa-image" style="font-size:28px;color:var(--text3);opacity:0.3;"></i>'}
+                <div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.7);color:#fff;font-size:12px;font-weight:700;padding:4px 12px;border-radius:12px;">Story ${storyNum}</div>
+              </div>
+            </div>
+            <div style="width:200px;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;">
+              <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                <div style="text-align:center;flex:1;"><div style="font-size:16px;font-weight:700;color:var(--text);">${views}</div><div style="font-size:10px;color:var(--text3);">Vues</div></div>
+                <div style="text-align:center;flex:1;"><div style="font-size:16px;font-weight:700;color:var(--text);">${reach}</div><div style="font-size:10px;color:var(--text3);">Reach</div></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <div style="text-align:center;flex:1;"><div style="font-size:14px;font-weight:600;color:var(--text2);">${replies}</div><div style="font-size:10px;color:var(--text3);">DMs</div></div>
+                <div style="text-align:center;flex:1;"><div style="font-size:14px;font-weight:600;color:var(--text2);">${exits}</div><div style="font-size:10px;color:var(--text3);">Exits</div></div>
+                <div style="text-align:center;flex:1;"><div style="font-size:14px;font-weight:600;color:var(--text2);">${tapsF}</div><div style="font-size:10px;color:var(--text3);">Next</div></div>
+                <div style="text-align:center;flex:1;"><div style="font-size:14px;font-weight:600;color:var(--text2);">${tapsB}</div><div style="font-size:10px;color:var(--text3);">Back</div></div>
+              </div>
+            </div>
+          </div>`;
+
+        return dropoffArrow + card;
+      }).join('');
+
+      // Funnel
+      const maxImp = Math.max(...seqItems.map(i => i.impressions || 0), 1);
+      const funnelBars = seqItems.map((item, idx) => {
+        const pct = ((item.impressions || 0) / maxImp * 100);
+        return `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <span style="font-size:10px;color:var(--text3);width:50px;text-align:right;">Story ${idx + 1}</span>
+            <div style="flex:1;background:var(--bg3);border-radius:4px;height:22px;overflow:hidden;">
+              <div style="height:100%;width:${pct}%;background:${t.color};border-radius:4px;display:flex;align-items:center;padding-left:6px;">
+                <span style="font-size:9px;color:#fff;font-weight:600;">${item.impressions || 0}</span>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+      return `
+        <div style="margin-bottom:24px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+            <span style="font-size:16px;font-weight:700;color:var(--text);">${escHtml(seq.name)}</span>
+            <span style="font-size:10px;padding:3px 10px;border-radius:8px;background:${t.color}20;color:${t.color};font-weight:600;">${escHtml(t.label)}</span>
+            <div style="flex:1;"></div>
+            <button class="btn btn-outline btn-sm" onclick="_bizIgShowSequenceDetail('${seq.id}')"><i class="fas fa-pen" style="margin-right:3px;"></i>Détails</button>
+            <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="event.stopPropagation();_bizIgDeleteSequence('${seq.id}','${escHtml(seq.name)}')"><i class="fas fa-trash"></i></button>
           </div>
-        </div>
-      </div>`;
-  }).join('');
+          ${seq.objective ? `<div style="font-size:12px;color:var(--text3);margin-bottom:12px;"><i class="fas fa-bullseye" style="margin-right:4px;"></i>${escHtml(seq.objective)}</div>` : ''}
 
-  const emptyStories = `
-    <div style="text-align:center;padding:40px;color:var(--text3);">
-      <i class="fas fa-image" style="font-size:36px;margin-bottom:12px;display:block;opacity:0.3;"></i>
-      <div style="font-size:13px;">Connectez votre Instagram pour importer vos stories</div>
-    </div>`;
+          <div style="display:flex;gap:0;overflow-x:auto;padding-bottom:12px;margin-bottom:16px;justify-content:center;align-items:center;">${storyCards || '<div style="color:var(--text3);font-size:12px;">Aucune story ajoutée</div>'}</div>
+
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+              <div style="font-size:18px;font-weight:700;color:var(--text);">${seqItems.length}</div>
+              <div style="font-size:10px;color:var(--text3);">Stories</div>
+            </div>
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+              <div style="font-size:18px;font-weight:700;color:var(--text);">${seq.total_impressions || 0}</div>
+              <div style="font-size:10px;color:var(--text3);">Impressions</div>
+            </div>
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+              <div style="font-size:18px;font-weight:700;color:${seq.overall_dropoff_rate > 50 ? 'var(--danger)' : 'var(--success)'};">${seq.overall_dropoff_rate != null ? seq.overall_dropoff_rate + '%' : '—'}</div>
+              <div style="font-size:10px;color:var(--text3);">Drop-off</div>
+            </div>
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+              <div style="font-size:18px;font-weight:700;color:var(--text);">${seq.total_replies || 0}</div>
+              <div style="font-size:10px;color:var(--text3);">Replies</div>
+            </div>
+          </div>
+
+          ${seqItems.length > 1 ? `
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;">Funnel de rétention</div>
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;">${funnelBars}</div>` : ''}
+
+          ${seq.notes ? `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;color:var(--text3);"><strong>Notes :</strong> ${escHtml(seq.notes)}</div>` : ''}
+        </div>`;
+    }).join('');
+  } else {
+    dayContent = `
+      <div style="text-align:center;padding:40px;color:var(--text3);">
+        <i class="fas fa-images" style="font-size:32px;margin-bottom:12px;display:block;opacity:0.3;"></i>
+        <div style="font-size:14px;margin-bottom:4px;">Aucune story séquence ce jour</div>
+        <div style="font-size:12px;">Créez une séquence pour analyser vos stories</div>
+      </div>`;
+  }
+
+  // ── Stories du jour (hors séquence) ──
+  const allStories = window._bizIgStories || [];
+  const seqStoryIds = new Set(items.map(i => i.story_id));
+  const dayStories = allStories.filter(s => {
+    if (!s.published_at) return false;
+    return s.published_at.slice(0, 10) === selDay && !seqStoryIds.has(s.id);
+  });
+
+  const dayStoriesHtml = dayStories.length ? dayStories.map(s => `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;min-width:130px;max-width:130px;flex-shrink:0;">
+      <div style="width:100%;aspect-ratio:9/16;background:var(--bg3);display:flex;align-items:center;justify-content:center;">
+        ${s.thumbnail_url || s.ig_media_url
+          ? `<img src="${escHtml(s.thumbnail_url || s.ig_media_url)}" style="width:100%;height:100%;object-fit:cover;">`
+          : '<i class="fas fa-image" style="font-size:20px;color:var(--text3);opacity:0.3;"></i>'}
+      </div>
+      <div style="padding:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:4px;">
+          <span><strong>${s.impressions || 0}</strong> vues</span>
+          <span><strong>${s.reach || 0}</strong> reach</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);">
+          <span>${s.replies || 0} DMs</span>
+          <span>${s.exits || 0} nav</span>
+        </div>
+      </div>
+    </div>`).join('') : '';
+
+  // ── All sequences list ──
+  const allSeqList = sequences.map(seq => {
+    const t = IG_SEQ_TYPES[seq.sequence_type] || { label: seq.sequence_type, color: '#6b7280' };
+    const seqItems = items.filter(i => i.sequence_id === seq.id);
+    const date = (seq.published_at || seq.created_at || '').slice(0, 10);
+    const dateLabel = date ? new Date(date + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
+    return `
+      <tr class="nd-tr" style="cursor:pointer;" onclick="_bizIgShowSequenceDetail('${seq.id}')">
+        <td style="font-size:12px;font-weight:600;color:var(--text);">${escHtml(seq.name)}</td>
+        <td><span style="font-size:10px;padding:2px 8px;border-radius:8px;background:${t.color}20;color:${t.color};font-weight:600;">${escHtml(t.label)}</span></td>
+        <td style="font-size:12px;color:var(--text2);">${seqItems.length}</td>
+        <td style="font-size:12px;color:var(--text2);">${seq.total_impressions || 0}</td>
+        <td style="font-size:12px;color:var(--text2);">${seq.overall_dropoff_rate != null ? seq.overall_dropoff_rate + '%' : '—'}</td>
+        <td style="font-size:12px;color:var(--text3);">${dateLabel}</td>
+      </tr>`;
+  }).join('');
 
   ct.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-      <h3 style="font-size:16px;font-weight:700;color:var(--text);margin:0;">Story Sequences</h3>
+    <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:20px;">
+      <button class="btn btn-outline btn-sm" style="width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:10px;" onclick="window._bizIgStoryWeekOffset--;window._bizIgSelectedDay=null;_renderIgStoriesView()"><i class="fas fa-chevron-left"></i></button>
+      <span style="font-size:15px;font-weight:700;color:var(--text);min-width:220px;text-align:center;">${weekLabel}</span>
+      <button class="btn btn-outline btn-sm" style="width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:10px;" onclick="window._bizIgStoryWeekOffset++;window._bizIgSelectedDay=null;_renderIgStoriesView()"><i class="fas fa-chevron-right"></i></button>
+    </div>
+
+    <div style="display:flex;gap:0;margin-bottom:24px;background:var(--bg2);border-radius:14px;border:1px solid var(--border);overflow:hidden;">${daysHtml}</div>
+
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
       <button class="btn btn-red btn-sm" onclick="_bizIgCreateSequenceModal()"><i class="fas fa-plus" style="margin-right:4px;"></i>Nouvelle Séquence</button>
     </div>
-    ${sequences.length
-      ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:32px;">${seqCards}</div>`
-      : '<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px;margin-bottom:32px;">Aucune séquence créée</div>'}
 
-    <h3 style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:14px;">Toutes les Stories</h3>
-    ${stories.length
-      ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;">${storyCards}</div>`
-      : emptyStories}`;
+    ${dayContent}
+
+    ${dayStoriesHtml ? `
+    <div style="margin-top:20px;">
+      <h3 style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px;">Stories du jour (hors séquence)</h3>
+      <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;">${dayStoriesHtml}</div>
+    </div>` : ''}
+
+    <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;">
+      <h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px;">Toutes les séquences</h3>
+      ${sequences.length ? `
+      <div class="nd-table-wrap">
+        <table class="nd-table">
+          <thead><tr><th>Nom</th><th>Type</th><th>Stories</th><th>Impressions</th><th>Drop-off</th><th>Date</th></tr></thead>
+          <tbody>${allSeqList}</tbody>
+        </table>
+      </div>` : '<div style="text-align:center;padding:20px;color:var(--text3);font-size:13px;">Aucune séquence créée</div>'}
+    </div>`;
 }
 
 // ── Sequence detail with funnel ──
@@ -346,10 +601,99 @@ function _bizIgShowSequenceDetail(seqId) {
       </div>
     </div>
 
-    <h4 style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px;">Funnel de rétention</h4>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <h4 style="font-size:14px;font-weight:600;color:var(--text);margin:0;">Funnel de rétention</h4>
+      <button class="btn btn-red btn-sm" onclick="_bizIgAddStoriesToSeq('${seqId}')"><i class="fas fa-plus" style="margin-right:4px;"></i>Ajouter des stories</button>
+    </div>
     ${items.length
       ? `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;">${funnelBars}</div>`
-      : '<div style="text-align:center;padding:20px;color:var(--text3);font-size:12px;">Aucune story dans cette séquence</div>'}`;
+      : '<div style="text-align:center;padding:20px;color:var(--text3);font-size:12px;">Aucune story dans cette séquence — ajoutez-en avec le bouton ci-dessus</div>'}
+
+    ${items.length ? `<h4 style="font-size:14px;font-weight:600;color:var(--text);margin:16px 0 12px;">Stories dans la séquence</h4>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      ${items.map((item, idx) => {
+        const story = (window._bizIgStories || []).find(s => s.id === item.story_id);
+        return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;width:100px;overflow:hidden;text-align:center;">
+          <div style="width:100%;aspect-ratio:9/16;background:var(--bg3);display:flex;align-items:center;justify-content:center;">
+            ${story?.thumbnail_url || story?.ig_media_url
+              ? '<img src="' + escHtml(story.thumbnail_url || story.ig_media_url) + '" style="width:100%;height:100%;object-fit:cover;">'
+              : '<i class="fas fa-image" style="color:var(--text3);"></i>'}
+          </div>
+          <div style="padding:4px;font-size:10px;color:var(--text3);">Story ${idx + 1}</div>
+        </div>`;
+      }).join('')}
+    </div>` : ''}`;
+}
+
+// ── Add stories to sequence modal ──
+function _bizIgAddStoriesToSeq(seqId) {
+  const stories = window._bizIgStories || [];
+  const existingItems = (window._bizIgSequenceItems || []).filter(i => i.sequence_id === seqId);
+  const existingStoryIds = existingItems.map(i => i.story_id);
+
+  if (!stories.length) {
+    notify('Aucune story disponible. Synchronisez vos stories Instagram.', 'error');
+    return;
+  }
+
+  const storyOptions = stories.map(s => {
+    const checked = existingStoryIds.includes(s.id) ? 'checked' : '';
+    const date = s.published_at ? new Date(s.published_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
+    return `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--bg2);">
+        <input type="checkbox" value="${s.id}" ${checked} style="accent-color:var(--primary);">
+        <div style="width:36px;height:50px;border-radius:4px;overflow:hidden;background:var(--bg3);flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+          ${s.thumbnail_url || s.ig_media_url
+            ? '<img src="' + escHtml(s.thumbnail_url || s.ig_media_url) + '" style="width:100%;height:100%;object-fit:cover;">'
+            : '<i class="fas fa-image" style="font-size:10px;color:var(--text3);"></i>'}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml((s.caption || '').slice(0, 40)) || 'Story'}</div>
+          <div style="font-size:10px;color:var(--text3);">${date} — ${s.impressions || 0} imp.</div>
+        </div>
+      </label>`;
+  }).join('');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'ig-seq-stories-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:28px;width:460px;max-width:90vw;max-height:80vh;display:flex;flex-direction:column;">
+      <h3 style="font-size:18px;font-weight:700;color:var(--text);margin:0 0 16px;">Sélectionner les stories</h3>
+      <div id="ig-seq-story-list" style="display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;margin-bottom:16px;">
+        ${storyOptions}
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-outline" onclick="document.getElementById('ig-seq-stories-modal').remove()">Annuler</button>
+        <button class="btn btn-red" onclick="_bizIgSaveSeqStories('${seqId}')">Enregistrer</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+async function _bizIgSaveSeqStories(seqId) {
+  const checkboxes = document.querySelectorAll('#ig-seq-story-list input[type=checkbox]:checked');
+  const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+
+  // Delete existing items
+  await supabaseClient.from('story_sequence_items').delete().eq('sequence_id', seqId);
+
+  // Insert new items
+  if (selectedIds.length) {
+    const inserts = selectedIds.map((storyId, idx) => ({
+      sequence_id: seqId,
+      story_id: storyId,
+      position: idx + 1,
+    }));
+    const { error } = await supabaseClient.from('story_sequence_items').insert(inserts);
+    if (error) { handleError(error, 'ig-seq-add-stories'); return; }
+  }
+
+  document.getElementById('ig-seq-stories-modal')?.remove();
+  notify(`${selectedIds.length} stories ajoutées`, 'success');
+  await bizRenderIgStories();
+  _bizIgShowSequenceDetail(seqId);
 }
 
 // ── Create sequence modal ──
@@ -406,6 +750,19 @@ async function _bizIgSaveSequence() {
 
   document.getElementById('ig-seq-modal')?.remove();
   notify('Séquence créée', 'success');
+  await bizRenderIgStories();
+}
+
+async function _bizIgDeleteSequence(seqId, seqName) {
+  if (!confirm(`Supprimer la séquence "${seqName}" ? Les stories ne seront pas supprimées.`)) return;
+
+  // Delete sequence items first (cascade should handle it but just in case)
+  await supabaseClient.from('story_sequence_items').delete().eq('sequence_id', seqId);
+  const { error } = await supabaseClient.from('story_sequences').delete().eq('id', seqId);
+
+  if (error) { handleError(error, 'ig-delete-sequence'); return; }
+
+  notify('Séquence supprimée', 'success');
   await bizRenderIgStories();
 }
 
@@ -466,8 +823,12 @@ function _renderIgReelsView(ct) {
     const pillarTag = pillar
       ? `<span style="font-size:10px;padding:2px 8px;border-radius:8px;background:${escHtml(pillar.color || '#6b7280')}20;color:${escHtml(pillar.color || '#6b7280')};font-weight:600;">${escHtml(pillar.name)}</span>`
       : '<span style="color:var(--text3);font-size:10px;">—</span>';
+    const thumb = r.thumbnail_url
+      ? `<img src="${escHtml(r.thumbnail_url)}" style="width:40px;height:54px;object-fit:cover;border-radius:4px;cursor:pointer;" onclick="_bizIgPlayReel('${r.id}')">`
+      : `<div style="width:40px;height:54px;background:var(--bg3);border-radius:4px;display:flex;align-items:center;justify-content:center;"><i class="fas fa-film" style="font-size:12px;color:var(--text3);"></i></div>`;
     return `
-      <tr class="nd-tr">
+      <tr class="nd-tr" style="cursor:pointer;" onclick="_bizIgPlayReel('${r.id}')">
+        <td style="padding:6px 8px;">${thumb}</td>
         <td style="font-size:12px;color:var(--text);max-width:200px;">${caption}</td>
         <td>${pillarTag}</td>
         <td style="font-size:12px;color:var(--text2);">${(r.views || 0).toLocaleString()}</td>
@@ -503,7 +864,7 @@ function _renderIgReelsView(ct) {
     ${reels.length ? `
     <div class="nd-table-wrap" style="margin-bottom:28px;">
       <table class="nd-table">
-        <thead><tr><th>Caption</th><th>Pillar</th><th>Views</th><th>Saves</th><th>Shares</th><th>Comments</th></tr></thead>
+        <thead><tr><th></th><th>Caption</th><th>Pillar</th><th>Views</th><th>Saves</th><th>Shares</th><th>Comments</th></tr></thead>
         <tbody>${reelRows}</tbody>
       </table>
     </div>` : ''}
@@ -513,6 +874,44 @@ function _renderIgReelsView(ct) {
       <button class="btn btn-red btn-sm" onclick="_bizIgAddPillarModal()"><i class="fas fa-plus" style="margin-right:4px;"></i>Ajouter</button>
     </div>
     ${pillars.length ? pillarsList : '<div style="text-align:center;padding:20px;color:var(--text3);font-size:12px;">Aucun pilier de contenu défini</div>'}`;
+}
+
+// ── Play reel modal ──
+function _bizIgPlayReel(reelId) {
+  const reel = (window._bizIgReels || []).find(r => r.id === reelId);
+  if (!reel) return;
+
+  const caption = reel.caption || '';
+  const date = reel.published_at ? new Date(reel.published_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'ig-reel-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;';
+  overlay.innerHTML = `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:hidden;max-width:420px;width:90vw;max-height:90vh;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);">
+        <span style="font-size:13px;font-weight:600;color:var(--text);">${date}</span>
+        <button onclick="document.getElementById('ig-reel-modal').remove()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;"><i class="fas fa-times"></i></button>
+      </div>
+      ${reel.video_url
+        ? `<video src="${escHtml(reel.video_url)}" controls autoplay playsinline style="width:100%;max-height:70vh;background:#000;"></video>`
+        : reel.thumbnail_url
+          ? `<img src="${escHtml(reel.thumbnail_url)}" style="width:100%;max-height:70vh;object-fit:contain;background:#000;">`
+          : '<div style="padding:60px;text-align:center;color:var(--text3);">Vidéo non disponible</div>'}
+      <div style="padding:12px 16px;overflow-y:auto;max-height:150px;">
+        <div style="display:flex;gap:16px;font-size:12px;color:var(--text2);margin-bottom:8px;">
+          <span><i class="fas fa-eye" style="margin-right:3px;"></i>${(reel.views || 0).toLocaleString()}</span>
+          <span><i class="fas fa-heart" style="margin-right:3px;"></i>${reel.likes || 0}</span>
+          <span><i class="fas fa-comment" style="margin-right:3px;"></i>${reel.comments || 0}</span>
+          <span><i class="fas fa-share" style="margin-right:3px;"></i>${reel.shares || 0}</span>
+          <span><i class="fas fa-bookmark" style="margin-right:3px;"></i>${reel.saves || 0}</span>
+          <span><i class="fas fa-bullseye" style="margin-right:3px;"></i>${(reel.reach || 0).toLocaleString()}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text);white-space:pre-line;">${escHtml(caption)}</div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 // ── Pillar CRUD ──
