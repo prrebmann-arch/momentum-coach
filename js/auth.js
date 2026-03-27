@@ -6,11 +6,19 @@ function showLanding() {
   initLandingAnimations();
 }
 
-function showAuth() {
+function showAuth(tab) {
   document.getElementById('landing-screen').classList.remove('active');
   document.getElementById('auth-screen').style.display = 'flex';
   document.getElementById('app-screen').style.display = 'none';
   window.scrollTo(0, 0);
+  if (tab === 'register') {
+    authMode = 'register';
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.auth-tab')[1]?.classList.add('active');
+    document.getElementById('auth-submit').textContent = "S'inscrire";
+    const planChoice = document.getElementById('auth-plan-choice');
+    if (planChoice) planChoice.style.display = 'block';
+  }
 }
 
 function initLandingAnimations() {
@@ -47,11 +55,36 @@ function closeMobileMenu() {
 
 const ADMIN_EMAIL = 'rebmannpierre1@gmail.com';
 
+let authMode = 'login';
+
 function switchAuthTab(tab) {
+  authMode = tab;
   document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
   event.target.classList.add('active');
   document.getElementById('auth-submit').textContent = tab === 'login' ? 'Se connecter' : "S'inscrire";
+  // Show/hide plan choice on register
+  const planChoice = document.getElementById('auth-plan-choice');
+  if (planChoice) planChoice.style.display = tab === 'register' ? 'block' : 'none';
 }
+
+// Plan radio toggle styling
+document.addEventListener('change', (e) => {
+  if (e.target.name === 'auth-plan') {
+    const athleteLabel = document.getElementById('plan-athlete-label');
+    const businessLabel = document.getElementById('plan-business-label');
+    if (e.target.value === 'athlete') {
+      athleteLabel.style.borderColor = 'var(--accent)';
+      athleteLabel.style.background = 'rgba(99,102,241,0.08)';
+      businessLabel.style.borderColor = 'var(--border)';
+      businessLabel.style.background = 'transparent';
+    } else {
+      businessLabel.style.borderColor = 'var(--accent)';
+      businessLabel.style.background = 'rgba(99,102,241,0.08)';
+      athleteLabel.style.borderColor = 'var(--border)';
+      athleteLabel.style.background = 'transparent';
+    }
+  }
+});
 
 document.getElementById('auth-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -63,7 +96,27 @@ document.getElementById('auth-form').addEventListener('submit', async (e) => {
   submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
   try {
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    let data, error;
+
+    if (authMode === 'login') {
+      ({ data, error } = await supabaseClient.auth.signInWithPassword({ email, password }));
+    } else {
+      // Inscription
+      if (password.length < 6) throw new Error('Le mot de passe doit contenir au moins 6 caractères');
+      ({ data, error } = await supabaseClient.auth.signUp({ email, password }));
+      if (!error && data?.user) {
+        // Get selected plan
+        const selectedPlan = document.querySelector('input[name="auth-plan"]:checked')?.value || 'athlete';
+        // Auto-create coach profile with trial
+        await supabaseClient.from('coach_profiles').upsert({
+          user_id: data.user.id,
+          email,
+          display_name: email.split('@')[0],
+          plan: selectedPlan,
+          trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        }, { onConflict: 'user_id' });
+      }
+    }
     if (error) throw error;
 
     // Admin → show admin dashboard (no redirect)
@@ -96,21 +149,71 @@ document.getElementById('auth-form').addEventListener('submit', async (e) => {
   }
 });
 
-function showApp() {
+async function showApp() {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('landing-screen').classList.remove('active');
-  document.getElementById('app-screen').style.display = 'block';
   document.getElementById('user-name').textContent = currentUser.email.split('@')[0];
   document.getElementById('user-avatar').textContent = currentUser.email[0].toUpperCase();
-  loadAthletes(); // preload athletes list
 
-  // Restore last section from URL hash, or default to dashboard
+  // Check if coach needs to add payment method (skip for free plan)
+  const { data: profile } = await supabaseClient
+    .from('coach_profiles')
+    .select('has_payment_method, plan, trial_ends_at')
+    .eq('user_id', currentUser.id)
+    .maybeSingle();
+
+  const isFree = profile?.plan === 'free';
+  const needsPayment = profile && !isFree && !profile.has_payment_method;
+
+  // Handle ?setup=success return from Stripe
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('setup') === 'success') {
+    // Update profile
+    await supabaseClient.from('coach_profiles')
+      .update({ has_payment_method: true })
+      .eq('user_id', currentUser.id);
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
+  if (needsPayment && params.get('setup') !== 'success') {
+    // Show payment wall
+    document.getElementById('app-screen').style.display = 'none';
+    document.getElementById('payment-wall').style.display = 'flex';
+    return;
+  }
+
+  // Check Stripe Connect return
+  await profileCheckConnectReturn();
+
+  // Normal app access
+  document.getElementById('payment-wall').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  loadAthletes();
+
   const hash = location.hash.replace('#', '');
-  const validSections = ['dashboard','athletes','bilans-overview','videos','templates','aliments','exercices','formations','business'];
+  const validSections = ['dashboard','athletes','bilans-overview','videos','templates','aliments','exercices','formations','business','profile'];
   if (hash && validSections.includes(hash)) {
     showSection(hash);
   } else {
     showSection('dashboard');
+  }
+}
+
+async function setupCoachPaymentMethod() {
+  try {
+    const btn = document.getElementById('payment-wall-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Redirection...'; }
+    const resp = await authFetch('/api/stripe?action=coach-setup', {
+      method: 'POST',
+      body: JSON.stringify({ coachId: currentUser.id, email: currentUser.email })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    if (data.url) window.location.href = data.url;
+  } catch (err) {
+    handleError(err, 'setupCoachPaymentMethod');
+    const btn = document.getElementById('payment-wall-btn');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-credit-card"></i> Ajouter ma carte'; }
   }
 }
 

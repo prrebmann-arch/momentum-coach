@@ -7,7 +7,7 @@ module.exports = async function handler(req, res) {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
-    if (mode === 'subscribe' && token === (process.env.IG_WEBHOOK_VERIFY_TOKEN || 'pierrecoaching2026')) {
+    if (mode === 'subscribe' && process.env.IG_WEBHOOK_VERIFY_TOKEN && token === process.env.IG_WEBHOOK_VERIFY_TOKEN) {
       return res.status(200).send(challenge);
     }
     return res.status(403).send('Forbidden');

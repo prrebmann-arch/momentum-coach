@@ -652,9 +652,8 @@ async function bizSendPaymentLink(clientId) {
   const btn = document.getElementById('biz-pay-btn-' + clientId);
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
   try {
-    const res = await fetch('/api/stripe-create-checkout', {
+    const res = await authFetch('/api/stripe?action=create-checkout', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         athleteName: c.name,
         athleteEmail: c.email,
@@ -681,10 +680,9 @@ async function bizCancelSubscription(clientId) {
   if (!s || !s.stripe_subscription_id) { notify('Aucun abonnement trouvé', 'error'); return; }
   if (!confirm('Annuler l\'abonnement Stripe de ce client ?')) return;
   try {
-    const res = await fetch('/api/stripe-cancel', {
+    const res = await authFetch('/api/stripe?action=cancel', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscriptionId: s.stripe_subscription_id }),
+      body: JSON.stringify({ subscriptionId: s.stripe_subscription_id, coachId: currentUser.id }),
     });
     const data = await res.json();
     if (data.status === 'canceled') {

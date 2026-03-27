@@ -1,6 +1,8 @@
 // Sync Instagram Stories — Fetch from Graph API and upsert into Supabase
 // Supports both POST (manual) and GET (cron job)
 const { createClient } = require('@supabase/supabase-js');
+const { verifyCoach, verifyCronSecret, handleAuthError } = require('./_auth');
+const { cors } = require('./_cors');
 
 module.exports = async function handler(req, res) {
   const supabase = createClient(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -8,13 +10,19 @@ module.exports = async function handler(req, res) {
   let accounts = [];
 
   if (req.method === 'GET') {
-    // Cron job: sync all connected accounts
+    // Cron job: verify cron secret
+    try { verifyCronSecret(req); } catch (e) { return handleAuthError(res, e); }
     const { data } = await supabase.from('ig_accounts').select('*').eq('is_connected', true);
     accounts = data || [];
   } else if (req.method === 'POST') {
+    if (cors(req, res)) return;
+    // Manual sync: verify JWT + user_id ownership
+    try { await verifyCoach(req, 'user_id'); } catch (e) { return handleAuthError(res, e); }
     const { ig_user_id, access_token, user_id } = req.body;
     if (!ig_user_id || !access_token || !user_id) return res.status(400).json({ error: 'Missing params' });
     accounts = [{ ig_user_id, access_token, user_id }];
+  } else if (req.method === 'OPTIONS') {
+    if (cors(req, res)) return;
   } else {
     return res.status(405).json({ error: 'Method not allowed' });
   }

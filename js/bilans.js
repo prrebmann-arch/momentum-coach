@@ -442,7 +442,7 @@ async function loadAthleteTabBilans() {
         <span class="bw-dr">${b.sick_signs ? '<i class="fas fa-triangle-exclamation" style="color:var(--danger);font-size:10px;"></i>' : '—'}</span>
         <span class="bw-dr">${bwTag(b.sleep_quality)}</span>
         <span class="bw-dr bw-dr-nuit">${b.bedtime && b.wakeup ? `<span style="font-size:10px;">${b.bedtime.slice(0,5)}<span style="color:var(--text3);margin:0 1px;">→</span>${b.wakeup.slice(0,5)}</span>` : '—'}</span>
-        <span class="bw-dr-end" style="display:flex;align-items:center;justify-content:flex-end;gap:2px;">${hasPhotos ? `<button class="bw-note-btn" onclick="event.stopPropagation();openPhotoCompare('front','${b.date}')" title="Photos"><i class="fas fa-camera" style="color:var(--primary);font-size:11px;"></i></button>` : ''}${hasDetails ? `<button class="bw-note-btn" onclick="event.stopPropagation();document.getElementById('${noteId}').classList.toggle('open')"><i class="fas fa-chevron-down"></i></button>` : ''}</span>
+        <span class="bw-dr-end" style="display:flex;align-items:center;justify-content:flex-end;gap:2px;">${hasPhotos ? `<button class="bw-note-btn" onclick="event.stopPropagation();openPhotoCompare('front','${b.date}')" title="Photos"><i class="fas fa-camera" style="color:var(--primary);font-size:11px;"></i></button>` : ''}${hasDetails ? `<button class="bw-note-btn" onclick="event.stopPropagation();document.getElementById('${noteId}').classList.toggle('open')"><i class="fas fa-chevron-down"></i></button>` : ''}<button class="bw-note-btn" onclick="event.stopPropagation();deleteBilan('${b.id}','${b.date}')" title="Supprimer ce bilan" style="margin-left:2px;"><i class="fas fa-trash" style="color:var(--danger);font-size:10px;opacity:0.5;"></i></button></span>
       </div>`;
 
       // Expandable detail sub-row
@@ -493,6 +493,20 @@ async function loadAthleteTabBilans() {
   html += '</div>';
   el.innerHTML = html;
   initMensChartTooltips();
+}
+
+// ── Delete bilan ──
+
+async function deleteBilan(bilanId, date) {
+  if (!confirm(`Supprimer le bilan du ${date} ?`)) return;
+  try {
+    const { error } = await supabaseClient.from('daily_reports').delete().eq('id', bilanId);
+    if (error) throw error;
+    notify('Bilan supprimé', 'success');
+    loadAthleteTabBilans();
+  } catch (err) {
+    handleError(err, 'deleteBilan');
+  }
 }
 
 // ── Helpers ──

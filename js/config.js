@@ -16,6 +16,16 @@ const IS_DEV = window.location.hostname === 'localhost' || window.location.hostn
 // Loaded from meta tag if available, otherwise empty (proxy works without it in dev)
 const PUSH_SECRET = document.querySelector('meta[name="push-secret"]')?.content || '';
 
+// ===== AUTHENTICATED FETCH HELPER =====
+async function authFetch(url, options = {}) {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`;
+  }
+  return fetch(url, { ...options, headers });
+}
+
 // ===== GLOBAL STATE =====
 let currentUser = null;
 let athletesList = [];

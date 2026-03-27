@@ -1,6 +1,13 @@
 // Facebook Page Auth — Exchange code for Page Access Token (needed for Instagram DMs)
+const { verifyAuth, handleAuthError } = require('./_auth');
+const { cors } = require('./_cors');
+
 module.exports = async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Auth: verify the caller is authenticated
+  try { await verifyAuth(req); } catch (e) { return handleAuthError(res, e); }
 
   try {
     const { code, redirect_uri } = req.body;

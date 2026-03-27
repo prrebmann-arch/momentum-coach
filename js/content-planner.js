@@ -705,9 +705,8 @@ async function cpPublishNow() {
   try {
     _cpShowPublishOverlay('Envoi du média...', mediaType === 'VIDEO' ? 'Traitement de la vidéo par Instagram (peut prendre 1-2 min)' : 'Création du post');
 
-    const resp = await fetch('/api/ig-publish', {
+    const resp = await authFetch('/api/ig-publish', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         access_token: acct.access_token,
         ig_user_id: acct.ig_user_id,

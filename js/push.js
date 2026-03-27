@@ -26,9 +26,9 @@ async function sendExpoPush(userIds, title, body, data = {}) {
       data
     }));
 
-    const pushHeaders = { 'Content-Type': 'application/json' };
+    const pushHeaders = {};
     if (typeof PUSH_SECRET !== 'undefined') pushHeaders['X-Push-Secret'] = PUSH_SECRET;
-    const resp = await fetch('/api/push', {
+    const resp = await authFetch('/api/push', {
       method: 'POST',
       headers: pushHeaders,
       body: JSON.stringify(messages),

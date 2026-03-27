@@ -1,8 +1,14 @@
 // Instagram Messaging API — Read from Supabase, send via Instagram Graph API
 const { createClient } = require('@supabase/supabase-js');
+const { verifyCoach, handleAuthError } = require('./_auth');
+const { cors } = require('./_cors');
 
 module.exports = async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Auth: verify JWT + user_id ownership
+  try { await verifyCoach(req, 'user_id'); } catch (e) { return handleAuthError(res, e); }
 
   const supabase = createClient(
     process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,

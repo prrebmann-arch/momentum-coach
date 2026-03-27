@@ -1,8 +1,14 @@
 // Sync Instagram Reels — Fetch from Graph API and upsert into Supabase
 const { createClient } = require('@supabase/supabase-js');
+const { verifyCoach, handleAuthError } = require('./_auth');
+const { cors } = require('./_cors');
 
 module.exports = async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Auth: verify JWT + user_id ownership
+  try { await verifyCoach(req, 'user_id'); } catch (e) { return handleAuthError(res, e); }
 
   try {
     const { ig_user_id, access_token, user_id } = req.body;

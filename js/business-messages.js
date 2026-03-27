@@ -52,9 +52,8 @@ async function _bizCheckFbCallback() {
   notify('Connexion Facebook en cours...', 'success');
 
   try {
-    const resp = await fetch('/api/fb-page-auth', {
+    const resp = await authFetch('/api/fb-page-auth', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, redirect_uri: 'https://pierreapp.vercel.app/', ig_user_id: (await _bizGetIgAccount())?.ig_user_id }),
     });
     const data = await resp.json();
@@ -108,9 +107,8 @@ async function _bizLoadConversations() {
   try {
     // Read from Supabase (instant)
     console.log('[Messages] Loading conversations from Supabase');
-    const resp = await fetch('/api/ig-messages', {
+    const resp = await authFetch('/api/ig-messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'conversations',
         user_id: currentUser.id,
@@ -150,9 +148,8 @@ async function _bizLoadMessages(threadId) {
   }
 
   try {
-    const resp = await fetch('/api/ig-messages', {
+    const resp = await authFetch('/api/ig-messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'thread',
         thread_id: threadId,
@@ -191,9 +188,8 @@ async function _bizSyncMessages() {
 
   try {
     console.log('[Messages] Starting background sync...');
-    const resp = await fetch('/api/ig-messages', {
+    const resp = await authFetch('/api/ig-messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'sync',
         user_id: currentUser.id,
@@ -437,9 +433,8 @@ async function bizSendMessage(conversationId, recipientId) {
   input.style.height = 'auto';
 
   try {
-    const resp = await fetch('/api/ig-messages', {
+    const resp = await authFetch('/api/ig-messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'send',
         user_id: currentUser.id,

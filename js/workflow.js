@@ -290,9 +290,16 @@ function getWfStepsData() {
     const step = { type, title, position: i + 1 };
 
     switch (type) {
-      case 'video':
-        step.video_url = s.querySelector('.wf-video-url')?.value.trim() || '';
+      case 'video': {
+        let videoUrl = s.querySelector('.wf-video-url')?.value.trim() || '';
+        // Fix BUG-C7: if coach pasted YouTube URL in title field, move it to video_url
+        if (!videoUrl && step.title && (step.title.includes('youtube.com') || step.title.includes('youtu.be'))) {
+          videoUrl = step.title;
+          step.title = 'Vidéo';
+        }
+        step.video_url = videoUrl;
         break;
+      }
       case 'contract':
         step.contract_text = s.querySelector('.wf-contract-text')?.value.trim() || '';
         break;

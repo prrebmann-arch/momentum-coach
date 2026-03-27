@@ -51,9 +51,8 @@ async function _bizCheckIgCallback() {
     const redirectUri = _bizIgRedirectUri();
     devError('[IG Callback] Exchanging code with redirect_uri:', redirectUri);
 
-    const resp = await fetch('/api/ig-auth', {
+    const resp = await authFetch('/api/ig-auth', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, redirect_uri: redirectUri }),
     });
     const data = await resp.json();

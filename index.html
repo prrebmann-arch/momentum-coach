@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="push-secret" content="prc-push-2026-secret">
 <meta name="meta-app-id" content="1250460660609661">
-<title>Pierre Coaching - App</title>
+<title>Momentum</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" crossorigin="anonymous">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
@@ -25,8 +25,8 @@
     <nav class="navbar" id="navbar">
         <div class="navbar-inner">
             <a href="#" class="navbar-logo">
-                <span class="logo-icon">PC</span>
-                Pierre Coaching
+                <span class="logo-icon">M</span>
+                Momentum
             </a>
             <ul class="navbar-links">
                 <li><a href="#fonctionnalites">Fonctionnalites</a></li>
@@ -35,7 +35,7 @@
             </ul>
             <div class="navbar-actions">
                 <a href="#" onclick="showAuth(); return false;" class="btn-login">Se connecter</a>
-                <a href="#" onclick="showAuth(); return false;" class="btn-primary">Commencer <i class="fas fa-arrow-right"></i></a>
+                <a href="#" onclick="showAuth('register'); return false;" class="btn-primary">Commencer <i class="fas fa-arrow-right"></i></a>
             </div>
             <button class="mobile-toggle" onclick="toggleMobileMenu()" aria-label="Menu">
                 <i class="fas fa-bars" id="menuIcon"></i>
@@ -49,11 +49,12 @@
         <a href="#tarifs" onclick="closeMobileMenu()">Tarifs</a>
         <a href="#contact" onclick="closeMobileMenu()">Contact</a>
         <a href="#" onclick="showAuth(); return false;" onclick="closeMobileMenu()">Se connecter</a>
-        <a href="#" onclick="showAuth(); return false;" class="btn-primary">Commencer <i class="fas fa-arrow-right"></i></a>
+        <a href="#" onclick="showAuth('register'); return false;" class="btn-primary">Commencer <i class="fas fa-arrow-right"></i></a>
     </div>
 
     <!-- HERO -->
     <section class="hero">
+        <canvas id="hero-particles" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2;"></canvas>
         <div class="hero-gradient"></div>
         <div class="hero-grid"></div>
         <div class="hero-orb hero-orb-1"></div>
@@ -70,7 +71,7 @@
                 Gerez vos athletes, creez des programmes personnalises, suivez leur progression et communiquez en temps reel — le tout depuis une seule plateforme.
             </p>
             <div class="hero-buttons fade-in fade-in-delay-3">
-                <a href="#" onclick="showAuth(); return false;" class="btn-primary btn-lg">
+                <a href="#" onclick="showAuth('register'); return false;" class="btn-primary btn-lg">
                     Commencer gratuitement <i class="fas fa-arrow-right"></i>
                 </a>
                 <a href="#fonctionnalites" class="btn-secondary btn-lg">
@@ -281,7 +282,7 @@
                             <span class="pricing-currency">&euro;</span>
                         </div>
                         <div class="pricing-period">/mois par athlète</div>
-                        <a href="#" onclick="showAuth(); return false;" class="btn-secondary">Commencer l'essai gratuit</a>
+                        <a href="#" onclick="showAuth('register'); return false;" class="btn-secondary">Commencer l'essai gratuit</a>
                     </div>
                     <div class="pricing-card-right">
                         <ul class="pricing-features">
@@ -315,7 +316,7 @@
                             <span class="pricing-currency">&euro;</span>
                         </div>
                         <div class="pricing-period">/mois + 5&euro;/mois par athlète</div>
-                        <a href="#" onclick="showAuth(); return false;" class="btn-primary">Démarrer maintenant</a>
+                        <a href="#" onclick="showAuth('register'); return false;" class="btn-primary">Démarrer maintenant</a>
                     </div>
                     <div class="business-right">
                         <ul class="pricing-features">
@@ -388,7 +389,7 @@
             Rejoignez les coachs qui ont deja modernise leur accompagnement. Essai gratuit de 14 jours, sans carte bancaire.
         </p>
         <div class="final-cta-buttons fade-in fade-in-delay-2">
-            <a href="#" onclick="showAuth(); return false;" class="btn-primary btn-lg">
+            <a href="#" onclick="showAuth('register'); return false;" class="btn-primary btn-lg">
                 Commencer maintenant <i class="fas fa-arrow-right"></i>
             </a>
             <a href="mailto:contact@pierrecoaching.com" class="btn-secondary btn-lg">
@@ -401,8 +402,8 @@
     <footer class="footer">
         <div class="footer-inner">
             <a href="#" class="footer-brand">
-                <span class="logo-icon">PC</span>
-                Pierre Coaching
+                <span class="logo-icon">M</span>
+                Momentum
             </a>
             <ul class="footer-links">
                 <li><a href="#fonctionnalites">Fonctionnalites</a></li>
@@ -412,17 +413,18 @@
                 <li><a href="#" onclick="showAuth(); return false;">Se connecter</a></li>
             </ul>
             <div class="footer-copy">
-                &copy; 2026 Pierre Coaching. Tous droits reserves.
+                &copy; 2026 Momentum. Tous droits reserves.
             </div>
         </div>
     </footer>
 </div>
+<script src="js/particles.js"></script>
 
 <!-- AUTH SCREEN -->
 <div id="auth-screen">
   <div class="auth-box">
     <div class="auth-logo">
-      <div class="auth-logo-text">Pierre Coaching</div>
+      <div class="auth-logo-text">Momentum</div>
       <div class="auth-subtitle">Espace Coach</div>
     </div>
     <div class="auth-tabs">
@@ -438,9 +440,43 @@
         <label>Mot de passe</label>
         <input type="password" id="auth-password" required>
       </div>
+      <div id="auth-plan-choice" style="display:none;margin-bottom:16px;">
+        <label style="font-size:13px;color:var(--text2);margin-bottom:8px;display:block;">Choisissez votre plan</label>
+        <div style="display:flex;gap:8px;">
+          <label id="plan-athlete-label" style="flex:1;padding:12px;border:2px solid var(--accent);border-radius:10px;cursor:pointer;text-align:center;background:rgba(99,102,241,0.08);transition:all .2s;">
+            <input type="radio" name="auth-plan" value="athlete" checked style="display:none;">
+            <div style="font-weight:700;font-size:14px;">Athlete</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:4px;">5€/athlete/mois</div>
+          </label>
+          <label id="plan-business-label" style="flex:1;padding:12px;border:2px solid var(--border);border-radius:10px;cursor:pointer;text-align:center;transition:all .2s;">
+            <input type="radio" name="auth-plan" value="business" style="display:none;">
+            <div style="font-weight:700;font-size:14px;">Business</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:4px;">60€/mois + 5€/athlète</div>
+          </label>
+        </div>
+      </div>
       <button type="submit" class="btn-primary" id="auth-submit">Se connecter</button>
       <a href="#" onclick="showLanding(); return false;" style="display:block;text-align:center;margin-top:16px;color:var(--text2);font-size:0.85rem;text-decoration:none;">← Retour à l'accueil</a>
     </form>
+  </div>
+</div>
+
+<!-- PAYMENT WALL -->
+<div id="payment-wall" style="display:none;justify-content:center;align-items:center;min-height:100vh;background:var(--bg);padding:24px;">
+  <div style="max-width:420px;width:100%;text-align:center;">
+    <div style="width:72px;height:72px;border-radius:50%;background:var(--bg2);display:flex;align-items:center;justify-content:center;margin:0 auto 24px;">
+      <i class="fas fa-credit-card" style="font-size:28px;color:var(--red);"></i>
+    </div>
+    <h2 style="margin-bottom:8px;font-size:24px;">Ajoutez votre carte bancaire</h2>
+    <p style="color:var(--text3);margin-bottom:32px;line-height:1.6;">
+      Profitez de <strong>14 jours d'essai gratuit</strong>. Enregistrez votre carte pour commencer — aucun prélèvement avant la fin de l'essai.
+    </p>
+    <button id="payment-wall-btn" class="btn btn-red" style="width:100%;padding:14px;font-size:16px;" onclick="setupCoachPaymentMethod()">
+      <i class="fas fa-credit-card"></i> Ajouter ma carte
+    </button>
+    <button class="btn" style="width:100%;margin-top:12px;color:var(--text3);" onclick="handleLogout()">
+      Se déconnecter
+    </button>
   </div>
 </div>
 
@@ -451,8 +487,8 @@
     <div class="sidebar">
       <div class="sidebar-header">
         <div class="sidebar-brand">
-          <div class="brand-icon">P</div>
-          <span class="brand-text">Pierre Coaching</span>
+          <div class="brand-icon">M</div>
+          <span class="brand-text">Momentum</span>
         </div>
       </div>
       <nav class="sidebar-nav">
@@ -492,8 +528,8 @@
       </nav>
       <div class="sidebar-footer">
         <div class="sidebar-user">
-          <div class="user-avatar" id="user-avatar">C</div>
-          <div class="user-info">
+          <div class="user-avatar" id="user-avatar" onclick="showSection('profile')" style="cursor:pointer" title="Mon profil">C</div>
+          <div class="user-info" onclick="showSection('profile')" style="cursor:pointer" title="Mon profil">
             <div class="user-name" id="user-name">Coach</div>
           </div>
           <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Mode jour / nuit">
@@ -525,9 +561,10 @@
 
       <!-- ATHLETES SECTION -->
       <div id="athletes-section" class="section">
-        <div class="page-header">
+        <div class="prc-welcome" style="margin-bottom:20px;">
           <div>
-            <h1 class="page-title">Athlètes</h1>
+            <div class="prc-welcome-title">Mes athlètes</div>
+            <div class="prc-welcome-sub" id="athletes-count-label">Gérez et suivez vos athlètes</div>
           </div>
           <button class="btn btn-red" onclick="openModal('modal-athlete')">
             <i class="fas fa-plus"></i> Ajouter un athlète
@@ -561,6 +598,7 @@
           <span class="tab-sep"></span>
           <button class="athlete-tab-btn" onclick="switchAthleteTab('posing')">Posing</button>
           <button class="athlete-tab-btn" onclick="switchAthleteTab('questionnaires')">Questionnaires</button>
+          <button class="athlete-tab-btn" onclick="switchAthleteTab('menstrual')">Menstruation</button>
         </div>
 
         <div id="athlete-tab-content">
@@ -617,6 +655,11 @@
       <div id="business-section" class="section">
         <div id="business-content"></div>
       </div>
+
+      <!-- PROFILE SECTION -->
+      <div id="profile-section" class="section">
+        <div id="profile-content"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -671,6 +714,75 @@
           <option value="">— Aucun —</option>
         </select>
       </div>
+
+      <!-- PAYMENT PLAN -->
+      <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:16px;">
+        <h3 style="font-size:15px;margin-bottom:12px;"><i class="fas fa-credit-card" style="margin-right:6px;"></i> Paiement</h3>
+        <div class="form-group">
+          <label>Type</label>
+          <div style="display:flex;gap:16px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 16px;border-radius:8px;border:1px solid var(--border);font-size:14px;font-weight:500;" id="pay-type-free-label">
+              <input type="radio" name="athlete-payment-type" value="free" onchange="togglePaymentFields(false)" style="appearance:auto;width:16px;height:16px;accent-color:var(--red);"> Gratuit
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 16px;border-radius:8px;border:1px solid var(--red);background:rgba(179,8,8,0.1);font-size:14px;font-weight:500;" id="pay-type-paid-label">
+              <input type="radio" name="athlete-payment-type" value="paid" checked onchange="togglePaymentFields(true)" style="appearance:auto;width:16px;height:16px;accent-color:var(--red);"> Payant
+            </label>
+          </div>
+        </div>
+        <div id="payment-fields">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Montant (€)</label>
+              <input type="number" id="athlete-pay-amount" step="1" min="1" placeholder="160">
+            </div>
+            <div class="form-group">
+              <label>Fréquence</label>
+              <select id="athlete-pay-frequency">
+                <option value="month">Par mois</option>
+                <option value="week">Par semaine</option>
+                <option value="day">Par jour</option>
+                <option value="once">Paiement unique</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row" id="pay-interval-row">
+            <div class="form-group">
+              <label>Tous les</label>
+              <input type="number" id="athlete-pay-interval" value="1" min="1" max="12">
+            </div>
+            <div class="form-group" id="pay-duration-group">
+              <label>Durée</label>
+              <select id="athlete-pay-duration" onchange="toggleDurationInput(this.value)">
+                <option value="unlimited">Illimité</option>
+                <option value="limited">Nombre de paiements</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" id="pay-total-payments-group" style="display:none;">
+            <label>Nombre de paiements</label>
+            <input type="number" id="athlete-pay-total" min="1" placeholder="9">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Engagement (mois)</label>
+              <input type="number" id="athlete-pay-engagement" value="0" min="0" placeholder="0 = sans">
+            </div>
+            <div class="form-group">
+              <label>Date de prélèvement</label>
+              <select id="athlete-pay-billing-anchor" onchange="toggleBillingAnchor()">
+                <option value="anniversary">Date anniversaire (inscription)</option>
+                <option value="fixed">Date fixe du mois</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" id="pay-billing-day-group" style="display:none;">
+            <label>Jour du mois</label>
+            <input type="number" id="athlete-pay-billing-day" min="1" max="28" placeholder="1" value="1">
+            <span style="font-size:12px;color:var(--text3);">Entre 1 et 28</span>
+          </div>
+        </div>
+      </div>
+
       <button type="submit" class="btn btn-red">Ajouter l'athlète</button>
     </form>
   </div>
@@ -1100,6 +1212,7 @@
 <script src="js/retours.js"></script>
 <script src="js/posing.js"></script>
 <script src="js/supplements.js"></script>
+<script src="js/menstrual.js"></script>
 <script src="js/exercices.js"></script>
 <script src="js/questionnaires.js"></script>
 <script src="js/business.js"></script>
@@ -1108,6 +1221,7 @@
 <script src="js/business-ig.js"></script>
 <script src="js/business-messages.js"></script>
 <script src="js/content-planner.js"></script>
+<script src="js/profile.js"></script>
 <script src="js/app.js"></script>
 
 <!-- ══════ ADMIN DASHBOARD (hidden by default) ══════ -->
@@ -1116,9 +1230,9 @@
     <aside class="admin-sidebar">
       <div class="admin-sidebar-header">
         <div class="admin-sidebar-brand">
-          <div class="admin-brand-icon">PC</div>
+          <div class="admin-brand-icon">M</div>
           <div>
-            <div class="admin-brand-text">Pierre Coaching</div>
+            <div class="admin-brand-text">Momentum</div>
             <div class="admin-brand-sub">Admin</div>
           </div>
         </div>

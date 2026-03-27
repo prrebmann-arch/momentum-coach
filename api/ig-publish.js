@@ -1,6 +1,13 @@
 // Instagram Content Publishing API — Publish a post via Instagram Business API
+const { verifyAuth, handleAuthError } = require('./_auth');
+const { cors } = require('./_cors');
+
 module.exports = async function handler(req, res) {
+  if (cors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Auth: verify the caller is authenticated
+  try { await verifyAuth(req); } catch (e) { return handleAuthError(res, e); }
 
   try {
     const { access_token, ig_user_id, image_url, video_url, caption, media_type } = req.body;
