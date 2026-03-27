@@ -500,8 +500,12 @@ async function loadAthleteTabBilans() {
 async function deleteBilan(bilanId, date) {
   if (!confirm(`Supprimer le bilan du ${date} ?`)) return;
   try {
-    const { error } = await supabaseClient.from('daily_reports').delete().eq('id', bilanId);
+    const { error, count } = await supabaseClient.from('daily_reports').delete({ count: 'exact' }).eq('id', bilanId);
     if (error) throw error;
+    if (count === 0) {
+      notify('Impossible de supprimer ce bilan (permission refusée). Ajoutez la policy RLS coach_delete_athlete_bilans.', 'error');
+      return;
+    }
     notify('Bilan supprimé', 'success');
     loadAthleteTabBilans();
   } catch (err) {
