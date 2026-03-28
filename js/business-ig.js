@@ -1025,7 +1025,7 @@ function _renderIgStoriesView(ct) {
 
         const card = `
           <div style="display:flex;flex-direction:column;align-items:center;min-width:200px;">
-            <div style="background:var(--glass-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:20px;overflow:hidden;width:200px;">
+            <div style="background:var(--bg2);border:1px solid var(--glass-border);border-radius:20px;overflow:hidden;width:200px;">
               <div style="width:100%;aspect-ratio:9/16;background:var(--bg3);display:flex;align-items:center;justify-content:center;position:relative;">
                 ${story?.thumbnail_url || story?.ig_media_url
                   ? `<img src="${escHtml(story.thumbnail_url || story.ig_media_url)}" style="width:100%;height:100%;object-fit:cover;">`
@@ -1164,7 +1164,7 @@ function _renderIgStoriesView(ct) {
       <button class="btn btn-outline btn-sm" style="width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:10px;" onclick="window._bizIgStoryWeekOffset++;window._bizIgSelectedDay=null;_renderIgStoriesView()"><i class="fas fa-chevron-right"></i></button>
     </div>
 
-    <div style="display:flex;gap:0;margin-bottom:24px;background:var(--bg2);border-radius:14px;border:1px solid var(--border);overflow:hidden;">${daysHtml}</div>
+    <div style="display:flex;gap:0;margin-bottom:24px;background:var(--bg2);border-radius:20px;border:1px solid var(--glass-border);overflow:hidden;">${daysHtml}</div>
 
     <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
       <button class="btn btn-red btn-sm" onclick="_bizIgCreateSequenceModal()"><i class="fas fa-plus" style="margin-right:4px;"></i>Nouvelle Séquence</button>
@@ -1519,7 +1519,7 @@ function _bizIgPlayReel(reelId) {
   overlay.id = 'ig-reel-modal';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;';
   overlay.innerHTML = `
-    <div style="background:var(--glass-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:20px;overflow:hidden;max-width:420px;width:90vw;max-height:90vh;display:flex;flex-direction:column;">
+    <div style="background:var(--bg2);border:1px solid var(--glass-border);border-radius:20px;overflow:hidden;max-width:420px;width:90vw;max-height:90vh;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);">
         <span style="font-size:13px;font-weight:600;color:var(--text);">${date}</span>
         <button onclick="document.getElementById('ig-reel-modal').remove()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;"><i class="fas fa-times"></i></button>

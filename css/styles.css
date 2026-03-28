@@ -43,10 +43,10 @@
   --transition-fast: 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   --transition-base: 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   --transition-smooth: 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-  --glass-bg: rgba(255,255,255,0.04);
-  --glass-bg-hover: rgba(255,255,255,0.07);
+  --glass-bg: rgba(255,255,255,0.06);
+  --glass-bg-hover: rgba(255,255,255,0.10);
   --glass-blur: blur(20px);
-  --glass-border: rgba(255,255,255,0.08);
+  --glass-border: rgba(255,255,255,0.12);
   --grid-pattern: none;
   --grid-size: 32px;
   --red-glow: 0 0 20px rgba(179,8,8,0.3);
@@ -521,14 +521,20 @@ textarea.form-control {
 }
 .main-content::after {
   content: '';
-  background: radial-gradient(circle, rgba(179,8,8,0.06) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(179,8,8,0.10) 0%, transparent 70%);
   position: fixed;
   top: -100px;
   right: -80px;
-  width: 400px;
-  height: 400px;
+  width: 500px;
+  height: 500px;
   pointer-events: none;
   z-index: 0;
+  animation: pulseOrb 8s ease-in-out infinite;
+}
+
+@keyframes pulseOrb {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.15); }
 }
 .main-content > * {
   position: relative;
@@ -564,9 +570,7 @@ textarea.form-control {
 
 /* ===== CARDS ===== */
 .card {
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--bg2);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   padding: 28px;
@@ -582,16 +586,16 @@ textarea.form-control {
   right: -40px;
   width: 120px;
   height: 120px;
-  background: radial-gradient(circle, rgba(179,8,8,0.06) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(179,8,8,0.08) 0%, transparent 70%);
   border-radius: 50%;
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--transition-base);
 }
 .card:hover {
-  border-color: var(--hover-border-strong);
-  box-shadow: var(--shadow-card-hover);
-  transform: translateY(-2px);
+  border-color: var(--primary-border);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.3), 0 0 20px rgba(179,8,8,0.08);
+  transform: translateY(-3px);
 }
 .card:hover::before {
   opacity: 1;

@@ -171,7 +171,7 @@ async function loadDashboard() {
 
     <!-- Stats cards -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
-      <div style="background:var(--glass-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:20px;padding:22px;position:relative;overflow:hidden;">
+      <div style="background:var(--bg2);border:1px solid var(--glass-border);border-radius:20px;padding:22px;position:relative;overflow:hidden;">
         <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#3b82f6,#60a5fa);"></div>
         <div style="display:flex;align-items:center;gap:10px;">
           <div style="width:40px;height:40px;border-radius:12px;background:rgba(59,130,246,0.1);display:flex;align-items:center;justify-content:center;"><i class="fas fa-users" style="color:#3b82f6;font-size:14px;"></i></div>
@@ -181,7 +181,7 @@ async function loadDashboard() {
           </div>
         </div>
       </div>
-      <div style="background:var(--glass-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:20px;padding:22px;position:relative;overflow:hidden;">
+      <div style="background:var(--bg2);border:1px solid var(--glass-border);border-radius:20px;padding:22px;position:relative;overflow:hidden;">
         <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#22c55e,#4ade80);"></div>
         <div style="display:flex;align-items:center;gap:10px;">
           <div style="width:40px;height:40px;border-radius:12px;background:rgba(34,197,94,0.1);display:flex;align-items:center;justify-content:center;"><i class="fas fa-clipboard-check" style="color:#22c55e;font-size:14px;"></i></div>
@@ -191,7 +191,7 @@ async function loadDashboard() {
           </div>
         </div>
       </div>
-      <div style="background:var(--glass-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:20px;padding:22px;position:relative;overflow:hidden;">
+      <div style="background:var(--bg2);border:1px solid var(--glass-border);border-radius:20px;padding:22px;position:relative;overflow:hidden;">
         <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#f59e0b,#fbbf24);"></div>
         <div style="display:flex;align-items:center;gap:10px;">
           <div style="width:40px;height:40px;border-radius:12px;background:rgba(245,158,11,0.1);display:flex;align-items:center;justify-content:center;"><i class="fas fa-video" style="color:#f59e0b;font-size:14px;"></i></div>
@@ -201,7 +201,7 @@ async function loadDashboard() {
           </div>
         </div>
       </div>
-      <div style="background:var(--glass-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--glass-border);border-radius:20px;padding:22px;position:relative;overflow:hidden;">
+      <div style="background:var(--bg2);border:1px solid var(--glass-border);border-radius:20px;padding:22px;position:relative;overflow:hidden;">
         <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#B30808,#d41a1a);"></div>
         <div style="display:flex;align-items:center;gap:10px;">
           <div style="width:40px;height:40px;border-radius:12px;background:rgba(179,8,8,0.1);display:flex;align-items:center;justify-content:center;"><i class="fas fa-exclamation-triangle" style="color:#B30808;font-size:14px;"></i></div>
