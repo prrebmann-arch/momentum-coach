@@ -7,15 +7,15 @@
   --primary-border: rgba(179, 8, 8, 0.12);
   --primary-bg: rgba(179, 8, 8, 0.06);
   --bg: #09090b;
-  --bg2: rgba(255,255,255,0.03);
-  --bg3: rgba(255,255,255,0.05);
-  --bg4: rgba(255,255,255,0.08);
+  --bg2: #111114;
+  --bg3: #19191d;
+  --bg4: #222226;
   --text: #f5f5f7;
-  --text2: rgba(255,255,255,0.5);
-  --text3: rgba(255,255,255,0.35);
-  --text4: rgba(255,255,255,0.25);
-  --border: rgba(255,255,255,0.06);
-  --border-subtle: rgba(255,255,255,0.04);
+  --text2: #b0b0ba;
+  --text3: #8e8e9a;
+  --text4: rgba(255,255,255,0.3);
+  --border: rgba(255,255,255,0.08);
+  --border-subtle: rgba(255,255,255,0.05);
   --hover-bg: rgba(255,255,255,0.04);
   --hover-bg-strong: rgba(255,255,255,0.06);
   --hover-border: rgba(255,255,255,0.10);
@@ -43,19 +43,19 @@
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-base: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-smooth: 0.3s ease-out;
-  --glass-bg: rgba(255,255,255,0.03);
-  --glass-bg-hover: rgba(255,255,255,0.05);
+  --glass-bg: rgba(255,255,255,0.04);
+  --glass-bg-hover: rgba(255,255,255,0.07);
   --glass-blur: blur(12px);
-  --glass-border: rgba(255,255,255,0.06);
+  --glass-border: rgba(255,255,255,0.08);
   --grid-pattern: linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
                   linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
   --grid-size: 32px;
   --red-glow: 0 0 20px rgba(179,8,8,0.3);
   /* Landing page aliases — map to Carbon tokens */
-  --text-muted: rgba(255,255,255,0.5);
-  --text-dim: rgba(255,255,255,0.35);
-  --bg-card: rgba(255,255,255,0.03);
-  --bg-card-hover: rgba(255,255,255,0.05);
+  --text-muted: #b0b0ba;
+  --text-dim: #8e8e9a;
+  --bg-card: rgba(255,255,255,0.04);
+  --bg-card-hover: rgba(255,255,255,0.07);
   --border-light: rgba(255,255,255,0.10);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
 }
@@ -63,9 +63,9 @@
 /* ===== LIGHT THEME ===== */
 [data-theme="light"] {
   --bg: #f4f4f6;
-  --bg2: rgba(0,0,0,0.02);
-  --bg3: rgba(0,0,0,0.04);
-  --bg4: rgba(0,0,0,0.06);
+  --bg2: #ffffff;
+  --bg3: #ebebee;
+  --bg4: #dddde1;
   --text: #18181b;
   --text2: #52525b;
   --text3: #7e7e8a;
