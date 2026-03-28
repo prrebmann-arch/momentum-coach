@@ -47,8 +47,7 @@
   --glass-bg-hover: rgba(255,255,255,0.07);
   --glass-blur: blur(12px);
   --glass-border: rgba(255,255,255,0.08);
-  --grid-pattern: linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
-                  linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+  --grid-pattern: none;
   --grid-size: 32px;
   --red-glow: 0 0 20px rgba(179,8,8,0.3);
   /* Landing page aliases — map to Carbon tokens */
@@ -95,8 +94,7 @@
   --glass-bg-hover: rgba(0,0,0,0.04);
   --glass-blur: blur(12px);
   --glass-border: rgba(0,0,0,0.06);
-  --grid-pattern: linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
-                  linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
+  --grid-pattern: none;
   --red-glow: 0 0 20px rgba(179,8,8,0.15);
   /* Landing page aliases — light theme */
   --text-muted: #52525b;
