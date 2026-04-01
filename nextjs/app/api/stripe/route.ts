@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-04-10' as Stripe.LatestApiVersion })
+function getStripe() {
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-04-10' as Stripe.LatestApiVersion })
+}
 
 function getSupabaseAdmin() {
   return createClient(
@@ -66,6 +68,7 @@ export async function GET(req: NextRequest) {
 // ---- Handlers ----
 
 async function handleCoachSetup(body: Record<string, string>) {
+  const stripe = getStripe()
   const { coachId, email } = body
   if (!coachId || !email) return errorJson('Missing coachId or email')
 
@@ -90,6 +93,7 @@ async function handleCoachSetup(body: Record<string, string>) {
 }
 
 async function handleConnectStart(body: Record<string, string>) {
+  const stripe = getStripe()
   const { coachId, email } = body
   if (!coachId) return errorJson('Missing coachId')
 
@@ -126,6 +130,7 @@ async function handleConnectStart(body: Record<string, string>) {
 }
 
 async function handleConnectComplete(coachId: string) {
+  const stripe = getStripe()
   const { data: profile } = await getSupabaseAdmin()
     .from('coach_profiles')
     .select('stripe_account_id')
@@ -153,6 +158,7 @@ async function handleConnectComplete(coachId: string) {
 }
 
 async function handleConnectDashboard(body: Record<string, string>) {
+  const stripe = getStripe()
   const { coachId } = body
   if (!coachId) return errorJson('Missing coachId')
 
@@ -169,6 +175,7 @@ async function handleConnectDashboard(body: Record<string, string>) {
 }
 
 async function handleImportSubscriptions(body: Record<string, string>) {
+  const stripe = getStripe()
   const { coachId } = body
   if (!coachId) return errorJson('Missing coachId')
 
