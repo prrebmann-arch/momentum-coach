@@ -10,6 +10,21 @@ export interface CoachProfile {
   stripe_secret_key_encrypted?: string
   stripe_publishable_key?: string
   stripe_webhook_secret_encrypted?: string
+  stripe_onboarding_complete?: boolean
+  stripe_charges_enabled?: boolean
+  allow_prorata?: boolean
+  currency?: string
+}
+
+export interface PlatformInvoice {
+  id: string
+  coach_id: string
+  month: number
+  year: number
+  athlete_count: number
+  total_amount: number
+  status: string
+  created_at: string
 }
 
 export interface Athlete {
