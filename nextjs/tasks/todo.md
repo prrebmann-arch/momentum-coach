@@ -1,16 +1,19 @@
-# Phase 5 - Bilans Module
+# Phase 6 - Business Pages & Formations
 
 ## Completed
-- [x] `styles/bilans.module.css` - All bilan CSS extracted (bw-*, bo-*, bt-*, pc-*)
-- [x] `components/bilans/BilanAccordion.tsx` - Weekly accordion with daily rows, stats, nutrition, notes
-- [x] `components/bilans/PhotoCompare.tsx` - Full-screen photo comparison viewer with navigation
-- [x] `components/bilans/MensurationCharts.tsx` - SVG mini-charts for body measurements
-- [x] `components/bilans/BilansOverview.tsx` - All-athletes overview with filters and bilan traite popup
-- [x] `hooks/useAudioRecorder.ts` - Shared MediaRecorder hook with Supabase upload
-- [x] `app/(app)/athletes/[id]/bilans/page.tsx` - Athlete bilans tab page
-- [x] `app/(app)/bilans/page.tsx` - Bilans overview page
+- [x] `app/(app)/business/page.tsx` -> BusinessDashboard
+- [x] `app/(app)/business/leads/page.tsx` -> LeadsPipeline
+- [x] `app/(app)/business/automations/page.tsx` -> AutomationsPage
+- [x] `app/(app)/business/instagram/page.tsx` -> InstagramAnalytics
+- [x] `app/(app)/business/messages/page.tsx` -> new MessagesInbox component
+- [x] `app/(app)/business/content/page.tsx` -> new ContentPlanner component
+- [x] `app/(app)/formations/page.tsx` -> new FormationsPage component
+- [x] All CSS modules committed (business, messages, content-planner, instagram, formations)
 - [x] TypeScript check passes (zero errors)
-- [x] Fixed pre-existing Supabase type issues in stripe routes
+- [x] Build passes successfully
 
 ## Notes
-- Build's "Collecting page data" phase fails on `/api/stripe` due to missing env vars at build time (pre-existing, not from bilans)
+- `styles/business.module.css` already existed with all biz-* styles converted to camelCase
+- `styles/formations.module.css` already existed with all fm-* styles
+- Modal component uses `isOpen` prop (not conditional rendering)
+- Supabase join returns nested objects, need `as unknown as` for type assertions
