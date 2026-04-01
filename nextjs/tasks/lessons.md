@@ -9,3 +9,9 @@
 [2026-03-31] | Data leak — unfiltered queries | Any query on shared tables (daily_reports, notifications, etc.) MUST filter by coach's athlete user_ids. Never query without a coach/user scope filter.
 
 [2026-03-31] | Push notifications missing | Always use `notifyAthlete()` from `lib/push.ts` instead of raw `supabase.from('notifications').insert()` — ensures both DB notification AND Expo push are sent.
+
+[2026-03-31] | Global CSS classes not ported to CSS modules | When migrating from vanilla JS to Next.js CSS modules, shared/global classes like `tr-body`, `tr-library` etc. must be explicitly added to the relevant `.module.css` file. A missing flex container class silently breaks layout without any build error.
+
+[2026-03-31] | History view used inline styles instead of CSS module classes | When porting from vanilla JS HTML templates, always convert the original CSS classes (nh-*, ht-*) to camelCase CSS module equivalents. Inline styles break consistency and miss responsive breakpoints.
+
+[2026-03-31] | DB column name mismatch: `exercises` vs `exercices_completes` | Original JS reads `log.exercices_completes` for workout log exercises. Always check both field names in parseLogExercises to handle schema variations.

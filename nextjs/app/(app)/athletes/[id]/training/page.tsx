@@ -147,15 +147,21 @@ interface WorkoutLog {
   started_at: string | null
   finished_at: string | null
   exercises: string | unknown[] | null
+  exercices_completes?: string | unknown[] | null
 }
 
 function parseLogExercises(log: WorkoutLog): Record<string, unknown>[] {
-  const raw = log.exercises
+  // The DB column may be "exercices_completes" (original) or "exercises" (migration)
+  const raw = log.exercices_completes || log.exercises
   if (!raw) return []
   try {
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
     return Array.isArray(parsed) ? parsed as Record<string, unknown>[] : []
   } catch { return [] }
+}
+
+function formatLogDate(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function toDateStr(d: Date): string {
@@ -190,6 +196,7 @@ export default function TrainingPage() {
   const [sessionMap, setSessionMap] = useState<Record<string, WorkoutSession & { _exs: Record<string, unknown>[]; _progName: string }>>({})
   const [histWeekOffset, setHistWeekOffset] = useState(0)
   const [histSelectedDate, setHistSelectedDate] = useState<string | null>(null)
+  const [histPrevLogIdx, setHistPrevLogIdx] = useState(0)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -469,176 +476,235 @@ export default function TrainingPage() {
     }
 
     const dayLogs = workoutLogs.filter((l) => l.date === selectedDate)
+    const dateLong = new Date(selectedDate + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+
+    const renderSetTags = (series: Record<string, unknown>[], cmpSeries?: Record<string, unknown>[]) =>
+      (series || []).map((set, si) => {
+        const reps = set.reps ?? '-'
+        const kg = set.kg ?? set.load ?? set.charge ?? null
+        let cmpIcon: React.ReactNode = null
+        if (cmpSeries) {
+          const cs = cmpSeries[si]
+          if (cs) {
+            const curVol = (parseFloat(String(kg)) || 0) > 0
+              ? (parseFloat(String(set.reps)) || 0) * (parseFloat(String(kg)) || 0)
+              : (parseFloat(String(set.reps)) || 0)
+            const prevKg = cs.kg ?? cs.load ?? cs.charge
+            const prevVol = (parseFloat(String(prevKg)) || 0) > 0
+              ? (parseFloat(String(cs.reps)) || 0) * (parseFloat(String(prevKg)) || 0)
+              : (parseFloat(String(cs.reps)) || 0)
+            if (curVol > prevVol) cmpIcon = <i className={`fa-solid fa-arrow-up ${styles.htCmpUp}`} />
+            else if (curVol < prevVol) cmpIcon = <i className={`fa-solid fa-arrow-down ${styles.htCmpDown}`} />
+            else cmpIcon = <i className={`fa-solid fa-equals ${styles.htCmpEq}`} />
+          }
+        }
+        if (set.duree) return <span key={si} className={styles.histSet}>{String(set.duree)}</span>
+        return (
+          <span key={si} className={styles.histSet}>
+            {String(reps)} reps{kg != null && kg !== '-' ? ` \u00B7 ${kg} kg` : ''}{cmpIcon}
+          </span>
+        )
+      })
 
     return (
       <div>
         <div className={styles.trHeader}>
           <div>
-            <div className={styles.trHeaderTitle}>Historique d&apos;entrainement</div>
-            <div className={styles.trHeaderSub}>{weekLabel}</div>
+            <div className={styles.trHeaderTitle}>
+              <i className="fa-solid fa-history" style={{ color: 'var(--primary)', marginRight: 8 }} />
+              Historique Training
+            </div>
+            <div className={styles.trHeaderSub}>Seances realisees par l&apos;athlete</div>
           </div>
           <button className="btn btn-outline btn-sm" onClick={() => setView('list')}>
-            <i className="fa-solid fa-arrow-left" /> Retour
+            <i className="fa-solid fa-arrow-left" /> Programmes
           </button>
         </div>
 
         {/* Week nav */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <button className="btn btn-outline btn-sm" onClick={() => { setHistWeekOffset(histWeekOffset + 1); setHistSelectedDate(null) }}>
+        <div className={styles.nhWeekNav}>
+          <button
+            className={styles.nhWeekBtn}
+            onClick={() => { setHistWeekOffset(histWeekOffset + 1); setHistSelectedDate(null); setHistPrevLogIdx(0) }}
+          >
             <i className="fa-solid fa-chevron-left" />
           </button>
-          <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-            {days.map((d) => {
-              const hasLog = workoutLogs.some((l) => l.date === d.date)
-              const isSelected = d.date === selectedDate
-              const isToday = d.date === today
-              return (
-                <button
-                  key={d.date}
-                  onClick={() => setHistSelectedDate(d.date)}
-                  style={{
-                    flex: 1, padding: '8px 4px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                    background: isSelected ? 'var(--primary)' : 'var(--bg3)',
-                    color: isSelected ? '#fff' : 'var(--text2)',
-                    fontWeight: isSelected ? 700 : 400,
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-                    outline: isToday && !isSelected ? '2px solid var(--primary)' : 'none',
-                  }}
-                >
-                  <span style={{ fontSize: 10 }}>{d.dayLabel}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700 }}>{d.dayNum}</span>
-                  {hasLog && <span style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? '#fff' : 'var(--primary)' }} />}
-                </button>
-              )
-            })}
-          </div>
-          <button className="btn btn-outline btn-sm" onClick={() => { setHistWeekOffset(Math.max(0, histWeekOffset - 1)); setHistSelectedDate(null) }}>
+          <span className={styles.nhWeekLabel}>{weekLabel}</span>
+          <button
+            className={styles.nhWeekBtn}
+            disabled={histWeekOffset <= 0}
+            onClick={() => { setHistWeekOffset(Math.max(0, histWeekOffset - 1)); setHistSelectedDate(null); setHistPrevLogIdx(0) }}
+          >
             <i className="fa-solid fa-chevron-right" />
           </button>
         </div>
 
-        {/* Day logs */}
-        {dayLogs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>
-            <i className="fa-solid fa-dumbbell" style={{ fontSize: 28, marginBottom: 12, display: 'block' }} />
-            <div style={{ fontSize: 14 }}>Aucune seance ce jour</div>
-          </div>
-        ) : (
-          dayLogs.map((log, logIdx) => {
-            const session = log.session_id ? sessionMap[log.session_id] : null
-            const sessionName = session?.nom || log.session_name || log.titre || 'Seance libre'
-            const isLibre = !log.session_id
-            const duration = (log.started_at && log.finished_at)
-              ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 60000)
-              : null
-            const logExs = parseLogExercises(log)
-            const programmedExs = session?._exs || []
-            const baseExs = programmedExs.length ? programmedExs : logExs
-
-            // Find previous logs of same session for comparison
-            const sameLogs = log.session_id
-              ? workoutLogs.filter((l) => l.session_id === log.session_id && l.date < log.date)
-              : workoutLogs.filter((l) => !l.session_id && l.date < log.date && (l.titre || l.session_name) === (log.titre || log.session_name))
-            const prevLog = sameLogs.length > 0 ? sameLogs[0] : null
-            const prevExs = prevLog ? parseLogExercises(prevLog) : []
-
+        {/* Day buttons */}
+        <div className={styles.nhDaysRow}>
+          {days.map((d) => {
+            const hasLog = workoutLogs.some((l) => l.date === d.date)
+            const isSelected = d.date === selectedDate
+            const isToday = d.date === today
+            const cls = [styles.nhDay]
+            if (isSelected) cls.push(styles.nhDayActive)
+            if (isToday) cls.push(styles.nhDayToday)
             return (
-              <div key={log.id || logIdx} className="card mb-16" style={{ padding: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <i className="fa-solid fa-dumbbell" style={{ color: 'var(--primary)' }} />
-                  <span style={{ fontSize: 15, fontWeight: 700 }}>{sessionName}</span>
-                  {isLibre && (
-                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: 'var(--bg4)', color: 'var(--text3)' }}>Libre</span>
-                  )}
-                  {duration !== null && (
-                    <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 'auto' }}>
-                      <i className="fa-solid fa-clock" style={{ marginRight: 3 }} />
-                      {duration >= 60 ? Math.floor(duration / 60) + 'h' + String(duration % 60).padStart(2, '0') : duration + ' min'}
-                    </span>
-                  )}
-                </div>
-
-                {/* Exercise table */}
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                        <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text3)', fontWeight: 600 }}>Exercice</th>
-                        {prevLog && <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text3)', fontWeight: 600 }}>Precedent</th>}
-                        <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text3)', fontWeight: 600 }}>Realise</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {baseExs.map((pEx, i) => {
-                        const name = String(pEx.nom || '')
-                        const le = logExs.find((e) => e.nom && String(e.nom).toLowerCase() === name.toLowerCase())
-                        const pe = prevExs.find((e) => e.nom && String(e.nom).toLowerCase() === name.toLowerCase())
-                        const missed = !le
-                        const leSeries = (le?.series || le?.sets || []) as Record<string, unknown>[]
-                        const peSeries = (pe?.series || pe?.sets || []) as Record<string, unknown>[]
-
-                        const renderSets = (series: Record<string, unknown>[]) =>
-                          series.map((s, si) => {
-                            const reps = s.reps ?? '-'
-                            const kg = s.kg ?? s.load ?? s.charge ?? null
-                            return (
-                              <span key={si} style={{
-                                display: 'inline-block', padding: '2px 6px', borderRadius: 4,
-                                background: 'var(--bg3)', marginRight: 4, marginBottom: 2, fontSize: 11,
-                              }}>
-                                {String(reps)} reps{kg != null && kg !== '-' ? ` · ${kg} kg` : ''}
-                              </span>
-                            )
-                          })
-
-                        return (
-                          <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)', opacity: missed ? 0.5 : 1 }}>
-                            <td style={{ padding: '8px', fontWeight: 500 }}>
-                              <span style={{ color: 'var(--text3)', marginRight: 4 }}>{i + 1}</span>
-                              {name}
-                              {missed && <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: 'rgba(239,68,68,0.15)', color: 'var(--danger)', marginLeft: 6 }}>Non fait</span>}
-                            </td>
-                            {prevLog && (
-                              <td style={{ padding: '8px' }}>
-                                {peSeries.length > 0 ? renderSets(peSeries) : <span style={{ color: 'var(--text3)' }}>&mdash;</span>}
-                              </td>
-                            )}
-                            <td style={{ padding: '8px' }}>
-                              {leSeries.length > 0 ? renderSets(leSeries) : <span style={{ color: 'var(--text3)' }}>&mdash;</span>}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                      {/* Extras */}
-                      {programmedExs.length > 0 && logExs.filter((le) => !programmedExs.some((pe) => String(pe.nom || '').toLowerCase() === String(le.nom || '').toLowerCase())).map((ex, i) => {
-                        const series = (ex.series || ex.sets || []) as Record<string, unknown>[]
-                        return (
-                          <tr key={`extra-${i}`} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                            <td style={{ padding: '8px', fontWeight: 500 }}>
-                              <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', marginRight: 6 }}>+</span>
-                              {String(ex.nom || '?')}
-                            </td>
-                            {prevLog && <td style={{ padding: '8px' }}><span style={{ color: 'var(--text3)' }}>&mdash;</span></td>}
-                            <td style={{ padding: '8px' }}>
-                              {series.map((s, si) => (
-                                <span key={si} style={{
-                                  display: 'inline-block', padding: '2px 6px', borderRadius: 4,
-                                  background: 'var(--bg3)', marginRight: 4, fontSize: 11,
-                                }}>
-                                  {String(s.reps ?? '-')} reps{s.kg != null && s.kg !== '-' ? ` · ${s.kg} kg` : ''}
-                                </span>
-                              ))}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <button
+                key={d.date}
+                className={cls.join(' ')}
+                onClick={() => { setHistSelectedDate(d.date); setHistPrevLogIdx(0) }}
+              >
+                <span className={styles.nhDayLabel}>{d.dayLabel}</span>
+                <span className={styles.nhDayNum}>{d.dayNum}</span>
+                {hasLog && <span className={styles.nhDayDot} />}
+              </button>
             )
-          })
-        )}
+          })}
+        </div>
+
+        {/* Content */}
+        <div className={styles.nhContent}>
+          <div className={styles.nhDateLabel}>{dateLong}</div>
+
+          {dayLogs.length === 0 ? (
+            <div className={styles.histEmpty}>
+              <i className="fa-solid fa-dumbbell" />
+              <div style={{ fontSize: 14 }}>Aucune seance ce jour</div>
+            </div>
+          ) : (
+            dayLogs.map((log, logIdx) => {
+              const session = log.session_id ? sessionMap[log.session_id] : null
+              const sessionName = session?.nom || log.session_name || log.titre || 'Seance libre'
+              const isLibre = !log.session_id
+              const duration = (log.started_at && log.finished_at)
+                ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 60000)
+                : null
+              const logExs = parseLogExercises(log)
+              const programmedExs = session?._exs || []
+              const baseExs = programmedExs.length ? programmedExs : logExs
+
+              // Find previous logs of same session for comparison
+              const sameLogs = log.session_id
+                ? workoutLogs.filter((l) => l.session_id === log.session_id && l.date < log.date)
+                : workoutLogs.filter((l) => !l.session_id && l.date < log.date && (l.titre || l.session_name) === (log.titre || log.session_name))
+              const hasPrev = sameLogs.length > 0
+              const safeIdx = Math.min(histPrevLogIdx, sameLogs.length - 1)
+              const prevLog = hasPrev ? sameLogs[safeIdx] : null
+              const prevExs = prevLog ? parseLogExercises(prevLog) : []
+              const prevDate = prevLog ? formatLogDate(prevLog.date) : ''
+              const rightDate = formatLogDate(log.date)
+
+              return (
+                <div key={log.id || logIdx} style={{ marginBottom: 16 }}>
+                  {/* Session title */}
+                  <div className={styles.htSessionHeader}>
+                    <i className="fa-solid fa-dumbbell" style={{ color: 'var(--primary)' }} />
+                    {sessionName}
+                    {isLibre && <span className={styles.htLibreTag}>Libre</span>}
+                    {duration !== null && (
+                      <span className={styles.htSessionDuration}>
+                        <i className="fa-solid fa-clock" style={{ marginRight: 3 }} />
+                        {duration >= 60 ? Math.floor(duration / 60) + 'h' + String(duration % 60).padStart(2, '0') : duration + ' min'}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Grid table */}
+                  <div className={styles.htWrap}>
+                    {/* Header */}
+                    <div className={styles.htHdr}>
+                      <div className={styles.htHdrTitle}>Exercice</div>
+                      <div className={`${styles.htCellData} ${styles.htHdrCol}`}>
+                        {hasPrev ? (
+                          <div className={styles.htColNav}>
+                            <button
+                              className={styles.htNavBtn}
+                              disabled={safeIdx >= sameLogs.length - 1}
+                              onClick={() => setHistPrevLogIdx(safeIdx + 1)}
+                            >
+                              <i className="fa-solid fa-chevron-left" />
+                            </button>
+                            <span className={styles.htColLabel}>{prevDate}</span>
+                            <button
+                              className={styles.htNavBtn}
+                              disabled={safeIdx <= 0}
+                              onClick={() => setHistPrevLogIdx(safeIdx - 1)}
+                            >
+                              <i className="fa-solid fa-chevron-right" />
+                            </button>
+                            <span className={styles.htColCount}>{safeIdx + 1}/{sameLogs.length}</span>
+                          </div>
+                        ) : (
+                          <span className={styles.htColLabel} style={{ color: 'var(--text3)' }}>Pas de precedent</span>
+                        )}
+                      </div>
+                      <div className={`${styles.htCellData} ${styles.htHdrCol}`}>
+                        <span className={styles.htColLabel}>{rightDate}</span>
+                      </div>
+                    </div>
+
+                    {/* Exercise rows */}
+                    {baseExs.map((pEx, i) => {
+                      const name = String(pEx.nom || '')
+                      const le = logExs.find((e) => e.nom && String(e.nom).toLowerCase() === name.toLowerCase())
+                      const pe = prevExs.find((e) => e.nom && String(e.nom).toLowerCase() === name.toLowerCase())
+                      const missed = !le
+                      const leSeries = (le?.series || le?.sets || []) as Record<string, unknown>[]
+                      const peSeries = (pe?.series || pe?.sets || []) as Record<string, unknown>[]
+                      const plannedCount = pEx ? (parseInt(String(pEx.series)) || (pEx.sets as unknown[])?.length || 0) : 0
+                      const doneCount = leSeries.length
+                      const seriesMismatch = plannedCount > 0 && doneCount > 0 && doneCount < plannedCount
+
+                      const rowCls = [styles.htRow]
+                      if (!le && !pe) rowCls.push(styles.htRowDim)
+
+                      return (
+                        <div key={i} className={rowCls.join(' ')}>
+                          <div className={`${styles.htCellName}${missed ? ` ${styles.htNameMissed}` : ''}`}>
+                            <span className={styles.htNum}>{i + 1}</span>
+                            {name}
+                            {missed && <span className={styles.htMissedTag}>Non fait</span>}
+                            {seriesMismatch && <span className={styles.htSeriesMismatch}>{doneCount}/{plannedCount} series</span>}
+                          </div>
+                          <div className={styles.htCellData}>
+                            {peSeries.length > 0 ? renderSetTags(peSeries) : <span className={styles.htNil}>&mdash;</span>}
+                          </div>
+                          <div className={styles.htCellData}>
+                            {leSeries.length > 0 ? renderSetTags(leSeries, peSeries) : <span className={styles.htNil}>&mdash;</span>}
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {/* Extra exercises (done but not programmed) */}
+                    {programmedExs.length > 0 && logExs
+                      .filter((le) => !programmedExs.some((pe) => String(pe.nom || '').toLowerCase() === String(le.nom || '').toLowerCase()))
+                      .map((ex, i) => {
+                        const pe = prevExs.find((e) => e.nom && String(e.nom).toLowerCase() === String(ex.nom || '').toLowerCase())
+                        const leSeries = (ex.series || ex.sets || []) as Record<string, unknown>[]
+                        const peSeries = (pe?.series || pe?.sets || []) as Record<string, unknown>[]
+                        return (
+                          <div key={`extra-${i}`} className={`${styles.htRow} ${styles.htRowExtra}`}>
+                            <div className={styles.htCellName}>
+                              <span className={styles.htExtraBadge}>+</span>
+                              {String(ex.nom || '?')}
+                              <span className={styles.htExtraTag}>Ajoute</span>
+                            </div>
+                            <div className={styles.htCellData}>
+                              {peSeries.length > 0 ? renderSetTags(peSeries) : <span className={styles.htNil}>&mdash;</span>}
+                            </div>
+                            <div className={styles.htCellData}>
+                              {renderSetTags(leSeries, peSeries)}
+                            </div>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
       </div>
     )
   }
@@ -673,13 +739,19 @@ export default function TrainingPage() {
         />
       ) : (
         <>
-          <div className="flex justify-end gap-8 mb-16">
-            <button className="btn btn-outline" onClick={() => { setHistWeekOffset(0); setHistSelectedDate(null); setView('history') }}>
-              <i className="fa-solid fa-clock-rotate-left" /> Historique
-            </button>
-            <button className="btn btn-red" onClick={() => openEditor()}>
-              <i className="fa-solid fa-plus" /> Nouveau programme
-            </button>
+          <div className={styles.trHeader} style={{ marginBottom: 16 }}>
+            <div>
+              <div className={styles.trHeaderTitle}>Programmes</div>
+              <div className={styles.trHeaderSub}>{programs.length} programme(s)</div>
+            </div>
+            <div className="flex gap-8">
+              <button className="btn btn-outline btn-sm" onClick={() => { setHistWeekOffset(0); setHistSelectedDate(null); setHistPrevLogIdx(0); setView('history') }}>
+                <i className="fa-solid fa-clock-rotate-left" /> Historique
+              </button>
+              <button className="btn btn-red btn-sm" onClick={() => openEditor()}>
+                <i className="fa-solid fa-plus" /> Nouveau programme
+              </button>
+            </div>
           </div>
 
           {programs.map((p) => {
