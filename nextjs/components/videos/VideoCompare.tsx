@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useToast } from '@/contexts/ToastContext'
 import styles from '@/styles/videos.module.css'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -22,6 +23,23 @@ interface CompVideo {
   thumbnail_url: string | null
   date: string
   serie_number: number
+}
+
+interface ExSet {
+  reps: string
+  tempo?: string
+  repos?: string
+  type: 'normal' | 'dropset' | 'rest_pause'
+  reps_rp?: string
+  rest_pause_time?: string
+}
+
+interface EditExercise {
+  nom: string
+  muscle_principal?: string
+  superset_id?: string
+  sets: ExSet[]
+  series?: number | string
 }
 
 interface VideoCompareProps {
@@ -62,14 +80,31 @@ function fmtDuration(d: number): string {
     : d + ' min'
 }
 
+function normalizeExSets(ex: any): ExSet[] {
+  if (ex.sets && Array.isArray(ex.sets)) return ex.sets
+  const count = parseInt(ex.series) || 3
+  const reps = ex.reps || '10'
+  const tempo = ex.tempo || '30X1'
+  const sets: ExSet[] = []
+  for (let i = 0; i < count; i++) sets.push({ reps, tempo, repos: '1m30', type: 'normal' })
+  return sets
+}
+
 export default function VideoCompare({ video, compVideos, compIdx }: VideoCompareProps) {
   const supabase = createClient()
+  const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [allLogs, setAllLogs] = useState<any[]>([])
   const [currentLog, setCurrentLog] = useState<any>(null)
   const [prevLogIdx, setPrevLogIdx] = useState(-1)
   const [sessionName, setSessionName] = useState('')
   const [sessionExs, setSessionExs] = useState<any[]>([])
+  const [matchedSession, setMatchedSession] = useState<any>(null)
+
+  // Edit column state
+  const [editSessionName, setEditSessionName] = useState('')
+  const [editExercises, setEditExercises] = useState<EditExercise[]>([])
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const loadTraining = useCallback(async () => {
     setLoading(true)
@@ -125,6 +160,7 @@ export default function VideoCompare({ video, compVideos, compIdx }: VideoCompar
       return
     }
 
+    setMatchedSession(matchSession)
     setSessionName(matchSession.nom || '')
     let exs: any[] = []
     try {
@@ -133,6 +169,16 @@ export default function VideoCompare({ video, compVideos, compIdx }: VideoCompar
         : matchSession.exercices || []
     } catch { /* skip */ }
     setSessionExs(exs)
+
+    // Initialize edit state
+    setEditSessionName(matchSession.nom || '')
+    const editExs: EditExercise[] = exs.map((e: any) => ({
+      nom: e.nom || '',
+      muscle_principal: e.muscle_principal || '',
+      superset_id: e.superset_id || '',
+      sets: normalizeExSets(e),
+    }))
+    setEditExercises(editExs)
 
     // Load workout logs
     let { data: logs } = await supabase
@@ -174,6 +220,82 @@ export default function VideoCompare({ video, compVideos, compIdx }: VideoCompar
     loadTraining()
   }, [loadTraining])
 
+  // ── Edit column helpers ──
+  const updateExercise = (idx: number, field: string, value: string) => {
+    setEditExercises((prev) => {
+      const copy = [...prev]
+      copy[idx] = { ...copy[idx], [field]: value }
+      return copy
+    })
+  }
+
+  const updateSet = (exIdx: number, setIdx: number, field: keyof ExSet, value: string) => {
+    setEditExercises((prev) => {
+      const copy = [...prev]
+      const sets = [...copy[exIdx].sets]
+      sets[setIdx] = { ...sets[setIdx], [field]: value }
+      copy[exIdx] = { ...copy[exIdx], sets }
+      return copy
+    })
+  }
+
+  const addSet = (exIdx: number) => {
+    setEditExercises((prev) => {
+      const copy = [...prev]
+      const sets = [...copy[exIdx].sets, { reps: '10', tempo: '30X1', repos: '1m30', type: 'normal' as const }]
+      copy[exIdx] = { ...copy[exIdx], sets }
+      return copy
+    })
+  }
+
+  const removeSet = (exIdx: number, setIdx: number) => {
+    setEditExercises((prev) => {
+      const copy = [...prev]
+      if (copy[exIdx].sets.length <= 1) return prev
+      const sets = copy[exIdx].sets.filter((_, i) => i !== setIdx)
+      copy[exIdx] = { ...copy[exIdx], sets }
+      return copy
+    })
+  }
+
+  const addExercise = () => {
+    setEditExercises((prev) => [
+      ...prev,
+      { nom: '', sets: [{ reps: '10', tempo: '30X1', repos: '1m30', type: 'normal' as const }] },
+    ])
+  }
+
+  const removeExercise = (idx: number) => {
+    setEditExercises((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  const handleSaveSession = async () => {
+    if (!matchedSession?.id) return
+    if (!editSessionName.trim()) {
+      toast('Nom de seance requis', 'warning')
+      return
+    }
+    const exercises = editExercises.filter((e) => e.nom.trim())
+    if (!exercises.length) {
+      toast('Ajoutez au moins un exercice', 'warning')
+      return
+    }
+    setSavingEdit(true)
+    const { error } = await supabase
+      .from('workout_sessions')
+      .update({ nom: editSessionName.trim(), exercices: JSON.stringify(exercises) })
+      .eq('id', matchedSession.id)
+    if (error) {
+      toast('Erreur lors de la sauvegarde', 'error')
+      setSavingEdit(false)
+      return
+    }
+    setSessionName(editSessionName.trim())
+    setSessionExs(exercises)
+    toast('Seance modifiee !', 'success')
+    setSavingEdit(false)
+  }
+
   const navigatePrev = (dir: number) => {
     setPrevLogIdx((prev) => {
       let idx = prev + dir
@@ -214,6 +336,7 @@ export default function VideoCompare({ video, compVideos, compIdx }: VideoCompar
   const videoExName = (video.exercise_name || '').toLowerCase()
   const compVideo = compIdx >= 0 ? compVideos[compIdx] : null
   const prevHighlightExName = compVideo ? videoExName : ''
+  const totalEditSeries = editExercises.reduce((a, e) => a + (e.sets?.length || 0), 0)
 
   // Position-aware matching
   const matchByPos = (name: string, list: any[], usedSet: Set<number>) => {
@@ -415,6 +538,151 @@ export default function VideoCompare({ video, compVideos, compIdx }: VideoCompar
             )
           })}
         </div>
+
+        {/* ── Edit column (3rd column) ── */}
+        {matchedSession && (
+          <div className={`${styles.vtCol} ${styles.vtColEdit}`}>
+            <div className={styles.vtColHeader}>
+              <div className={styles.vtColTitle}>Modifier la seance</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <input
+                type="text"
+                className="inline-input"
+                value={editSessionName}
+                onChange={(e) => setEditSessionName(e.target.value)}
+                placeholder="Nom de la seance"
+                style={{ flex: 1 }}
+              />
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
+              <i className="fa-solid fa-dumbbell" style={{ marginRight: 4 }} />
+              {editExercises.length} exercice{editExercises.length > 1 ? 's' : ''} &mdash; {totalEditSeries} series
+            </div>
+
+            {editExercises.map((ex, exIdx) => {
+              const isVideoEx = ex.nom.toLowerCase() === videoExName
+              return (
+                <div
+                  key={exIdx}
+                  className={`${styles.vtExEditable} ${isVideoEx ? styles.vtEditHighlight : ''}`}
+                  style={{ marginBottom: 12 }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <span className={styles.vtExNum}>{exIdx + 1}.</span>
+                    <input
+                      type="text"
+                      className={`${styles.vtInput} ${styles.vtInputName}`}
+                      value={ex.nom}
+                      onChange={(e) => updateExercise(exIdx, 'nom', e.target.value)}
+                      placeholder="Nom de l'exercice"
+                    />
+                    {ex.superset_id && (
+                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap' }}>
+                        SS {ex.superset_id}
+                      </span>
+                    )}
+                    {ex.muscle_principal && (
+                      <span style={{ fontSize: 10, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                        {ex.muscle_principal}
+                      </span>
+                    )}
+                    <button
+                      className={styles.vtBtnIcon}
+                      onClick={() => removeExercise(exIdx)}
+                      title="Supprimer"
+                    >
+                      <i className="fa-solid fa-trash" />
+                    </button>
+                  </div>
+
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase' as const }}>
+                        <th style={{ padding: '4px 6px', textAlign: 'left', width: 30 }}>#</th>
+                        <th style={{ padding: '4px 6px', textAlign: 'left' }}>Reps</th>
+                        <th style={{ padding: '4px 6px', textAlign: 'left' }}>Tempo</th>
+                        <th style={{ padding: '4px 6px', textAlign: 'left' }}>Repos</th>
+                        <th style={{ width: 24 }} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ex.sets.map((set, si) => (
+                        <tr key={si} style={{ borderTop: si > 0 ? '1px solid var(--border-subtle)' : undefined }}>
+                          <td style={{ padding: '4px 6px', color: 'var(--text3)' }}>{si + 1}</td>
+                          <td style={{ padding: '4px 6px' }}>
+                            <input
+                              type="text"
+                              className={styles.vtInput}
+                              value={set.reps}
+                              onChange={(e) => updateSet(exIdx, si, 'reps', e.target.value)}
+                              placeholder="10"
+                              style={{ width: '100%' }}
+                            />
+                          </td>
+                          <td style={{ padding: '4px 6px' }}>
+                            <input
+                              type="text"
+                              className={styles.vtInput}
+                              value={set.tempo || ''}
+                              onChange={(e) => updateSet(exIdx, si, 'tempo', e.target.value)}
+                              placeholder="30X1"
+                              style={{ width: '100%' }}
+                            />
+                          </td>
+                          <td style={{ padding: '4px 6px' }}>
+                            <input
+                              type="text"
+                              className={styles.vtInput}
+                              value={set.repos || ''}
+                              onChange={(e) => updateSet(exIdx, si, 'repos', e.target.value)}
+                              placeholder="1m30"
+                              style={{ width: '100%' }}
+                            />
+                          </td>
+                          <td style={{ padding: '4px 6px' }}>
+                            <button
+                              className={styles.vtBtnIcon}
+                              onClick={() => removeSet(exIdx, si)}
+                              title="Supprimer"
+                              style={{ fontSize: 10 }}
+                            >
+                              <i className="fa-solid fa-times" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  <button
+                    className={styles.vtBtnSm}
+                    onClick={() => addSet(exIdx)}
+                    style={{ marginTop: 6, width: '100%' }}
+                  >
+                    <i className="fa-solid fa-plus" /> Serie
+                  </button>
+                </div>
+              )
+            })}
+
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={addExercise}
+              style={{ marginTop: 10, width: '100%' }}
+            >
+              <i className="fa-solid fa-plus" /> Exercice
+            </button>
+            <button
+              className="btn btn-red"
+              onClick={handleSaveSession}
+              disabled={savingEdit}
+              style={{ width: '100%', marginTop: 12 }}
+            >
+              <i className="fa-solid fa-save" /> {savingEdit ? 'Enregistrement...' : 'Enregistrer les modifications'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

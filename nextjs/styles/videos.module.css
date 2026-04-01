@@ -243,6 +243,35 @@
 .vtUp { color: #22c55e; font-size: 10px; }
 .vtDown { color: var(--primary); font-size: 10px; }
 .vtEq { color: var(--text3); font-size: 10px; }
+
+/* Edit column */
+.vtCol {
+  background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius);
+  padding: 20px; overflow-y: auto; max-height: 80vh;
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+}
+.vtColEdit { border-color: var(--border); }
+.vtColHeader { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
+.vtExEditable { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.vtExNum { font-size: 13px; font-weight: 700; color: var(--text3); margin-right: 6px; }
+.vtInput { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; color: var(--text1); font-size: 13px; }
+.vtInputName { flex: 1; }
+.vtBtnIcon {
+  background: transparent; border: none; color: var(--text3); cursor: pointer;
+  padding: 4px 8px; border-radius: 4px; font-size: 12px;
+}
+.vtBtnIcon:hover { color: var(--primary); background: rgba(179,8,8,0.1); }
+.vtBtnSm {
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 10px; font-size: 11px; color: var(--text3); cursor: pointer;
+}
+.vtBtnSm:hover { border-color: var(--primary); color: var(--primary); }
+.vtEditHighlight {
+  border: 1.5px solid rgba(179,8,8,0.4) !important;
+  background: rgba(179,8,8,0.04) !important;
+  box-shadow: 0 0 0 3px rgba(179,8,8,0.08);
+}
+
 @media (max-width: 1024px) {
   .vtGrid { grid-template-columns: 1fr; }
   .vtCompRow { grid-template-columns: 1fr; gap: 8px; }
