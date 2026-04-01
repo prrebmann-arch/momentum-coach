@@ -9,21 +9,13 @@ import AddAthleteForm from './AddAthleteForm'
 import styles from '@/styles/athletes.module.css'
 import type { Athlete } from '@/lib/types'
 
-// Phase definitions (matches PROG_PHASES in the vanilla JS)
-const PROG_PHASES: Record<string, { label: string; short: string; color: string }> = {
-  offseason: { label: 'Off-season', short: 'OFF', color: '#6366f1' },
-  preparation: { label: 'Preparation', short: 'PREP', color: '#3b82f6' },
-  cutting: { label: 'Seche', short: 'CUT', color: '#ef4444' },
-  peakweek: { label: 'Peak Week', short: 'PEAK', color: '#f59e0b' },
-  reverse: { label: 'Reverse', short: 'REV', color: '#22c55e' },
-  maintenance: { label: 'Maintenance', short: 'MNT', color: '#8b5cf6' },
-}
+import { PROG_PHASES } from '@/lib/constants'
 
 function AthleteCard({ athlete, onClick }: { athlete: Athlete; onClick: () => void }) {
   const initials = (athlete.prenom?.charAt(0) || '') + (athlete.nom?.charAt(0) || '')
   const poids = athlete.poids_actuel ? `${athlete.poids_actuel} kg` : '\u2014'
   const activePhase = athlete._phase
-  const phaseInfo = activePhase?.phase ? PROG_PHASES[activePhase.phase] : null
+  const phaseInfo = activePhase?.phase ? (PROG_PHASES as Record<string, { label: string; short: string; color: string }>)[activePhase.phase] : null
   const phaseLabel = phaseInfo ? phaseInfo.label : (activePhase?.name || '')
   const phaseColor = phaseInfo ? phaseInfo.color : 'var(--primary)'
 
