@@ -12,6 +12,18 @@ import styles from '@/styles/nutrition.module.css'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+interface NutritionLog {
+  id: string
+  athlete_id: string
+  date: string
+  plan_id: string | null
+  meals_log: string | any[]
+}
+
+function toDateStr(d: Date): string {
+  return d.toISOString().split('T')[0]
+}
+
 interface NutritionPlan {
   id: string
   nom: string
@@ -39,7 +51,7 @@ interface DietGroup {
   ids: string[]
 }
 
-type View = 'list' | 'editor' | 'detail'
+type View = 'list' | 'editor' | 'detail' | 'history'
 
 export default function NutritionPage() {
   const params = useParams<{ id: string }>()
@@ -65,6 +77,11 @@ export default function NutritionPage() {
   const [detailPlan, setDetailPlan] = useState<NutritionPlan | null>(null)
   const [detailType, setDetailType] = useState<'training' | 'rest'>('training')
   const [detailDiet, setDetailDiet] = useState<{ tPlan: NutritionPlan | null; rPlan: NutritionPlan | null } | null>(null)
+
+  // History state
+  const [nutriLogs, setNutriLogs] = useState<NutritionLog[]>([])
+  const [histWeekOffset, setHistWeekOffset] = useState(0)
+  const [histSelectedDate, setHistSelectedDate] = useState<string | null>(null)
 
   const loadPlans = useCallback(async () => {
     setLoading(true)
@@ -101,6 +118,25 @@ export default function NutritionPage() {
   }, [athleteId, supabase])
 
   useEffect(() => { loadPlans() }, [loadPlans])
+
+  // Load nutrition logs for history
+  const loadNutriLogs = useCallback(async () => {
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 90)
+    const fromDate = thirtyDaysAgo.toISOString().split('T')[0]
+
+    // Fetch athlete user_id
+    const { data: ath } = await supabase.from('athletes').select('id, user_id').eq('id', athleteId).single()
+    if (!ath) return
+
+    // Try both id and user_id as the athlete app may use either
+    const [{ data: logsByUser }, { data: logsByAthlete }] = await Promise.all([
+      supabase.from('nutrition_logs').select('*').eq('athlete_id', ath.user_id).gte('date', fromDate).order('date', { ascending: false }),
+      supabase.from('nutrition_logs').select('*').eq('athlete_id', ath.id).gte('date', fromDate).order('date', { ascending: false }),
+    ])
+    const logs = ((logsByUser?.length ? logsByUser : logsByAthlete) || []) as NutritionLog[]
+    setNutriLogs(logs)
+  }, [athleteId, supabase])
 
   // Open editor for new diet
   function createNewDiet() {
@@ -309,6 +345,241 @@ export default function NutritionPage() {
     )
   }
 
+  // ── HISTORY VIEW ──
+  if (view === 'history') {
+    const planMap: Record<string, NutritionPlan> = {}
+    plans.forEach((p) => { planMap[p.id] = p })
+
+    const now = new Date()
+    const weekStart = new Date(now)
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7) - (histWeekOffset * 7))
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+    const weekStartStr = toDateStr(weekStart)
+    const weekEndStr = toDateStr(weekEnd)
+    const today = toDateStr(now)
+
+    const days: { date: string; dayLabel: string; dayNum: number }[] = []
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart)
+      d.setDate(d.getDate() + i)
+      days.push({ date: toDateStr(d), dayLabel: d.toLocaleDateString('fr-FR', { weekday: 'short' }), dayNum: d.getDate() })
+    }
+
+    const weekLabel = weekStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+      + ' — ' + weekEnd.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+
+    let selectedDate = histSelectedDate
+    if (!selectedDate || selectedDate < weekStartStr || selectedDate > weekEndStr) {
+      selectedDate = days.find((d) => d.date === today)?.date || days[0].date
+    }
+
+    const dayLog = nutriLogs.find((l) => l.date === selectedDate)
+    const plan = dayLog?.plan_id ? planMap[dayLog.plan_id] : null
+
+    // Parse day log meals
+    let mealsLog: any[] = []
+    if (dayLog) {
+      try { mealsLog = (typeof dayLog.meals_log === 'string' ? JSON.parse(dayLog.meals_log) : dayLog.meals_log) || [] } catch { /* empty */ }
+    }
+
+    // Compute adherence stats
+    let actualK = 0, actualP = 0, actualG = 0, actualL = 0
+    let plannedK = 0, plannedP = 0, plannedG = 0, plannedL = 0
+    let followedCount = 0, replacedCount = 0, skippedCount = 0, totalFoods = 0
+
+    mealsLog.forEach((meal: any) => {
+      (meal?.foods || []).forEach((f: any) => {
+        totalFoods++
+        const orig = f.original || {}
+        plannedK += parseFloat(orig.kcal) || 0
+        plannedP += parseFloat(orig.p) || 0
+        plannedG += parseFloat(orig.g) || 0
+        plannedL += parseFloat(orig.l) || 0
+
+        if (f.status === 'followed') {
+          followedCount++
+          actualK += parseFloat(orig.kcal) || 0
+          actualP += parseFloat(orig.p) || 0
+          actualG += parseFloat(orig.g) || 0
+          actualL += parseFloat(orig.l) || 0
+        } else if (f.status === 'replaced' && f.replacement) {
+          replacedCount++
+          actualK += parseFloat(f.replacement.kcal) || 0
+          actualP += parseFloat(f.replacement.p) || 0
+          actualG += parseFloat(f.replacement.g) || 0
+          actualL += parseFloat(f.replacement.l) || 0
+        } else {
+          skippedCount++
+        }
+      })
+      ;(meal?.extras || []).forEach((ex: any) => {
+        actualK += parseFloat(ex.kcal) || 0
+        actualP += parseFloat(ex.p) || 0
+        actualG += parseFloat(ex.g) || 0
+        actualL += parseFloat(ex.l) || 0
+      })
+    })
+
+    const adherenceRate = totalFoods > 0 ? Math.round((followedCount / totalFoods) * 100) : 0
+
+    return (
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>Suivi nutritionnel</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>{weekLabel}</div>
+          </div>
+          <button className="btn btn-outline btn-sm" onClick={() => setView('list')}>
+            <i className="fa-solid fa-arrow-left" /> Retour
+          </button>
+        </div>
+
+        {/* Week nav */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <button className="btn btn-outline btn-sm" onClick={() => { setHistWeekOffset(histWeekOffset + 1); setHistSelectedDate(null) }}>
+            <i className="fa-solid fa-chevron-left" />
+          </button>
+          <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+            {days.map((d) => {
+              const hasLog = nutriLogs.some((l) => l.date === d.date)
+              const isSelected = d.date === selectedDate
+              const isToday = d.date === today
+              return (
+                <button
+                  key={d.date}
+                  onClick={() => setHistSelectedDate(d.date)}
+                  style={{
+                    flex: 1, padding: '8px 4px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                    background: isSelected ? 'var(--primary)' : 'var(--bg3)',
+                    color: isSelected ? '#fff' : 'var(--text2)',
+                    fontWeight: isSelected ? 700 : 400,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                    outline: isToday && !isSelected ? '2px solid var(--primary)' : 'none',
+                  }}
+                >
+                  <span style={{ fontSize: 10 }}>{d.dayLabel}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>{d.dayNum}</span>
+                  {hasLog && <span style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? '#fff' : 'var(--primary)' }} />}
+                </button>
+              )
+            })}
+          </div>
+          <button className="btn btn-outline btn-sm" onClick={() => { setHistWeekOffset(Math.max(0, histWeekOffset - 1)); setHistSelectedDate(null) }}>
+            <i className="fa-solid fa-chevron-right" />
+          </button>
+        </div>
+
+        {/* Day content */}
+        {!dayLog ? (
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>
+            <i className="fa-solid fa-utensils" style={{ fontSize: 28, marginBottom: 12, display: 'block' }} />
+            <div style={{ fontSize: 14 }}>Aucun suivi nutritionnel ce jour</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>L&apos;athlete n&apos;a pas encore rempli son suivi</div>
+          </div>
+        ) : (
+          <div className="card" style={{ padding: 16 }}>
+            {/* Plan name + adherence */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <span style={{ fontWeight: 700 }}>{plan?.nom || 'Plan supprime'}</span>
+                {plan?.meal_type && (
+                  <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'var(--bg3)', color: 'var(--text3)', marginLeft: 8 }}>
+                    {plan.meal_type === 'training' ? 'Entrainement' : 'Repos'}
+                  </span>
+                )}
+              </div>
+              <div style={{
+                fontSize: 18, fontWeight: 800,
+                color: adherenceRate >= 80 ? 'var(--success)' : adherenceRate >= 50 ? 'var(--warning)' : 'var(--danger)',
+              }}>
+                {adherenceRate}% adherence
+              </div>
+            </div>
+
+            {/* Macros comparison */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 16 }}>
+              {[
+                { label: 'kcal', actual: Math.round(actualK), planned: Math.round(plannedK) },
+                { label: 'Prot', actual: Math.round(actualP), planned: Math.round(plannedP) },
+                { label: 'Gluc', actual: Math.round(actualG), planned: Math.round(plannedG) },
+                { label: 'Lip', actual: Math.round(actualL), planned: Math.round(plannedL) },
+              ].map((m) => {
+                const diff = m.actual - m.planned
+                const diffColor = Math.abs(diff) < m.planned * 0.1 ? 'var(--success)' : 'var(--warning)'
+                return (
+                  <div key={m.label} style={{ textAlign: 'center', padding: 10, background: 'var(--bg3)', borderRadius: 8 }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{m.actual}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>/ {m.planned} {m.label}</div>
+                    {m.planned > 0 && <div style={{ fontSize: 10, fontWeight: 600, color: diffColor }}>{diff >= 0 ? '+' : ''}{diff}</div>}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Status breakdown */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, fontSize: 12 }}>
+              <span style={{ color: 'var(--success)' }}><i className="fa-solid fa-check-circle" /> {followedCount} suivis</span>
+              <span style={{ color: '#f59e0b' }}><i className="fa-solid fa-exchange" /> {replacedCount} remplaces</span>
+              <span style={{ color: 'var(--danger)' }}><i className="fa-solid fa-times-circle" /> {skippedCount} sautes</span>
+            </div>
+
+            {/* Meal details */}
+            {mealsLog.map((meal: any, mIdx: number) => {
+              const mealLabel = meal?.meal_label || `Repas ${mIdx + 1}`
+              const foods = meal?.foods || []
+              const extras = meal?.extras || []
+              return (
+                <div key={mIdx} style={{ marginBottom: 12, padding: 12, background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>{mealLabel}</div>
+                  {foods.map((f: any, fIdx: number) => {
+                    const orig = f.original || {}
+                    const statusIcon = f.status === 'followed' ? { icon: 'fa-check-circle', color: 'var(--success)' }
+                      : f.status === 'replaced' ? { icon: 'fa-exchange', color: '#f59e0b' }
+                      : { icon: 'fa-times-circle', color: 'var(--danger)' }
+                    return (
+                      <div key={fIdx}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12 }}>
+                          <i className={`fa-solid ${statusIcon.icon}`} style={{ color: statusIcon.color, width: 14 }} />
+                          <span style={{ flex: 1, fontWeight: 500 }}>{orig.aliment || '?'}</span>
+                          <span style={{ color: 'var(--text3)' }}>{orig.qte || 0}g</span>
+                          <span style={{ fontWeight: 600 }}>{Math.round(parseFloat(orig.kcal) || 0)} kcal</span>
+                        </div>
+                        {f.status === 'replaced' && f.replacement && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0 4px 22px', fontSize: 11, color: '#f59e0b' }}>
+                            <i className="fa-solid fa-arrow-right" />
+                            <span>{f.replacement.aliment || '?'}</span>
+                            <span>{f.replacement.qte || 0}g</span>
+                            <span>{Math.round(parseFloat(f.replacement.kcal) || 0)} kcal</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {extras.length > 0 && (
+                    <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--border-subtle)' }}>
+                      <div style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600, marginBottom: 4 }}>
+                        <i className="fa-solid fa-plus-circle" style={{ marginRight: 4 }} />Ajoute par l&apos;athlete
+                      </div>
+                      {extras.map((ex: any, exIdx: number) => (
+                        <div key={exIdx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0', fontSize: 12 }}>
+                          <i className="fa-solid fa-plus-circle" style={{ color: '#3b82f6', width: 14 }} />
+                          <span style={{ flex: 1 }}>{ex.aliment || '?'}</span>
+                          <span style={{ color: 'var(--text3)' }}>{ex.qte || 0}g</span>
+                          <span style={{ fontWeight: 600 }}>{Math.round(parseFloat(ex.kcal) || 0)} kcal</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // ── LIST VIEW ──
   if (loading) {
     return (
@@ -324,6 +595,9 @@ export default function NutritionPage() {
     <div>
       {/* Action bar */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
+        <button className="btn btn-outline" onClick={() => { loadNutriLogs(); setHistWeekOffset(0); setHistSelectedDate(null); setView('history') }}>
+          <i className="fa-solid fa-clock-rotate-left" /> Suivi
+        </button>
         <button className="btn btn-red" onClick={createNewDiet}>
           <i className="fa-solid fa-plus" /> Nouvelle diete
         </button>

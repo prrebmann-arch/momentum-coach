@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
+import { notifyAthlete } from '@/lib/push'
 import FoodSearch, { type Aliment } from './FoodSearch'
 import styles from '@/styles/nutrition.module.css'
 
@@ -92,6 +93,27 @@ export default function MealEditor({
   const [manualMacros, setManualMacros] = useState(initialMacros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 })
   const [saving, setSaving] = useState(false)
   const [foodRefreshKey, setFoodRefreshKey] = useState(0)
+
+  // Paired plan: store meals for the other tab so we can save both on submit
+  const [tempMeals, setTempMeals] = useState<Record<string, { meals: MealData[]; macros?: { calories: number; proteines: number; glucides: number; lipides: number } }>>({})
+
+  // When switching meal type, store current meals and load other tab's meals
+  function switchMealType(newType: 'training' | 'rest') {
+    if (newType === mealType) return
+    // Save current tab meals to temp
+    const currentMacros = isMacroOnly ? manualMacros : undefined
+    setTempMeals((prev) => ({ ...prev, [mealType]: { meals: [...meals], macros: currentMacros } }))
+    // Load other tab from temp if available
+    const other = tempMeals[newType]
+    if (other) {
+      setMeals(other.meals.length ? other.meals : [{ foods: [] }])
+      if (other.macros) setManualMacros(other.macros)
+    } else {
+      setMeals([{ foods: [] }])
+    }
+    setActiveMealIdx(0)
+    setMealType(newType)
+  }
 
   // Load aliments cache
   useEffect(() => {
@@ -201,15 +223,53 @@ export default function MealEditor({
     const { error } = await supabase.from('nutrition_plans').insert(payload)
     if (error) { toast('Erreur: ' + error.message, 'error'); setSaving(false); return }
 
-    // Notify athlete
+    // Save paired plan (other tab) if it has food data
+    const otherType = mealType === 'training' ? 'rest' : 'training'
+    const otherTemp = tempMeals[otherType]
+    if (otherTemp?.meals?.length) {
+      const hasFood = otherTemp.meals.some((m) => m.foods.length > 0)
+      if (hasFood) {
+        const otherMealsData = otherTemp.meals.map((m) => {
+          const foods = m.foods.map((f) => {
+            const macros = calcFoodMacros(f)
+            return { aliment: f.aliment, qte: f.qte, ...macros, allow_conversion: f.allow_conversion || false }
+          })
+          const obj: any = { foods }
+          if (m.pre_workout) obj.pre_workout = true
+          if (m.time) obj.time = m.time
+          return obj
+        })
+        const otherTotals = otherMealsData.reduce(
+          (acc: { kcal: number; p: number; g: number; l: number }, m: any) => {
+            (m.foods || []).forEach((f: any) => { acc.kcal += f.kcal || 0; acc.p += f.p || 0; acc.g += f.g || 0; acc.l += f.l || 0 })
+            return acc
+          },
+          { kcal: 0, p: 0, g: 0, l: 0 },
+        )
+        await supabase.from('nutrition_plans').insert({
+          nom: planName.trim(),
+          meal_type: otherType,
+          meals_data: JSON.stringify(otherMealsData),
+          calories_objectif: Math.round(otherTotals.kcal),
+          proteines: Math.round(otherTotals.p),
+          glucides: Math.round(otherTotals.g),
+          lipides: Math.round(otherTotals.l),
+          valid_from: today,
+          actif: true,
+          athlete_id: athleteId,
+          coach_id: user.id,
+          macro_only: false,
+        })
+      }
+    }
+
+    // Notify athlete (DB + push)
     const { data: athlete } = await supabase.from('athletes').select('user_id').eq('id', athleteId).single()
     if (athlete?.user_id) {
-      await supabase.from('notifications').insert({
-        user_id: athlete.user_id,
-        type: 'nutrition',
-        title: 'Plan nutrition mis a jour',
-        body: `Votre coach a ${planId ? 'modifie' : 'cree'} votre plan nutritionnel "${planName.trim()}"`,
-      })
+      await notifyAthlete(
+        athlete.user_id, 'nutrition', 'Plan nutrition mis a jour',
+        `Votre coach a ${planId ? 'modifie' : 'cree'} votre plan nutritionnel "${planName.trim()}"`,
+      )
     }
 
     toast('Diete sauvegardee !', 'success')
@@ -228,13 +288,13 @@ export default function MealEditor({
           <div style={{ display: 'flex', gap: 4, marginLeft: 12 }}>
             <button
               className={`athlete-tab-btn ${mealType === 'training' ? 'active' : ''}`}
-              onClick={() => setMealType('training')}
+              onClick={() => switchMealType('training')}
             >
               <i className="fa-solid fa-dumbbell" /> Jour ON
             </button>
             <button
               className={`athlete-tab-btn ${mealType === 'rest' ? 'active' : ''}`}
-              onClick={() => setMealType('rest')}
+              onClick={() => switchMealType('rest')}
             >
               <i className="fa-solid fa-bed" /> Jour OFF
             </button>

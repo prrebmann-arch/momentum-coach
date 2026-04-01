@@ -65,6 +65,16 @@ interface StripeCustomer {
   stripe_subscription_id?: string
 }
 
+interface PaymentRecord {
+  id: string
+  stripe_customer_id: string
+  amount: number
+  currency: string
+  status: string
+  description?: string
+  created_at: string
+}
+
 // ── Constants ──
 const BIZ_DAYS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'] as const
 const BIZ_DAY_LABELS: Record<string, string> = { lundi: 'L', mardi: 'M', mercredi: 'Me', jeudi: 'J', vendredi: 'V', samedi: 'S' }
@@ -204,12 +214,13 @@ function ForecastCard({ label, real, forecast, delta, suffix = '' }: {
   )
 }
 
-function ClientRow({ client, stripeData, onEdit, onArchive, onPayLink }: {
+function ClientRow({ client, stripeData, onEdit, onArchive, onPayLink, onPayHistory }: {
   client: BizClient
   stripeData: Record<string, StripeCustomer>
   onEdit: (id: string) => void
   onArchive: (id: string) => void
   onPayLink: (id: string) => void
+  onPayHistory: (id: string) => void
 }) {
   const s = stripeData[client.id]
   const statusColors: Record<string, string> = { active: '#22c55e', past_due: '#f59e0b', canceled: '#ef4444' }
@@ -234,6 +245,7 @@ function ClientRow({ client, stripeData, onEdit, onArchive, onPayLink }: {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--success)', marginRight: 4 }}>{client.price}EUR</span>
+        {s && <Button variant="outline" size="sm" onClick={() => onPayHistory(client.id)} title="Historique paiements"><i className="fas fa-receipt" /></Button>}
         <Button variant="outline" size="sm" onClick={() => onPayLink(client.id)} title="Copier lien de paiement"><i className="fas fa-link" /></Button>
         <Button variant="outline" size="sm" onClick={() => onEdit(client.id)}><i className="fas fa-pen" /></Button>
         <Button variant="outline" size="sm" onClick={() => onArchive(client.id)} style={{ color: 'var(--danger)' }}><i className="fas fa-box-archive" /></Button>
@@ -266,6 +278,10 @@ export default function BusinessDashboard() {
   const [archiveId, setArchiveId] = useState<string | null>(null)
   const [archiveReason, setArchiveReason] = useState('')
   const [openWeeks, setOpenWeeks] = useState<Set<number>>(new Set())
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [paymentHistory, setPaymentHistory] = useState<PaymentRecord[]>([])
+  const [paymentClientName, setPaymentClientName] = useState('')
+  const [loadingPayments, setLoadingPayments] = useState(false)
 
   // Client form state
   const [cName, setCName] = useState('')
@@ -491,6 +507,26 @@ export default function BusinessDashboard() {
 
   async function copyPayLink(clientId: string) {
     toast('Lien de paiement -- fonctionnalite Stripe', 'success')
+  }
+
+  async function openPaymentHistory(clientId: string) {
+    const client = clients.find((c) => c.id === clientId)
+    const stripe = stripeData[clientId]
+    if (!stripe?.stripe_customer_id) {
+      toast('Pas de donnees Stripe pour ce client', 'error')
+      return
+    }
+    setPaymentClientName(client?.name || 'Client')
+    setLoadingPayments(true)
+    setShowPaymentModal(true)
+    const { data } = await supabase
+      .from('payment_history')
+      .select('*')
+      .eq('stripe_customer_id', stripe.stripe_customer_id)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    setPaymentHistory((data || []) as PaymentRecord[])
+    setLoadingPayments(false)
   }
 
   function openObjModal() {
@@ -738,12 +774,12 @@ export default function BusinessDashboard() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <Card title="Online" headerRight={<span style={{ fontSize: 12, color: 'var(--text3)' }}>{online.length} &middot; {mrr.online.toLocaleString('fr-FR')}EUR/mois</span>}>
                 {online.length ? online.map(c => (
-                  <ClientRow key={c.id} client={c} stripeData={stripeData} onEdit={openEditClient} onArchive={openArchive} onPayLink={copyPayLink} />
+                  <ClientRow key={c.id} client={c} stripeData={stripeData} onEdit={openEditClient} onArchive={openArchive} onPayLink={copyPayLink} onPayHistory={openPaymentHistory} />
                 )) : <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)', fontSize: 12 }}>Aucun client online</div>}
               </Card>
               <Card title="Presentiel" headerRight={<span style={{ fontSize: 12, color: 'var(--text3)' }}>{offline.length} &middot; {mrr.offline.toLocaleString('fr-FR')}EUR/mois</span>}>
                 {offline.length ? offline.map(c => (
-                  <ClientRow key={c.id} client={c} stripeData={stripeData} onEdit={openEditClient} onArchive={openArchive} onPayLink={copyPayLink} />
+                  <ClientRow key={c.id} client={c} stripeData={stripeData} onEdit={openEditClient} onArchive={openArchive} onPayLink={copyPayLink} onPayHistory={openPaymentHistory} />
                 )) : <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)', fontSize: 12 }}>Aucun client presentiel</div>}
               </Card>
             </div>
@@ -843,6 +879,36 @@ export default function BusinessDashboard() {
             <Button variant="outline" onClick={() => setShowArchiveModal(false)}>Annuler</Button>
             <Button variant="red" onClick={archiveClient}>Archiver</Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Payment History Modal */}
+      <Modal isOpen={showPaymentModal} onClose={() => setShowPaymentModal(false)} title={`Paiements — ${paymentClientName}`}>
+        <div style={{ padding: '16px 0' }}>
+          {loadingPayments ? (
+            <div style={{ textAlign: 'center', padding: 24 }}><i className="fas fa-spinner fa-spin" /></div>
+          ) : paymentHistory.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)', fontSize: 13 }}>Aucun paiement enregistre</div>
+          ) : (
+            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+              {paymentHistory.map((p) => {
+                const statusColors: Record<string, string> = { succeeded: '#22c55e', pending: '#f59e0b', failed: '#ef4444' }
+                const statusLabels: Record<string, string> = { succeeded: 'Reussi', pending: 'En attente', failed: 'Echoue' }
+                const date = new Date(p.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+                return (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{(p.amount / 100).toFixed(2)} {(p.currency || 'eur').toUpperCase()}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>{date}{p.description ? ` — ${p.description}` : ''}</div>
+                    </div>
+                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: `${statusColors[p.status] || '#6b7280'}22`, color: statusColors[p.status] || '#6b7280', fontWeight: 600 }}>
+                      {statusLabels[p.status] || p.status}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </Modal>
     </>

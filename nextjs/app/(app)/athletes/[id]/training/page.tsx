@@ -136,6 +136,31 @@ function ViewExCard({ ex, i }: { ex: Record<string, unknown>; i: number }) {
   )
 }
 
+interface WorkoutLog {
+  id: string
+  athlete_id: string
+  session_id: string | null
+  session_name: string | null
+  titre: string | null
+  date: string
+  started_at: string | null
+  finished_at: string | null
+  exercises: string | unknown[] | null
+}
+
+function parseLogExercises(log: WorkoutLog): Record<string, unknown>[] {
+  const raw = log.exercises
+  if (!raw) return []
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return Array.isArray(parsed) ? parsed as Record<string, unknown>[] : []
+  } catch { return [] }
+}
+
+function toDateStr(d: Date): string {
+  return d.toISOString().split('T')[0]
+}
+
 export default function TrainingPage() {
   const params = useParams<{ id: string }>()
   const athleteId = params.id
@@ -148,7 +173,7 @@ export default function TrainingPage() {
   const [loading, setLoading] = useState(true)
   const [programs, setPrograms] = useState<WorkoutProgram[]>([])
   const [athleteCardio, setAthleteCardio] = useState<AthleteCardio>({ cardio_config: null, pas_journalier: null })
-  const [view, setView] = useState<'list' | 'editor' | 'detail'>('list')
+  const [view, setView] = useState<'list' | 'editor' | 'detail' | 'history'>('list')
   const [editProgramId, setEditProgramId] = useState<string | null>(null)
   const [editProgramData, setEditProgramData] = useState<{
     name: string
@@ -159,17 +184,37 @@ export default function TrainingPage() {
   const [viewProgramId, setViewProgramId] = useState<string | null>(null)
   const [viewSessionIdx, setViewSessionIdx] = useState(0)
 
+  // History state
+  const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([])
+  const [sessionMap, setSessionMap] = useState<Record<string, WorkoutSession & { _exs: Record<string, unknown>[]; _progName: string }>>({})
+  const [histWeekOffset, setHistWeekOffset] = useState(0)
+  const [histSelectedDate, setHistSelectedDate] = useState<string | null>(null)
+
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [athleteRes, programsRes] = await Promise.all([
+    const [athleteRes, programsRes, logsRes] = await Promise.all([
       supabase.from('athletes').select('cardio_config, pas_journalier').eq('id', athleteId).single(),
       supabase.from('workout_programs').select('*, workout_sessions(*)').eq('athlete_id', athleteId).order('created_at', { ascending: false }),
+      supabase.from('workout_logs').select('*').eq('athlete_id', athleteId).order('date', { ascending: false }).limit(500),
     ])
     setAthleteCardio({
       cardio_config: athleteRes.data?.cardio_config || null,
       pas_journalier: athleteRes.data?.pas_journalier || null,
     })
-    setPrograms((programsRes.data as WorkoutProgram[]) || [])
+    const progs = (programsRes.data as WorkoutProgram[]) || []
+    setPrograms(progs)
+    setWorkoutLogs((logsRes.data as WorkoutLog[]) || [])
+
+    // Build session lookup
+    const sMap: Record<string, WorkoutSession & { _exs: Record<string, unknown>[]; _progName: string }> = {}
+    progs.forEach((p) => {
+      (p.workout_sessions || []).forEach((s) => {
+        const exs = parseExercises(s.exercices)
+        ;(sMap as Record<string, unknown>)[s.id] = { ...s, _exs: exs, _progName: p.nom }
+      })
+    })
+    setSessionMap(sMap)
+
     setLoading(false)
   }, [athleteId, supabase])
 
@@ -392,6 +437,213 @@ export default function TrainingPage() {
     )
   }
 
+  // -- History view --
+  if (view === 'history') {
+    const now = new Date()
+    const weekStart = new Date(now)
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7) - (histWeekOffset * 7))
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+    const weekStartStr = toDateStr(weekStart)
+    const weekEndStr = toDateStr(weekEnd)
+    const today = toDateStr(now)
+
+    const days: { date: string; dayLabel: string; dayNum: number }[] = []
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart)
+      d.setDate(d.getDate() + i)
+      days.push({
+        date: toDateStr(d),
+        dayLabel: d.toLocaleDateString('fr-FR', { weekday: 'short' }),
+        dayNum: d.getDate(),
+      })
+    }
+
+    const weekLabel = weekStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+      + ' — ' + weekEnd.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+
+    // Auto-select date
+    let selectedDate = histSelectedDate
+    if (!selectedDate || selectedDate < weekStartStr || selectedDate > weekEndStr) {
+      const dayWithLog = [...days].reverse().find((d) => workoutLogs.some((l) => l.date === d.date))
+      selectedDate = dayWithLog?.date || days.find((d) => d.date === today)?.date || days[0].date
+    }
+
+    const dayLogs = workoutLogs.filter((l) => l.date === selectedDate)
+
+    return (
+      <div>
+        <div className={styles.trHeader}>
+          <div>
+            <div className={styles.trHeaderTitle}>Historique d&apos;entrainement</div>
+            <div className={styles.trHeaderSub}>{weekLabel}</div>
+          </div>
+          <button className="btn btn-outline btn-sm" onClick={() => setView('list')}>
+            <i className="fa-solid fa-arrow-left" /> Retour
+          </button>
+        </div>
+
+        {/* Week nav */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <button className="btn btn-outline btn-sm" onClick={() => { setHistWeekOffset(histWeekOffset + 1); setHistSelectedDate(null) }}>
+            <i className="fa-solid fa-chevron-left" />
+          </button>
+          <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+            {days.map((d) => {
+              const hasLog = workoutLogs.some((l) => l.date === d.date)
+              const isSelected = d.date === selectedDate
+              const isToday = d.date === today
+              return (
+                <button
+                  key={d.date}
+                  onClick={() => setHistSelectedDate(d.date)}
+                  style={{
+                    flex: 1, padding: '8px 4px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                    background: isSelected ? 'var(--primary)' : 'var(--bg3)',
+                    color: isSelected ? '#fff' : 'var(--text2)',
+                    fontWeight: isSelected ? 700 : 400,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                    outline: isToday && !isSelected ? '2px solid var(--primary)' : 'none',
+                  }}
+                >
+                  <span style={{ fontSize: 10 }}>{d.dayLabel}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>{d.dayNum}</span>
+                  {hasLog && <span style={{ width: 5, height: 5, borderRadius: '50%', background: isSelected ? '#fff' : 'var(--primary)' }} />}
+                </button>
+              )
+            })}
+          </div>
+          <button className="btn btn-outline btn-sm" onClick={() => { setHistWeekOffset(Math.max(0, histWeekOffset - 1)); setHistSelectedDate(null) }}>
+            <i className="fa-solid fa-chevron-right" />
+          </button>
+        </div>
+
+        {/* Day logs */}
+        {dayLogs.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>
+            <i className="fa-solid fa-dumbbell" style={{ fontSize: 28, marginBottom: 12, display: 'block' }} />
+            <div style={{ fontSize: 14 }}>Aucune seance ce jour</div>
+          </div>
+        ) : (
+          dayLogs.map((log, logIdx) => {
+            const session = log.session_id ? sessionMap[log.session_id] : null
+            const sessionName = session?.nom || log.session_name || log.titre || 'Seance libre'
+            const isLibre = !log.session_id
+            const duration = (log.started_at && log.finished_at)
+              ? Math.round((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 60000)
+              : null
+            const logExs = parseLogExercises(log)
+            const programmedExs = session?._exs || []
+            const baseExs = programmedExs.length ? programmedExs : logExs
+
+            // Find previous logs of same session for comparison
+            const sameLogs = log.session_id
+              ? workoutLogs.filter((l) => l.session_id === log.session_id && l.date < log.date)
+              : workoutLogs.filter((l) => !l.session_id && l.date < log.date && (l.titre || l.session_name) === (log.titre || log.session_name))
+            const prevLog = sameLogs.length > 0 ? sameLogs[0] : null
+            const prevExs = prevLog ? parseLogExercises(prevLog) : []
+
+            return (
+              <div key={log.id || logIdx} className="card mb-16" style={{ padding: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <i className="fa-solid fa-dumbbell" style={{ color: 'var(--primary)' }} />
+                  <span style={{ fontSize: 15, fontWeight: 700 }}>{sessionName}</span>
+                  {isLibre && (
+                    <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: 'var(--bg4)', color: 'var(--text3)' }}>Libre</span>
+                  )}
+                  {duration !== null && (
+                    <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 'auto' }}>
+                      <i className="fa-solid fa-clock" style={{ marginRight: 3 }} />
+                      {duration >= 60 ? Math.floor(duration / 60) + 'h' + String(duration % 60).padStart(2, '0') : duration + ' min'}
+                    </span>
+                  )}
+                </div>
+
+                {/* Exercise table */}
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                        <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text3)', fontWeight: 600 }}>Exercice</th>
+                        {prevLog && <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text3)', fontWeight: 600 }}>Precedent</th>}
+                        <th style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text3)', fontWeight: 600 }}>Realise</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {baseExs.map((pEx, i) => {
+                        const name = String(pEx.nom || '')
+                        const le = logExs.find((e) => e.nom && String(e.nom).toLowerCase() === name.toLowerCase())
+                        const pe = prevExs.find((e) => e.nom && String(e.nom).toLowerCase() === name.toLowerCase())
+                        const missed = !le
+                        const leSeries = (le?.series || le?.sets || []) as Record<string, unknown>[]
+                        const peSeries = (pe?.series || pe?.sets || []) as Record<string, unknown>[]
+
+                        const renderSets = (series: Record<string, unknown>[]) =>
+                          series.map((s, si) => {
+                            const reps = s.reps ?? '-'
+                            const kg = s.kg ?? s.load ?? s.charge ?? null
+                            return (
+                              <span key={si} style={{
+                                display: 'inline-block', padding: '2px 6px', borderRadius: 4,
+                                background: 'var(--bg3)', marginRight: 4, marginBottom: 2, fontSize: 11,
+                              }}>
+                                {String(reps)} reps{kg != null && kg !== '-' ? ` · ${kg} kg` : ''}
+                              </span>
+                            )
+                          })
+
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)', opacity: missed ? 0.5 : 1 }}>
+                            <td style={{ padding: '8px', fontWeight: 500 }}>
+                              <span style={{ color: 'var(--text3)', marginRight: 4 }}>{i + 1}</span>
+                              {name}
+                              {missed && <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: 'rgba(239,68,68,0.15)', color: 'var(--danger)', marginLeft: 6 }}>Non fait</span>}
+                            </td>
+                            {prevLog && (
+                              <td style={{ padding: '8px' }}>
+                                {peSeries.length > 0 ? renderSets(peSeries) : <span style={{ color: 'var(--text3)' }}>&mdash;</span>}
+                              </td>
+                            )}
+                            <td style={{ padding: '8px' }}>
+                              {leSeries.length > 0 ? renderSets(leSeries) : <span style={{ color: 'var(--text3)' }}>&mdash;</span>}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {/* Extras */}
+                      {programmedExs.length > 0 && logExs.filter((le) => !programmedExs.some((pe) => String(pe.nom || '').toLowerCase() === String(le.nom || '').toLowerCase())).map((ex, i) => {
+                        const series = (ex.series || ex.sets || []) as Record<string, unknown>[]
+                        return (
+                          <tr key={`extra-${i}`} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                            <td style={{ padding: '8px', fontWeight: 500 }}>
+                              <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: 'rgba(245,158,11,0.15)', color: '#f59e0b', marginRight: 6 }}>+</span>
+                              {String(ex.nom || '?')}
+                            </td>
+                            {prevLog && <td style={{ padding: '8px' }}><span style={{ color: 'var(--text3)' }}>&mdash;</span></td>}
+                            <td style={{ padding: '8px' }}>
+                              {series.map((s, si) => (
+                                <span key={si} style={{
+                                  display: 'inline-block', padding: '2px 6px', borderRadius: 4,
+                                  background: 'var(--bg3)', marginRight: 4, fontSize: 11,
+                                }}>
+                                  {String(s.reps ?? '-')} reps{s.kg != null && s.kg !== '-' ? ` · ${s.kg} kg` : ''}
+                                </span>
+                              ))}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    )
+  }
+
   // -- List view --
   if (loading) {
     return (
@@ -423,6 +675,9 @@ export default function TrainingPage() {
       ) : (
         <>
           <div className="flex justify-end gap-8 mb-16">
+            <button className="btn btn-outline" onClick={() => { setHistWeekOffset(0); setHistSelectedDate(null); setView('history') }}>
+              <i className="fa-solid fa-clock-rotate-left" /> Historique
+            </button>
             <button className="btn btn-red" onClick={() => openEditor()}>
               <i className="fa-solid fa-plus" /> Nouveau programme
             </button>
