@@ -274,13 +274,10 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
         }
       }
 
-      // Show WhatsApp message modal (always, matching original flow)
+      // Show WhatsApp message modal — DON'T close yet, let user copy credentials first
       const msg = `Bienvenue dans l'app de coaching ! \n\nVoici vos identifiants:\n\nEmail: ${trimEmail}\nMot de passe: ${tempPassword}\n\nConnectez-vous pour voir vos seances!`
       setWhatsappMessage(msg)
-
       toast('Athlete ajoute avec succes !', 'success')
-      resetForm()
-      onClose()
       refreshAthletes()
     } catch (err) {
       console.error('[AddAthlete] Unexpected error:', err)
@@ -499,7 +496,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
       {/* WhatsApp credentials modal — shown after successful creation */}
       <Modal
         isOpen={!!whatsappMessage}
-        onClose={() => setWhatsappMessage(null)}
+        onClose={() => { setWhatsappMessage(null); resetForm(); onClose(); }}
         title="Message WhatsApp"
       >
         <div
@@ -523,7 +520,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
           <button className="btn btn-red" onClick={copyWhatsappMessage}>
             Copier le message
           </button>
-          <button className="btn btn-outline" onClick={() => setWhatsappMessage(null)}>
+          <button className="btn btn-outline" onClick={() => { setWhatsappMessage(null); resetForm(); onClose(); }}>
             Fermer
           </button>
         </div>
