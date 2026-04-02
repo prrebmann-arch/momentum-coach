@@ -22,8 +22,6 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null)
 
-  const supabase = createClient()
-
   const fetchAthletes = useCallback(async () => {
     if (!user) {
       setAthletes([])
@@ -32,6 +30,7 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
     }
     setLoading(true)
 
+    const supabase = createClient()
     const [{ data, error }, { data: phases }] = await Promise.all([
       supabase
         .from('athletes')
@@ -46,7 +45,6 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
     ])
 
     if (!error && data) {
-      // Attach active phase to each athlete
       const phaseMap: Record<string, { athlete_id: string; phase: string; name: string }> = {}
       ;(phases || []).forEach((p: { athlete_id: string; phase: string; name: string }) => {
         if (!phaseMap[p.athlete_id]) phaseMap[p.athlete_id] = p
@@ -56,7 +54,7 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
       )
     }
     setLoading(false)
-  }, [user, supabase])
+  }, [user])
 
   const refreshAthletes = useCallback(async () => {
     await fetchAthletes()
