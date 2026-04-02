@@ -119,6 +119,23 @@ export default function NutritionPage() {
 
   useEffect(() => { loadPlans() }, [loadPlans])
 
+  // Push browser history state when entering sub-views
+  useEffect(() => {
+    if (view !== 'list') {
+      window.history.pushState({ nutritionView: view }, '')
+    }
+  }, [view])
+
+  useEffect(() => {
+    function handlePopState() {
+      if (view !== 'list') {
+        setView('list')
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [view])
+
   // Load nutrition logs for history
   const loadNutriLogs = useCallback(async () => {
     const thirtyDaysAgo = new Date()

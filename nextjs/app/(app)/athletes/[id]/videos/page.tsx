@@ -35,6 +35,23 @@ export default function AthleteVideosPage() {
     setLoading(false)
   }, [athleteId, supabase])
 
+  // Push browser history state when entering sub-views
+  useEffect(() => {
+    if (view !== 'grid') {
+      window.history.pushState({ videosView: view }, '')
+    }
+  }, [view])
+
+  useEffect(() => {
+    function handlePopState() {
+      if (view !== 'grid') {
+        setView('grid')
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [view])
+
   useEffect(() => {
     loadVideos()
   }, [loadVideos])

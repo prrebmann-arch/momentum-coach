@@ -230,6 +230,24 @@ export default function TrainingPage() {
     loadData()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Push browser history state when entering sub-views, so back button returns to list
+  useEffect(() => {
+    if (view !== 'list') {
+      window.history.pushState({ trainingView: view }, '')
+    }
+  }, [view])
+
+  useEffect(() => {
+    function handlePopState(e: PopStateEvent) {
+      if (view !== 'list') {
+        e.preventDefault()
+        setView('list')
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [view])
+
   // -- Actions --
   async function toggleProgram(id: string, activate: boolean) {
     try {
