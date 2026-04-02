@@ -30,6 +30,8 @@
 
 [2026-03-31] | Object references in useCallback/useEffect deps cause re-render loops | Never use context-derived objects (selectedAthlete, user) as dependency array values. Use primitive fields instead (selectedAthlete?.id, user?.id). Also memoize context provider values with useMemo to prevent unnecessary consumer re-renders.
 
+[2026-03-31] | Supabase queries referencing non-existent DB columns fail silently | Always verify column names against actual DB schema before writing `.select()` or `.update()` calls. The actual Stripe columns in coach_profiles are: stripe_account_id, stripe_onboarding_complete, stripe_charges_enabled. Columns like stripe_secret_key, stripe_webhook_secret do NOT exist — coaches use Stripe Connect (platform key + stripeAccount option), not their own secret keys.
+
 [2026-03-31] | useCallback used before definition in useEffect | If a useEffect calls a useCallback function, the useCallback MUST be declared before the useEffect in the component body. Also add it to the dependency array. Even though closures capture the variable, ordering matters for readability and lint rules.
 
 [2026-03-31] | DB NOT NULL constraint violated by client-side upsert | Always check the DB schema for NOT NULL constraints before passing potentially null values in upserts. `stripe_customers.athlete_id` is NOT NULL — passing null crashes silently. Guard with an early return + user-facing error message.
