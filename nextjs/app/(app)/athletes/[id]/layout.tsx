@@ -50,8 +50,8 @@ export default function AthleteDetailLayout({ children }: { children: React.Reac
       <div className={styles.detailHeader}>
         <button
           className={styles.backBtn}
-          onClick={() => router.push('/athletes')}
-          title="Retour aux athletes"
+          onClick={() => router.back()}
+          title="Retour"
         >
           <i className="fa-solid fa-arrow-left" />
         </button>
