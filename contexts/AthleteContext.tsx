@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Athlete } from '@/lib/types'
@@ -21,47 +21,67 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
   const [athletes, setAthletes] = useState<Athlete[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null)
+  const fetchedRef = useRef<string | null>(null)
+  const fetchingRef = useRef(false)
+
+  const userId = user?.id || null
 
   const fetchAthletes = useCallback(async () => {
-    if (!user) {
+    if (!userId) {
       setAthletes([])
       setLoading(false)
       return
     }
+    if (fetchingRef.current) return
+    fetchingRef.current = true
     setLoading(true)
 
-    const supabase = createClient()
-    const [{ data, error }, { data: phases }] = await Promise.all([
-      supabase
-        .from('athletes')
-        .select('*')
-        .eq('coach_id', user.id)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('roadmap_phases')
-        .select('athlete_id, phase, name')
-        .eq('coach_id', user.id)
-        .eq('status', 'en_cours'),
-    ])
+    try {
+      const supabase = createClient()
+      const [{ data, error }, { data: phases }] = await Promise.all([
+        supabase
+          .from('athletes')
+          .select('*')
+          .eq('coach_id', userId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('roadmap_phases')
+          .select('athlete_id, phase, name')
+          .eq('coach_id', userId)
+          .eq('status', 'en_cours'),
+      ])
 
-    if (!error && data) {
-      const phaseMap: Record<string, { athlete_id: string; phase: string; name: string }> = {}
-      ;(phases || []).forEach((p: { athlete_id: string; phase: string; name: string }) => {
-        if (!phaseMap[p.athlete_id]) phaseMap[p.athlete_id] = p
-      })
-      setAthletes(
-        (data as Athlete[]).map(a => ({ ...a, _phase: phaseMap[a.id] || null }))
-      )
+      if (!error && data) {
+        const phaseMap: Record<string, { athlete_id: string; phase: string; name: string }> = {}
+        ;(phases || []).forEach((p: { athlete_id: string; phase: string; name: string }) => {
+          if (!phaseMap[p.athlete_id]) phaseMap[p.athlete_id] = p
+        })
+        setAthletes(
+          (data as Athlete[]).map(a => ({ ...a, _phase: phaseMap[a.id] || null }))
+        )
+      }
+    } catch (err) {
+      console.error('[AthleteContext] fetch error:', err)
+    } finally {
+      setLoading(false)
+      fetchingRef.current = false
     }
-    setLoading(false)
-  }, [user])
-
-  const refreshAthletes = useCallback(async () => {
-    await fetchAthletes()
-  }, [fetchAthletes])
+  }, [userId])
 
   useEffect(() => {
-    fetchAthletes()
+    if (userId && fetchedRef.current !== userId) {
+      fetchedRef.current = userId
+      fetchAthletes()
+    } else if (!userId) {
+      setAthletes([])
+      setLoading(false)
+      fetchedRef.current = null
+    }
+  }, [userId, fetchAthletes])
+
+  const refreshAthletes = useCallback(async () => {
+    fetchingRef.current = false // allow re-fetch
+    await fetchAthletes()
   }, [fetchAthletes])
 
   const selectedAthlete = selectedAthleteId
