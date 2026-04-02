@@ -22,22 +22,25 @@ export async function POST(request: Request) {
   let isCoachWebhook = false;
 
   try {
+    // Try platform webhook secret first
     event = getPlatformStripe().webhooks.constructEvent(rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET!);
-
-    // Stripe Connect: connected-account events are signed with the platform
-    // webhook secret but carry an `account` field. Detect them here so they
-    // get routed to handleCoachEvent instead of handlePlatformEvent.
     if ((event as unknown as Record<string, unknown>).account) {
       isCoachWebhook = true;
     }
-  } catch (platformErr: unknown) {
-    // Signature verification failed — reject
-    console.error('[webhook] Signature failed:', (platformErr as Error).message);
-    await supabase.from('stripe_audit_log').insert({
-      action: 'webhook_signature_failed', actor_type: 'system',
-      metadata: { ip: request.headers.get('x-forwarded-for') || '', error: (platformErr as Error).message },
-    });
-    return Response.json({ error: 'Invalid webhook signature' }, { status: 400 });
+  } catch {
+    // Try connect webhook secret (for events from connected accounts)
+    try {
+      event = getPlatformStripe().webhooks.constructEvent(rawBody, sig, process.env.STRIPE_CONNECT_WEBHOOK_SECRET!);
+      isCoachWebhook = true;
+      console.log('[webhook] Verified with CONNECT secret, event:', event.type);
+    } catch (connectErr: unknown) {
+      console.error('[webhook] Both signatures failed:', (connectErr as Error).message);
+      await supabase.from('stripe_audit_log').insert({
+        action: 'webhook_signature_failed', actor_type: 'system',
+        metadata: { ip: request.headers.get('x-forwarded-for') || '', error: (connectErr as Error).message },
+      });
+      return Response.json({ error: 'Invalid webhook signature' }, { status: 400 });
+    }
   }
 
   // Replay protection: check if this event was already processed
