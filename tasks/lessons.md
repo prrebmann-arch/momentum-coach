@@ -25,3 +25,5 @@
 [2026-03-31] | Vercel 404 despite successful build — framework detection | If Vercel shows `Builds: . [0ms]` and serves 404, it means the Framework Preset is wrong (e.g. "Other" instead of "Next.js"). Fix: add `"framework": "nextjs"` and `"buildCommand": "next build"` to `vercel.json`. Never rely on auto-detection alone.
 
 [2026-03-31] | createClient() returns new object each render causing infinite loops | Supabase `createBrowserClient()` returns a new object each call. When stored in component state or used in useCallback/useEffect dependency arrays, it triggers infinite re-render loops. Fix: make `createClient()` a singleton (cache in module-level variable). Also remove `supabase` from dependency arrays in useCallback/useEffect — it is a stable singleton, not a reactive value.
+
+[2026-03-31] | SSR browser client session hijack on signUp | `createBrowserClient` from `@supabase/ssr` syncs session to cookies. Calling `signUp` on it switches the coach's cookie-session to the new athlete. Use a disposable vanilla `createClient` from `@supabase/supabase-js` with `persistSession: false` for signUp, so the main SSR client is never touched.

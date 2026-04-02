@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createClient as createVanillaClient } from '@supabase/supabase-js'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAthleteContext } from '@/contexts/AthleteContext'
 import { useToast } from '@/contexts/ToastContext'
@@ -30,6 +31,9 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
   const [nom, setNom] = useState('')
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // WhatsApp message modal
+  const [whatsappMessage, setWhatsappMessage] = useState<string | null>(null)
 
   // Payment
   const [paymentType, setPaymentType] = useState<'paid' | 'free'>('paid')
@@ -75,6 +79,17 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
     setSelectedWorkflow('')
   }
 
+  const copyWhatsappMessage = async () => {
+    if (!whatsappMessage) return
+    try {
+      await navigator.clipboard.writeText(whatsappMessage)
+      toast('Message copie !', 'success')
+    } catch {
+      toast('Impossible de copier', 'error')
+    }
+    setWhatsappMessage(null)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (submitting) return
@@ -117,20 +132,21 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
       }
 
       const tempPassword = generateSecurePassword(14)
+      const coachId = user.id
 
-      // Save coach session BEFORE signUp (signUp switches the active session)
-      const { data: coachSessionData } = await supabase.auth.getSession()
-      const coachSession = coachSessionData?.session
-      const coachId = coachSession?.user?.id
-      if (!coachId) {
-        toast('Erreur: pas de session coach', 'error')
-        setSubmitting(false)
-        return
-      }
-
+      // Use a DISPOSABLE vanilla supabase client for signUp so the SSR client's
+      // session/cookies are never switched to the athlete. This is the key fix:
+      // the SSR browser client (createBrowserClient) syncs session to cookies,
+      // so signUp would overwrite the coach's cookie-based auth. A vanilla client
+      // is stateless and doesn't touch cookies.
       let authData: { user: { id: string } | null } | null = null
       try {
-        const { data: signUpData, error: authError } = await supabase.auth.signUp({
+        const throwawayClient = createVanillaClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { auth: { persistSession: false } }
+        )
+        const { data: signUpData, error: authError } = await throwawayClient.auth.signUp({
           email: trimEmail,
           password: tempPassword,
           options: { data: { prenom: trimPrenom, nom: trimNom } },
@@ -139,6 +155,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
         if (authError && authError.message.includes('already registered')) {
           authData = null
         } else if (authError) {
+          console.error('[AddAthlete] signUp error:', authError)
           toast(authError.message, 'error')
           setSubmitting(false)
           return
@@ -146,33 +163,18 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
           authData = signUpData
         }
       } catch (err) {
+        console.error('[AddAthlete] signUp exception:', err)
         toast('Erreur lors de la creation du compte', 'error')
         setSubmitting(false)
         return
-      } finally {
-        // ALWAYS restore coach session
-        try {
-          if (coachSession) {
-            await supabase.auth.setSession({
-              access_token: coachSession.access_token,
-              refresh_token: coachSession.refresh_token,
-            })
-          }
-        } catch {
-          toast('Erreur critique: session perdue. Rechargez la page.', 'error')
-          setSubmitting(false)
-          return
-        }
       }
+      // No session restore needed — the main supabase client was never touched
 
       // If email already existed, look up existing user_id
       let existingUserId = authData?.user?.id || null
 
-      // Create a fresh client after session restore to ensure auth is correct
-      const freshSupabase = createClient()
-
       if (!existingUserId) {
-        const { data: existingAthlete } = await freshSupabase
+        const { data: existingAthlete } = await supabase
           .from('athletes')
           .select('user_id')
           .eq('email', trimEmail)
@@ -183,7 +185,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
 
       const workflowId = selectedWorkflow || null
 
-      const { data: insertedAthletes, error } = await freshSupabase
+      const { data: insertedAthletes, error } = await supabase
         .from('athletes')
         .insert({
           prenom: trimPrenom,
@@ -207,17 +209,6 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
 
       const insertedAthlete = insertedAthletes?.[0]
 
-      // Copy WhatsApp credentials message to clipboard
-      if (insertedAthlete && authData?.user) {
-        const whatsappMessage = `Bienvenue dans l'app de coaching !\n\nVoici tes identifiants:\n\nEmail: ${trimEmail}\nMot de passe: ${tempPassword}\n\nConnecte-toi pour voir tes seances!`
-        try {
-          await navigator.clipboard.writeText(whatsappMessage)
-          toast('Identifiants copies dans le presse-papier !', 'success')
-        } catch {
-          toast(`Mot de passe: ${tempPassword} (notez-le)`, 'success')
-        }
-      }
-
       // Create payment plan
       if (insertedAthlete) {
         const isFree = paymentType === 'free'
@@ -235,7 +226,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
 
         const bDay = billingAnchor === 'fixed' ? parseInt(billingDay) || 1 : null
 
-        await freshSupabase.from('athlete_payment_plans').insert({
+        await supabase.from('athlete_payment_plans').insert({
           coach_id: coachId,
           athlete_id: insertedAthlete.id,
           is_free: isFree,
@@ -252,7 +243,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
           billing_day: bDay,
         })
 
-        await freshSupabase.from('athlete_activity_log').insert({
+        await supabase.from('athlete_activity_log').insert({
           coach_id: coachId,
           athlete_id: insertedAthlete.id,
           event: 'added',
@@ -263,7 +254,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
       if (workflowId && insertedAthlete) {
         let onboardingUserId = authData?.user?.id
         if (!onboardingUserId) {
-          const { data: freshAthlete } = await freshSupabase
+          const { data: freshAthlete } = await supabase
             .from('athletes')
             .select('user_id')
             .eq('id', insertedAthlete.id)
@@ -272,7 +263,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
         }
 
         if (onboardingUserId) {
-          await freshSupabase.from('athlete_onboarding').insert({
+          await supabase.from('athlete_onboarding').insert({
             athlete_id: onboardingUserId,
             workflow_id: workflowId,
             current_step: 0,
@@ -283,11 +274,16 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
         }
       }
 
+      // Show WhatsApp message modal (always, matching original flow)
+      const msg = `Bienvenue dans l'app de coaching ! \n\nVoici vos identifiants:\n\nEmail: ${trimEmail}\nMot de passe: ${tempPassword}\n\nConnectez-vous pour voir vos seances!`
+      setWhatsappMessage(msg)
+
       toast('Athlete ajoute avec succes !', 'success')
       resetForm()
       onClose()
-      await refreshAthletes()
+      refreshAthletes()
     } catch (err) {
+      console.error('[AddAthlete] Unexpected error:', err)
       toast('Erreur inattendue', 'error')
     } finally {
       setSubmitting(false)
@@ -295,208 +291,243 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Ajouter un athlete" size="lg">
-      <form onSubmit={handleSubmit} style={{ padding: '0 20px 20px' }}>
-        <div className="form-row">
-          <FormGroup label="Prenom" htmlFor="add-prenom">
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} title="Ajouter un athlete" size="lg">
+        <form onSubmit={handleSubmit} style={{ padding: '0 20px 20px' }}>
+          <div className="form-row">
+            <FormGroup label="Prenom" htmlFor="add-prenom">
+              <input
+                id="add-prenom"
+                type="text"
+                value={prenom}
+                onChange={(e) => setPrenom(e.target.value)}
+                required
+              />
+            </FormGroup>
+            <FormGroup label="Nom" htmlFor="add-nom">
+              <input
+                id="add-nom"
+                type="text"
+                value={nom}
+                onChange={(e) => setNom(e.target.value)}
+                required
+              />
+            </FormGroup>
+          </div>
+
+          <FormGroup label="Email" htmlFor="add-email">
             <input
-              id="add-prenom"
-              type="text"
-              value={prenom}
-              onChange={(e) => setPrenom(e.target.value)}
+              id="add-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
             />
           </FormGroup>
-          <FormGroup label="Nom" htmlFor="add-nom">
-            <input
-              id="add-nom"
-              type="text"
-              value={nom}
-              onChange={(e) => setNom(e.target.value)}
-              required
-            />
-          </FormGroup>
-        </div>
 
-        <FormGroup label="Email" htmlFor="add-email">
-          <input
-            id="add-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </FormGroup>
-
-        {workflows.length > 0 && (
-          <FormGroup label="Parcours d'onboarding" htmlFor="add-workflow">
-            <select
-              id="add-workflow"
-              value={selectedWorkflow}
-              onChange={(e) => setSelectedWorkflow(e.target.value)}
-            >
-              <option value="">&mdash; Aucun &mdash;</option>
-              {workflows.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
-          </FormGroup>
-        )}
-
-        {/* Payment section */}
-        <div className={styles.paymentSection}>
-          <h3 className={styles.paymentTitle}>
-            <i className="fa-solid fa-credit-card" style={{ marginRight: 6 }} />
-            Paiement
-          </h3>
-
-          <FormGroup label="Type">
-            <div className={styles.payTypeGroup}>
-              <label
-                className={`${styles.payTypeLabel} ${paymentType === 'free' ? styles.payTypeLabelActive : ''}`}
+          {workflows.length > 0 && (
+            <FormGroup label="Parcours d'onboarding" htmlFor="add-workflow">
+              <select
+                id="add-workflow"
+                value={selectedWorkflow}
+                onChange={(e) => setSelectedWorkflow(e.target.value)}
               >
-                <input
-                  type="radio"
-                  name="pay-type"
-                  checked={paymentType === 'free'}
-                  onChange={() => setPaymentType('free')}
-                  style={{ appearance: 'auto', width: 16, height: 16, accentColor: 'var(--primary)' }}
-                />
-                Gratuit
-              </label>
-              <label
-                className={`${styles.payTypeLabel} ${paymentType === 'paid' ? styles.payTypeLabelActive : ''}`}
-              >
-                <input
-                  type="radio"
-                  name="pay-type"
-                  checked={paymentType === 'paid'}
-                  onChange={() => setPaymentType('paid')}
-                  style={{ appearance: 'auto', width: 16, height: 16, accentColor: 'var(--primary)' }}
-                />
-                Payant
-              </label>
-            </div>
-          </FormGroup>
-
-          {paymentType === 'paid' && (
-            <>
-              <div className="form-row">
-                <FormGroup label="Montant (EUR)" htmlFor="add-amount">
-                  <input
-                    id="add-amount"
-                    type="number"
-                    min="1"
-                    step="1"
-                    placeholder="160"
-                    value={payAmount}
-                    onChange={(e) => setPayAmount(e.target.value)}
-                  />
-                </FormGroup>
-                <FormGroup label="Frequence" htmlFor="add-freq">
-                  <select
-                    id="add-freq"
-                    value={payFrequency}
-                    onChange={(e) => setPayFrequency(e.target.value)}
-                  >
-                    <option value="month">Par mois</option>
-                    <option value="week">Par semaine</option>
-                    <option value="day">Par jour</option>
-                    <option value="once">Paiement unique</option>
-                  </select>
-                </FormGroup>
-              </div>
-
-              <div className="form-row">
-                <FormGroup label="Tous les" htmlFor="add-interval">
-                  <input
-                    id="add-interval"
-                    type="number"
-                    min="1"
-                    max="12"
-                    value={payInterval}
-                    onChange={(e) => setPayInterval(e.target.value)}
-                  />
-                </FormGroup>
-                <FormGroup label="Duree" htmlFor="add-duration">
-                  <select
-                    id="add-duration"
-                    value={payDuration}
-                    onChange={(e) => setPayDuration(e.target.value as 'unlimited' | 'limited')}
-                  >
-                    <option value="unlimited">Illimite</option>
-                    <option value="limited">Nombre de paiements</option>
-                  </select>
-                </FormGroup>
-              </div>
-
-              {payDuration === 'limited' && (
-                <FormGroup label="Nombre de paiements" htmlFor="add-total">
-                  <input
-                    id="add-total"
-                    type="number"
-                    min="1"
-                    placeholder="9"
-                    value={payTotal}
-                    onChange={(e) => setPayTotal(e.target.value)}
-                  />
-                </FormGroup>
-              )}
-
-              <div className="form-row">
-                <FormGroup label="Engagement (mois)" htmlFor="add-engagement">
-                  <input
-                    id="add-engagement"
-                    type="number"
-                    min="0"
-                    placeholder="0 = sans"
-                    value={engagementMonths}
-                    onChange={(e) => setEngagementMonths(e.target.value)}
-                  />
-                </FormGroup>
-                <FormGroup label="Date de prelevement" htmlFor="add-billing">
-                  <select
-                    id="add-billing"
-                    value={billingAnchor}
-                    onChange={(e) => setBillingAnchor(e.target.value as 'anniversary' | 'fixed')}
-                  >
-                    <option value="anniversary">Date anniversaire (inscription)</option>
-                    <option value="fixed">Date fixe du mois</option>
-                  </select>
-                </FormGroup>
-              </div>
-
-              {billingAnchor === 'fixed' && (
-                <FormGroup label="Jour du mois" htmlFor="add-billing-day">
-                  <input
-                    id="add-billing-day"
-                    type="number"
-                    min="1"
-                    max="28"
-                    placeholder="1"
-                    value={billingDay}
-                    onChange={(e) => setBillingDay(e.target.value)}
-                  />
-                  <span style={{ fontSize: 12, color: 'var(--text3)' }}>Entre 1 et 28</span>
-                </FormGroup>
-              )}
-            </>
+                <option value="">&mdash; Aucun &mdash;</option>
+                {workflows.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </FormGroup>
           )}
+
+          {/* Payment section */}
+          <div className={styles.paymentSection}>
+            <h3 className={styles.paymentTitle}>
+              <i className="fa-solid fa-credit-card" style={{ marginRight: 6 }} />
+              Paiement
+            </h3>
+
+            <FormGroup label="Type">
+              <div className={styles.payTypeGroup}>
+                <label
+                  className={`${styles.payTypeLabel} ${paymentType === 'free' ? styles.payTypeLabelActive : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="pay-type"
+                    checked={paymentType === 'free'}
+                    onChange={() => setPaymentType('free')}
+                    style={{ appearance: 'auto', width: 16, height: 16, accentColor: 'var(--primary)' }}
+                  />
+                  Gratuit
+                </label>
+                <label
+                  className={`${styles.payTypeLabel} ${paymentType === 'paid' ? styles.payTypeLabelActive : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="pay-type"
+                    checked={paymentType === 'paid'}
+                    onChange={() => setPaymentType('paid')}
+                    style={{ appearance: 'auto', width: 16, height: 16, accentColor: 'var(--primary)' }}
+                  />
+                  Payant
+                </label>
+              </div>
+            </FormGroup>
+
+            {paymentType === 'paid' && (
+              <>
+                <div className="form-row">
+                  <FormGroup label="Montant (EUR)" htmlFor="add-amount">
+                    <input
+                      id="add-amount"
+                      type="number"
+                      min="1"
+                      step="1"
+                      placeholder="160"
+                      value={payAmount}
+                      onChange={(e) => setPayAmount(e.target.value)}
+                    />
+                  </FormGroup>
+                  <FormGroup label="Frequence" htmlFor="add-freq">
+                    <select
+                      id="add-freq"
+                      value={payFrequency}
+                      onChange={(e) => setPayFrequency(e.target.value)}
+                    >
+                      <option value="month">Par mois</option>
+                      <option value="week">Par semaine</option>
+                      <option value="day">Par jour</option>
+                      <option value="once">Paiement unique</option>
+                    </select>
+                  </FormGroup>
+                </div>
+
+                <div className="form-row">
+                  <FormGroup label="Tous les" htmlFor="add-interval">
+                    <input
+                      id="add-interval"
+                      type="number"
+                      min="1"
+                      max="12"
+                      value={payInterval}
+                      onChange={(e) => setPayInterval(e.target.value)}
+                    />
+                  </FormGroup>
+                  <FormGroup label="Duree" htmlFor="add-duration">
+                    <select
+                      id="add-duration"
+                      value={payDuration}
+                      onChange={(e) => setPayDuration(e.target.value as 'unlimited' | 'limited')}
+                    >
+                      <option value="unlimited">Illimite</option>
+                      <option value="limited">Nombre de paiements</option>
+                    </select>
+                  </FormGroup>
+                </div>
+
+                {payDuration === 'limited' && (
+                  <FormGroup label="Nombre de paiements" htmlFor="add-total">
+                    <input
+                      id="add-total"
+                      type="number"
+                      min="1"
+                      placeholder="9"
+                      value={payTotal}
+                      onChange={(e) => setPayTotal(e.target.value)}
+                    />
+                  </FormGroup>
+                )}
+
+                <div className="form-row">
+                  <FormGroup label="Engagement (mois)" htmlFor="add-engagement">
+                    <input
+                      id="add-engagement"
+                      type="number"
+                      min="0"
+                      placeholder="0 = sans"
+                      value={engagementMonths}
+                      onChange={(e) => setEngagementMonths(e.target.value)}
+                    />
+                  </FormGroup>
+                  <FormGroup label="Date de prelevement" htmlFor="add-billing">
+                    <select
+                      id="add-billing"
+                      value={billingAnchor}
+                      onChange={(e) => setBillingAnchor(e.target.value as 'anniversary' | 'fixed')}
+                    >
+                      <option value="anniversary">Date anniversaire (inscription)</option>
+                      <option value="fixed">Date fixe du mois</option>
+                    </select>
+                  </FormGroup>
+                </div>
+
+                {billingAnchor === 'fixed' && (
+                  <FormGroup label="Jour du mois" htmlFor="add-billing-day">
+                    <input
+                      id="add-billing-day"
+                      type="number"
+                      min="1"
+                      max="28"
+                      placeholder="1"
+                      value={billingDay}
+                      onChange={(e) => setBillingDay(e.target.value)}
+                    />
+                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>Entre 1 et 28</span>
+                  </FormGroup>
+                )}
+              </>
+            )}
+          </div>
+
+          <button type="submit" className="btn btn-red" disabled={submitting} style={{ marginTop: 16 }}>
+            {submitting ? (
+              <>
+                <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />
+                Ajout en cours...
+              </>
+            ) : (
+              "Ajouter l'athlete"
+            )}
+          </button>
+        </form>
+      </Modal>
+
+      {/* WhatsApp credentials modal — shown after successful creation */}
+      <Modal
+        isOpen={!!whatsappMessage}
+        onClose={() => setWhatsappMessage(null)}
+        title="Message WhatsApp"
+      >
+        <div
+          style={{
+            padding: 20,
+            background: 'var(--bg2)',
+            borderRadius: 10,
+            margin: 16,
+            fontFamily: 'monospace',
+            fontSize: 13,
+            color: 'var(--text2)',
+            lineHeight: 1.6,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            border: '1px solid var(--border)',
+          }}
+        >
+          {whatsappMessage}
         </div>
-
-        <button type="submit" className="btn btn-red" disabled={submitting} style={{ marginTop: 16 }}>
-          {submitting ? (
-            <>
-              <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />
-              Ajout en cours...
-            </>
-          ) : (
-            "Ajouter l'athlete"
-          )}
-        </button>
-      </form>
-    </Modal>
+        <div style={{ padding: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-red" onClick={copyWhatsappMessage}>
+            Copier le message
+          </button>
+          <button className="btn btn-outline" onClick={() => setWhatsappMessage(null)}>
+            Fermer
+          </button>
+        </div>
+      </Modal>
+    </>
   )
 }
