@@ -77,7 +77,7 @@ export default function RoadmapPage() {
     setNutritions((nutritionsRes.data || []) as NutritionRef[])
     setReports((reportsRes.data || []) as DailyReport[])
     setLoading(false)
-  }, [athleteId, selectedAthlete, supabase])
+  }, [athleteId, selectedAthlete]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadData()
@@ -126,7 +126,7 @@ export default function RoadmapPage() {
     if (rows.length) {
       await supabase.from('programming_weeks').insert(rows)
     }
-  }, [athleteId, user, supabase])
+  }, [athleteId, user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAdd = () => {
     let defaultStart: Date

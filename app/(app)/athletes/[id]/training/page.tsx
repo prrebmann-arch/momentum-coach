@@ -224,7 +224,7 @@ export default function TrainingPage() {
     setSessionMap(sMap)
 
     setLoading(false)
-  }, [athleteId, supabase])
+  }, [athleteId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadData()

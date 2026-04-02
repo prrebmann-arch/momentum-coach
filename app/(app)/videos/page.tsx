@@ -59,7 +59,7 @@ export default function VideosPage() {
       })) as VideoItem[],
     )
     setLoading(false)
-  }, [user, supabase])
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadVideos()

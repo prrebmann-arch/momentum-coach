@@ -79,7 +79,7 @@ export default function SupplementsPage() {
     setUnlocked(ath?.supplementation_unlocked || false)
     setLogs(logData || [])
     setLoading(false)
-  }, [params.id, supabase])
+  }, [params.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (params.id) loadData()

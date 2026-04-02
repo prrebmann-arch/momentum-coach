@@ -139,7 +139,7 @@ export default function ContentPlanner() {
     setCaptionTemplates(tRes.data || [])
     setReels(rRes.data || [])
     setLoading(false)
-  }, [user, supabase])
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadData() }, [loadData])
 

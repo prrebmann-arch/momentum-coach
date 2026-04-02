@@ -269,7 +269,7 @@ export default function BilansOverview() {
       .limit(1000)
     setReports((data as DailyReport[]) || [])
     setLoading(false)
-  }, [user, athletes, supabase])
+  }, [user, athletes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload reports when athletes list changes
   useEffect(() => {

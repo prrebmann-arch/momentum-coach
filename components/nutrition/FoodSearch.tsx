@@ -49,7 +49,7 @@ export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
       .select('*')
       .order('nom', { ascending: true })
     setLocalAliments((data || []).map((a: any) => ({ ...a, source: 'local' as const })))
-  }, [user, supabase])
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadLocal() }, [loadLocal, refreshKey])
 

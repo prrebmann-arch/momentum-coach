@@ -78,7 +78,7 @@ export default function QuestionnairesPage() {
     setResponsesMap(rmap)
     setTemplates(tpls || [])
     setLoading(false)
-  }, [params.id, user?.id, supabase])
+  }, [params.id, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (params.id) loadData()

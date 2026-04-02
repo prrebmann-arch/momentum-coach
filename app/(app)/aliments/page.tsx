@@ -56,7 +56,7 @@ export default function AlimentsPage() {
     if (error) { toast('Erreur chargement aliments', 'error'); return }
     setAliments((data || []) as Aliment[])
     setLoading(false)
-  }, [supabase, toast])
+  }, [toast]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadAliments() }, [loadAliments])
 

@@ -33,7 +33,7 @@ export default function AthleteVideosPage() {
 
     setVideos((vids || []) as VideoItem[])
     setLoading(false)
-  }, [athleteId, supabase])
+  }, [athleteId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Push browser history state when entering sub-views
   useEffect(() => {

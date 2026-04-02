@@ -110,7 +110,7 @@ export default function InfosPage() {
     }
 
     setLoading(false)
-  }, [params.id, supabase, user?.id])
+  }, [params.id, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (params.id) loadAthlete()

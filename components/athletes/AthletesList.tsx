@@ -6,6 +6,7 @@ import { useAthleteContext } from '@/contexts/AthleteContext'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import AddAthleteForm from './AddAthleteForm'
+import Modal from '@/components/ui/Modal'
 import styles from '@/styles/athletes.module.css'
 import type { Athlete } from '@/lib/types'
 
@@ -79,6 +80,7 @@ export default function AthletesList() {
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [credentialsMessage, setCredentialsMessage] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
     if (!search.trim()) return athletes
@@ -159,7 +161,33 @@ export default function AthletesList() {
         </div>
       )}
 
-      <AddAthleteForm isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
+      <AddAthleteForm
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onCreated={(msg) => setCredentialsMessage(msg)}
+      />
+
+      <Modal
+        isOpen={!!credentialsMessage}
+        onClose={() => setCredentialsMessage(null)}
+        title="Message WhatsApp"
+      >
+        <div style={{ padding: 20, background: 'var(--bg3)', borderRadius: 10, margin: 16, fontFamily: 'monospace', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', border: '1px solid var(--border)' }}>
+          {credentialsMessage}
+        </div>
+        <div style={{ padding: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-red" onClick={async () => {
+            if (credentialsMessage) {
+              try { await navigator.clipboard.writeText(credentialsMessage); } catch {}
+            }
+          }}>
+            Copier le message
+          </button>
+          <button className="btn btn-outline" onClick={() => setCredentialsMessage(null)}>
+            Fermer
+          </button>
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -82,7 +82,7 @@ export default function MessagesInbox() {
       .single()
     setAccount(data)
     return data
-  }, [user, supabase])
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load conversations from API ──
   const loadConversations = useCallback(async () => {

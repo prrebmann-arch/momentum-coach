@@ -50,7 +50,7 @@ export default function PosingPage() {
     setVideos(vids || [])
     setRetours(rets || [])
     setLoading(false)
-  }, [params.id, supabase])
+  }, [params.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (params.id) loadData()

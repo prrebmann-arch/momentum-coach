@@ -178,7 +178,7 @@ export default function BilansPage() {
     Object.values(history).forEach(arr => arr.sort((a, b) => a.date.localeCompare(b.date)))
     setPhotoHistory(history)
     setLoading(false)
-  }, [selectedAthlete, supabase])
+  }, [selectedAthlete]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -197,7 +197,7 @@ export default function BilansPage() {
       console.error('deleteBilan error:', err)
       toast('Erreur lors de la suppression', 'error')
     }
-  }, [supabase, toast, loadData])
+  }, [toast, loadData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOpenPhoto = useCallback((type: PhotoType, date: string) => {
     setPhotoType(type)

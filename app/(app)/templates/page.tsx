@@ -89,7 +89,7 @@ export default function TemplatesPage() {
     }
 
     setLoading(false)
-  }, [coach, activeTab, supabase])
+  }, [coach, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadData()

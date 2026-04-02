@@ -214,7 +214,7 @@ export default function VideoCompare({ video, compVideos, compIdx }: VideoCompar
     }
     setPrevLogIdx(defaultPrevIdx)
     setLoading(false)
-  }, [video, supabase])
+  }, [video]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadTraining()

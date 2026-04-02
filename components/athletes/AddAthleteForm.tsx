@@ -14,6 +14,7 @@ import styles from '@/styles/athletes.module.css'
 interface AddAthleteFormProps {
   isOpen: boolean
   onClose: () => void
+  onCreated?: (message: string) => void
 }
 
 interface OnboardingWorkflow {
@@ -21,7 +22,7 @@ interface OnboardingWorkflow {
   name: string
 }
 
-export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps) {
+export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthleteFormProps) {
   const { user } = useAuth()
   const { refreshAthletes } = useAthleteContext()
   const { toast } = useToast()
@@ -274,11 +275,13 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
         }
       }
 
-      // Show WhatsApp message modal — DON'T close yet, let user copy credentials first
       const msg = `Bienvenue dans l'app de coaching ! \n\nVoici vos identifiants:\n\nEmail: ${trimEmail}\nMot de passe: ${tempPassword}\n\nConnectez-vous pour voir vos seances!`
-      setWhatsappMessage(msg)
       toast('Athlete ajoute avec succes !', 'success')
+      resetForm()
+      onClose()
       refreshAthletes()
+      // Show WhatsApp modal in PARENT (after form is closed)
+      if (onCreated) onCreated(msg)
     } catch (err) {
       console.error('[AddAthlete] Unexpected error:', err)
       toast('Erreur inattendue', 'error')
@@ -493,38 +496,6 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
         </form>
       </Modal>
 
-      {/* WhatsApp credentials modal — shown after successful creation */}
-      <Modal
-        isOpen={!!whatsappMessage}
-        onClose={() => { setWhatsappMessage(null); resetForm(); onClose(); }}
-        title="Message WhatsApp"
-      >
-        <div
-          style={{
-            padding: 20,
-            background: 'var(--bg2)',
-            borderRadius: 10,
-            margin: 16,
-            fontFamily: 'monospace',
-            fontSize: 13,
-            color: 'var(--text2)',
-            lineHeight: 1.6,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            border: '1px solid var(--border)',
-          }}
-        >
-          {whatsappMessage}
-        </div>
-        <div style={{ padding: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button className="btn btn-red" onClick={copyWhatsappMessage}>
-            Copier le message
-          </button>
-          <button className="btn btn-outline" onClick={() => { setWhatsappMessage(null); resetForm(); onClose(); }}>
-            Fermer
-          </button>
-        </div>
-      </Modal>
     </>
   )
 }

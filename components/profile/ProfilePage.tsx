@@ -73,7 +73,7 @@ export default function ProfilePage() {
       setLoading(false)
     }
     load()
-  }, [user, supabase])
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check connect return
   useEffect(() => {

@@ -36,7 +36,7 @@ export default function RetoursPage() {
       .order('created_at', { ascending: false })
     setRetours(data || [])
     setLoading(false)
-  }, [params.id, supabase])
+  }, [params.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (params.id) loadRetours()
