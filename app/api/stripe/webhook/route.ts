@@ -11,9 +11,11 @@ function getPlatformStripe() {
 }
 
 export async function POST(request: Request) {
+  console.log('[webhook] Received webhook call');
   const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!);
   const rawBody = await request.text();
   const sig = request.headers.get('stripe-signature')!;
+  console.log('[webhook] Signature present:', !!sig, 'Body length:', rawBody.length);
 
   // Try to verify with platform webhook secret first
   let event: Stripe.Event;

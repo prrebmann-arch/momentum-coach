@@ -505,8 +505,16 @@ async function handleCreateCheckout(body: Record<string, string>, req: NextReque
       const now = new Date()
       const anchorDate = new Date(now.getFullYear(), now.getMonth(), plan.billing_day)
       if (anchorDate <= now) anchorDate.setMonth(anchorDate.getMonth() + 1)
-      params.subscription_data = { billing_cycle_anchor: Math.floor(anchorDate.getTime() / 1000) }
+      params.subscription_data = {
+        billing_cycle_anchor: Math.floor(anchorDate.getTime() / 1000),
+      }
+      // Charge the prorated amount immediately (not added to next invoice)
+      params.payment_settings = {
+        save_default_payment_method: 'on_subscription',
+      }
     }
+    // Always collect payment upfront for subscriptions
+    params.payment_intent_data = { setup_future_usage: 'off_session' }
 
     session = await stripeInstance.checkout.sessions.create(params as Stripe.Checkout.SessionCreateParams, stripeOpts)
   }
