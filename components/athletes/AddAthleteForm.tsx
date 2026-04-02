@@ -166,8 +166,12 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
 
       // If email already existed, look up existing user_id
       let existingUserId = authData?.user?.id || null
+
+      // Create a fresh client after session restore to ensure auth is correct
+      const freshSupabase = createClient()
+
       if (!existingUserId) {
-        const { data: existingAthlete } = await supabase
+        const { data: existingAthlete } = await freshSupabase
           .from('athletes')
           .select('user_id')
           .eq('email', trimEmail)
@@ -178,7 +182,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
 
       const workflowId = selectedWorkflow || null
 
-      const { data: insertedAthletes, error } = await supabase
+      const { data: insertedAthletes, error } = await freshSupabase
         .from('athletes')
         .insert({
           prenom: trimPrenom,
@@ -194,12 +198,19 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
         .select()
 
       if (error) {
+        console.error('[AddAthlete] Insert error:', error)
         toast(error.message, 'error')
         setSubmitting(false)
         return
       }
 
       const insertedAthlete = insertedAthletes?.[0]
+
+      // Show WhatsApp message with credentials
+      if (insertedAthlete && authData?.user) {
+        const whatsappMessage = `Bienvenue dans l'app de coaching ! 🏋️\n\nVoici tes identifiants:\n\nEmail: ${trimEmail}\nMot de passe: ${tempPassword}\n\nConnecte-toi pour voir tes séances!`
+        window.prompt('Copie ce message WhatsApp pour ton athlète:', whatsappMessage)
+      }
 
       // Create payment plan
       if (insertedAthlete) {
@@ -218,7 +229,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
 
         const bDay = billingAnchor === 'fixed' ? parseInt(billingDay) || 1 : null
 
-        await supabase.from('athlete_payment_plans').insert({
+        await freshSupabase.from('athlete_payment_plans').insert({
           coach_id: coachId,
           athlete_id: insertedAthlete.id,
           is_free: isFree,
@@ -235,7 +246,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
           billing_day: bDay,
         })
 
-        await supabase.from('athlete_activity_log').insert({
+        await freshSupabase.from('athlete_activity_log').insert({
           coach_id: coachId,
           athlete_id: insertedAthlete.id,
           event: 'added',
@@ -246,7 +257,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
       if (workflowId && insertedAthlete) {
         let onboardingUserId = authData?.user?.id
         if (!onboardingUserId) {
-          const { data: freshAthlete } = await supabase
+          const { data: freshAthlete } = await freshSupabase
             .from('athletes')
             .select('user_id')
             .eq('id', insertedAthlete.id)
@@ -255,7 +266,7 @@ export default function AddAthleteForm({ isOpen, onClose }: AddAthleteFormProps)
         }
 
         if (onboardingUserId) {
-          await supabase.from('athlete_onboarding').insert({
+          await freshSupabase.from('athlete_onboarding').insert({
             athlete_id: onboardingUserId,
             workflow_id: workflowId,
             current_step: 0,
