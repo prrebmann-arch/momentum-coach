@@ -75,6 +75,23 @@ export default function ProfilePage() {
     load()
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const authFetch = useCallback(
+    async (url: string, opts: RequestInit = {}) => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      return fetch(url, {
+        ...opts,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token || ''}`,
+          ...(opts.headers || {}),
+        },
+      })
+    },
+    [supabase],
+  )
+
   // Check connect return
   useEffect(() => {
     if (!user) return
@@ -98,30 +115,17 @@ export default function ProfilePage() {
         .from('coach_profiles')
         .update({ has_payment_method: true })
         .eq('user_id', user.id)
-        .then(() => {
+        .then(({ error }) => {
+          if (error) {
+            toast('Erreur enregistrement carte', 'error')
+            return
+          }
           refreshCoach()
           toast('Carte enregistree avec succes', 'success')
           window.history.replaceState({}, '', '/profile')
         })
     }
-  }, [user, refreshCoach, toast]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const authFetch = useCallback(
-    async (url: string, opts: RequestInit = {}) => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      return fetch(url, {
-        ...opts,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session?.access_token || ''}`,
-          ...(opts.headers || {}),
-        },
-      })
-    },
-    [supabase],
-  )
+  }, [user, authFetch, refreshCoach, toast]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // -- Actions --
 
@@ -282,12 +286,17 @@ export default function ProfilePage() {
         .eq('email', sub.customer_email)
         .maybeSingle()
 
-      await supabase.from('stripe_customers').upsert(
+      if (!athlete) {
+        toast(`Aucun athlete trouve pour ${sub.customer_email || 'ce client'}. Ajoutez-le d'abord.`, 'error')
+        return
+      }
+
+      const { error: custErr } = await supabase.from('stripe_customers').upsert(
         {
           stripe_customer_id: sub.customer_id,
           stripe_subscription_id: sub.subscription_id,
           coach_id: user!.id,
-          athlete_id: athlete?.id || null,
+          athlete_id: athlete.id,
           subscription_status: sub.status,
           monthly_amount: sub.amount,
           current_period_start: sub.current_period_start,
@@ -295,29 +304,31 @@ export default function ProfilePage() {
         },
         { onConflict: 'stripe_customer_id' },
       )
+      if (custErr) {
+        toast('Erreur import client: ' + custErr.message, 'error')
+        return
+      }
 
-      if (athlete) {
-        await supabase.from('athlete_payment_plans').upsert(
-          {
-            coach_id: user!.id,
-            athlete_id: athlete.id,
-            is_free: false,
-            amount: sub.amount,
-            currency: sub.currency,
-            frequency: sub.interval,
-            frequency_interval: sub.interval_count,
-            payment_status: 'active',
-            stripe_subscription_id: sub.subscription_id,
-            stripe_customer_id: sub.customer_id,
-          },
-          { onConflict: 'coach_id,athlete_id' },
-        )
-        await supabase.from('athlete_activity_log').insert({
+      await supabase.from('athlete_payment_plans').upsert(
+        {
           coach_id: user!.id,
           athlete_id: athlete.id,
-          event: 'added',
-        })
-      }
+          is_free: false,
+          amount: sub.amount,
+          currency: sub.currency,
+          frequency: sub.interval,
+          frequency_interval: sub.interval_count,
+          payment_status: 'active',
+          stripe_subscription_id: sub.subscription_id,
+          stripe_customer_id: sub.customer_id,
+        },
+        { onConflict: 'coach_id,athlete_id' },
+      )
+      await supabase.from('athlete_activity_log').insert({
+        coach_id: user!.id,
+        athlete_id: athlete.id,
+        event: 'added',
+      })
 
       setImportedIndexes((prev) => new Set([...prev, index]))
       toast(`${sub.customer_name || sub.customer_email} importe`, 'success')
