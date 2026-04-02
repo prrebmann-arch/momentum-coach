@@ -43,3 +43,7 @@
 [2026-03-31] | Old API paths referenced in component code | When renaming API routes, update all component fetch() calls to use the new paths directly, even if next.config.ts has redirects. Redirects add latency and can fail on POST requests (301/308 semantics).
 
 [2026-03-31] | Next.js 16.2.1 Turbopack ENOENT on _buildManifest.js.tmp during production build | Turbopack build consistently fails with ENOENT on temp manifest files. Use `next build --webpack` as a workaround until fixed upstream.
+
+[2026-03-31] | Stripe Checkout subscription mode cannot mix one-time and recurring line items | When using `mode: 'subscription'`, all line items must be recurring. For prorata billing, use `subscription_data.billing_cycle_anchor` only — Stripe calculates and charges the prorata automatically at checkout. Do NOT use `trial_end` (it means no charge) or add separate one-time line items.
+
+[2026-03-31] | Stripe Connect webhook needs separate endpoint with its own secret | Connected account events are sent to a different webhook endpoint (registered via Stripe API for Connect). The handler must try both platform and connect secrets to verify signatures. Always log webhook hits before signature verification to diagnose delivery issues.

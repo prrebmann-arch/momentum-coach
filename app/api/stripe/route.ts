@@ -502,28 +502,16 @@ async function handleCreateCheckout(body: Record<string, string>, req: NextReque
     if (plan.total_payments) (params.metadata as Record<string, string>).total_payments = String(plan.total_payments)
 
     if (plan.billing_anchor === 'fixed' && plan.billing_day) {
-      // Use trial_end instead of billing_cycle_anchor
-      // This charges the prorated amount NOW at checkout, then starts
-      // the full billing cycle on the anchor date
+      // Simple approach: billing_cycle_anchor tells Stripe when the next full
+      // billing cycle starts. Stripe automatically charges the prorata amount
+      // at checkout for the partial period until the anchor date.
+      // NO trial_end (trial = no charge), NO extra line items.
       const now = new Date()
       const anchorDate = new Date(now.getFullYear(), now.getMonth(), plan.billing_day)
       if (anchorDate <= now) anchorDate.setMonth(anchorDate.getMonth() + 1)
 
-      // Calculate prorated amount for the partial period
-      const msUntilAnchor = anchorDate.getTime() - now.getTime()
-      const daysUntilAnchor = Math.ceil(msUntilAnchor / (1000 * 60 * 60 * 24))
-      const daysInMonth = 30
-      const prorataAmount = Math.round((plan.amount * daysUntilAnchor) / daysInMonth)
-
-      // Add prorata as a one-time line item + subscription starts at anchor
-      params.line_items = [
-        // Prorata charge (one-time, paid now)
-        { price_data: { currency: plan.currency || 'eur', product_data: { name: `Prorata coaching (${daysUntilAnchor}j)` }, unit_amount: prorataAmount }, quantity: 1 },
-        // Recurring subscription (starts at anchor date via trial_end)
-        { price_data: { currency: plan.currency || 'eur', product_data: { name: `Coaching ${athleteName || 'Athlète'}` }, unit_amount: plan.amount, recurring: { interval, interval_count: plan.frequency_interval || 1 } }, quantity: 1 },
-      ]
       params.subscription_data = {
-        trial_end: Math.floor(anchorDate.getTime() / 1000),
+        billing_cycle_anchor: Math.floor(anchorDate.getTime() / 1000),
       }
     }
 

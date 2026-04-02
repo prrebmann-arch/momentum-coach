@@ -13,6 +13,17 @@ function getPlatformStripe() {
 export async function POST(request: Request) {
   console.log('[webhook] Received webhook call');
   const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!);
+
+  // Log every hit BEFORE signature verification — helps diagnose delivery issues
+  await supabase.from('stripe_audit_log').insert({
+    action: 'webhook_endpoint_hit', actor_type: 'system',
+    metadata: {
+      ip: request.headers.get('x-forwarded-for') || '',
+      user_agent: request.headers.get('user-agent') || '',
+      timestamp: new Date().toISOString(),
+    },
+  });
+
   const rawBody = await request.text();
   const sig = request.headers.get('stripe-signature')!;
   console.log('[webhook] Signature present:', !!sig, 'Body length:', rawBody.length);
