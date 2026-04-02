@@ -3,11 +3,12 @@
 import { useState, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import type { CoachProfile } from '@/lib/types'
 import styles from '@/styles/auth.module.css'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { signIn, signUp, coach } = useAuth()
+  const { signIn, signUp } = useAuth()
 
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
@@ -16,10 +17,10 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const redirect = (email: string) => {
+  const redirect = (email: string, coachProfile: CoachProfile | null) => {
     if (email === 'rebmannpierre1@gmail.com') {
       router.push('/admin')
-    } else if (coach && !coach.has_payment_method && coach.plan !== 'free') {
+    } else if (coachProfile && !coachProfile.has_payment_method && coachProfile.plan !== 'free') {
       router.push('/setup-payment')
     } else {
       router.push('/dashboard')
@@ -32,13 +33,13 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      let coachProfile: CoachProfile | null = null
       if (mode === 'login') {
-        await signIn(email, password)
+        coachProfile = await signIn(email, password)
       } else {
-        await signUp(email, password, plan)
+        coachProfile = await signUp(email, password, plan)
       }
-      // Small delay so coach state has time to be set from signIn/signUp
-      setTimeout(() => redirect(email), 100)
+      redirect(email, coachProfile)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue.')
     } finally {

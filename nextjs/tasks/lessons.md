@@ -19,3 +19,5 @@
 [2026-03-31] | CSS module classes defined but not used in component | When porting from vanilla JS, always check if CSS module has pre-defined classes (like `.mens`, `.mensItem`) that should be used in the React component. Missing usage = invisible sections.
 
 [2026-03-31] | setState during render via setTimeout is an anti-pattern | Use useEffect + useRef for initialization logic instead of setTimeout inside the render body. The setTimeout approach causes unnecessary re-renders and can lead to stale state.
+
+[2026-03-31] | Login redirect race condition with React state | Never rely on setTimeout to wait for React state updates after async calls. Instead, return the data from the async function and use it directly for redirect logic.

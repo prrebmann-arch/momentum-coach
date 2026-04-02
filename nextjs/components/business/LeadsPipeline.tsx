@@ -117,10 +117,12 @@ export default function LeadsPipeline() {
 
     if (editingLead) {
       const { error } = await supabase.from('leads').update({
+        name: formName.trim(),
         status: formStatus,
         instagram_handle: formIg.trim() || null,
         email: formEmail.trim() || null,
         phone: formPhone.trim() || null,
+        source: formSource,
         notes: formNotes.trim() || null,
       }).eq('id', editingLead.id)
       if (error) { toast('Erreur: ' + error.message, 'error'); return }
@@ -232,22 +234,18 @@ export default function LeadsPipeline() {
       {/* Lead Modal */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingLead ? editingLead.name : 'Nouveau lead'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 0' }}>
+          <input type="text" className="field-input" placeholder="Nom *" value={formName} onChange={e => setFormName(e.target.value)} />
           {editingLead && (
             <select className="field-input" value={formStatus} onChange={e => setFormStatus(e.target.value)}>
               {Object.entries(LEAD_STATUSES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           )}
-          {!editingLead && (
-            <input type="text" className="field-input" placeholder="Nom *" value={formName} onChange={e => setFormName(e.target.value)} />
-          )}
           <input type="text" className="field-input" placeholder="@instagram (optionnel)" value={formIg} onChange={e => setFormIg(e.target.value)} />
           <input type="email" className="field-input" placeholder="Email (optionnel)" value={formEmail} onChange={e => setFormEmail(e.target.value)} />
           <input type="tel" className="field-input" placeholder="Telephone (optionnel)" value={formPhone} onChange={e => setFormPhone(e.target.value)} />
-          {!editingLead && (
-            <select className="field-input" value={formSource} onChange={e => setFormSource(e.target.value)}>
-              {SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          )}
+          <select className="field-input" value={formSource} onChange={e => setFormSource(e.target.value)}>
+            {SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
           <textarea className="field-input" placeholder="Notes" rows={2} value={formNotes} onChange={e => setFormNotes(e.target.value)} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 8 }}>
             {editingLead && (

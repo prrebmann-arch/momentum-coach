@@ -8,8 +8,8 @@ interface AuthContextType {
   user: User | null
   coach: CoachProfile | null
   loading: boolean
-  signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, plan: string) => Promise<void>
+  signIn: (email: string, password: string) => Promise<CoachProfile | null>
+  signUp: (email: string, password: string, plan: string) => Promise<CoachProfile | null>
   signOut: () => Promise<void>
   refreshCoach: () => Promise<void>
 }
@@ -23,13 +23,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const supabase = createClient()
 
-  const fetchCoach = useCallback(async (userId: string) => {
+  const fetchCoach = useCallback(async (userId: string): Promise<CoachProfile | null> => {
     const { data } = await supabase
       .from('coach_profiles')
       .select('*')
       .eq('user_id', userId)
       .single()
-    setCoach(data as CoachProfile | null)
+    const profile = data as CoachProfile | null
+    setCoach(profile)
+    return profile
   }, [supabase])
 
   const refreshCoach = useCallback(async () => {
@@ -62,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [supabase, fetchCoach])
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string): Promise<CoachProfile | null> => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
 
@@ -79,10 +81,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setUser({ id: data.user.id, email: data.user.email! })
-    await fetchCoach(data.user.id)
+    return await fetchCoach(data.user.id)
   }
 
-  const signUp = async (email: string, password: string, plan: string) => {
+  const signUp = async (email: string, password: string, plan: string): Promise<CoachProfile | null> => {
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) throw error
     if (!data.user) throw new Error('Erreur lors de la creation du compte.')
@@ -104,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (profileError) throw profileError
 
     setUser({ id: data.user.id, email: data.user.email! })
-    await fetchCoach(data.user.id)
+    return await fetchCoach(data.user.id)
   }
 
   const signOut = async () => {
