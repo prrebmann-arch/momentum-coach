@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAthleteContext } from '@/contexts/AthleteContext'
 import { useToast } from '@/contexts/ToastContext'
 import { DEFAULT_STEPS_GOAL, DEFAULT_WATER_GOAL, DEFAULT_NOTIF_TIME, JOURS_SEMAINE } from '@/lib/constants'
 import Skeleton from '@/components/ui/Skeleton'
@@ -56,7 +57,9 @@ function formatBilanLabel(freq: string, interval?: number, day?: number | number
 
 export default function InfosPage() {
   const params = useParams<{ id: string }>()
+  const router = useRouter()
   const { user } = useAuth()
+  const { refreshAthletes } = useAthleteContext()
   const { toast } = useToast()
   const supabase = createClient()
 
@@ -564,7 +567,8 @@ export default function InfosPage() {
       if (err2) { toast('Erreur lors de la suppression', 'error'); return }
     }
     toast('Athlete supprime', 'success')
-    window.location.href = '/athletes'
+    refreshAthletes()
+    router.push('/athletes')
   }
 
   // -- Avatar --
