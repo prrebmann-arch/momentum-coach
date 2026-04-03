@@ -218,11 +218,12 @@ async function handleCoachEvent(event: Stripe.Event, supabase: ReturnType<typeof
           }
         }
 
-        await supabase.from('payment_history').insert({
+        const { error: phErr } = await supabase.from('payment_history').insert({
           stripe_customer_id: session.customer, coach_id: coachId, athlete_id: athleteId,
           amount: session.amount_total, currency: session.currency, status: 'succeeded',
           stripe_payment_intent_id: session.payment_intent,
         });
+        if (phErr) console.error('[webhook] payment_history insert failed (checkout.session.completed/payment):', phErr.message);
       }
       break;
     }
@@ -242,7 +243,7 @@ async function handleCoachEvent(event: Stripe.Event, supabase: ReturnType<typeof
         description = lines[0].description;
       }
 
-      await supabase.from('payment_history').insert({
+      const { error: phErr2 } = await supabase.from('payment_history').insert({
         stripe_customer_id: invoice.customer, coach_id: sc?.coach_id, athlete_id: sc?.athlete_id,
         amount: invoice.amount_paid, currency: invoice.currency, status: 'succeeded',
         stripe_invoice_id: invoice.id, stripe_payment_intent_id: invoice.payment_intent,
@@ -250,6 +251,7 @@ async function handleCoachEvent(event: Stripe.Event, supabase: ReturnType<typeof
         period_end: invoice.period_end ? new Date(invoice.period_end * 1000).toISOString() : null,
         description,
       });
+      if (phErr2) console.error('[webhook] payment_history insert failed (invoice.paid):', phErr2.message);
 
       await supabase.from('stripe_customers')
         .update({ subscription_status: 'active' })
@@ -280,11 +282,12 @@ async function handleCoachEvent(event: Stripe.Event, supabase: ReturnType<typeof
       const { data: sc } = await supabase.from('stripe_customers')
         .select('coach_id, athlete_id').eq('stripe_customer_id', invoice.customer).maybeSingle();
 
-      await supabase.from('payment_history').insert({
+      const { error: phErr3 } = await supabase.from('payment_history').insert({
         stripe_customer_id: invoice.customer, coach_id: sc?.coach_id, athlete_id: sc?.athlete_id,
         amount: invoice.amount_due, currency: invoice.currency, status: 'failed',
         stripe_invoice_id: invoice.id,
       });
+      if (phErr3) console.error('[webhook] payment_history insert failed (invoice.payment_failed):', phErr3.message);
       await supabase.from('stripe_customers')
         .update({ subscription_status: 'past_due' })
         .eq('stripe_customer_id', invoice.customer);
@@ -336,7 +339,7 @@ async function handleCoachEvent(event: Stripe.Event, supabase: ReturnType<typeof
       }
 
       if (coachId && athleteId) {
-        await supabase.from('payment_history').insert({
+        const { error: phErr4 } = await supabase.from('payment_history').insert({
           stripe_customer_id: pi.customer,
           coach_id: coachId,
           athlete_id: athleteId,
@@ -345,6 +348,7 @@ async function handleCoachEvent(event: Stripe.Event, supabase: ReturnType<typeof
           status: 'succeeded',
           stripe_payment_intent_id: pi.id,
         });
+        if (phErr4) console.error('[webhook] payment_history insert failed (payment_intent.succeeded):', phErr4.message);
       }
       break;
     }
@@ -361,10 +365,11 @@ async function handlePlatformEvent(event: Stripe.Event, supabase: ReturnType<typ
       await supabase.from('platform_invoices')
         .update({ status: 'paid', paid_at: new Date().toISOString(), stripe_payment_intent_id: invoice.payment_intent })
         .eq('stripe_invoice_id', invoice.id);
-      await supabase.from('payment_history').insert({
+      const { error: phErr5 } = await supabase.from('payment_history').insert({
         coach_id: coachId, amount: invoice.amount_paid, currency: invoice.currency, status: 'succeeded',
         stripe_invoice_id: invoice.id, is_platform_payment: true, description: 'Abonnement AthleteFlow',
       });
+      if (phErr5) console.error('[webhook] payment_history insert failed (platform invoice.paid):', phErr5.message);
       await supabase.from('coach_profiles')
         .update({ is_blocked: false, blocked_at: null, blocked_reason: null })
         .eq('user_id', coachId);
@@ -375,10 +380,11 @@ async function handlePlatformEvent(event: Stripe.Event, supabase: ReturnType<typ
       const invoice = event.data.object as Stripe.Invoice;
       const coachId = invoice.metadata?.coach_id;
       if (!coachId) break;
-      await supabase.from('payment_history').insert({
+      const { error: phErr6 } = await supabase.from('payment_history').insert({
         coach_id: coachId, amount: invoice.amount_due, currency: invoice.currency, status: 'failed',
         stripe_invoice_id: invoice.id, is_platform_payment: true, description: 'Échec prélèvement plateforme',
       });
+      if (phErr6) console.error('[webhook] payment_history insert failed (platform invoice.payment_failed):', phErr6.message);
       break;
     }
 

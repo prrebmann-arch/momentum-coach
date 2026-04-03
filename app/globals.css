@@ -295,7 +295,7 @@ textarea.form-control {
   opacity: 0;
   transition: opacity var(--transition-base);
 }
-.card:hover { border-color: var(--primary-border); box-shadow: 0 8px 30px rgba(0,0,0,0.3), 0 0 20px rgba(179,8,8,0.08); transform: translateY(-3px); }
+.card:hover { border-color: var(--primary-border); box-shadow: var(--shadow-card-hover), 0 0 20px rgba(179,8,8,0.08); transform: translateY(-3px); }
 .card:hover::before { opacity: 1; }
 .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .card-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }

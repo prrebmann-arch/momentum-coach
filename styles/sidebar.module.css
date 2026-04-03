@@ -284,7 +284,7 @@
   .sidebar {
     transform: translateX(-100%);
     transition: transform 0.3s ease;
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-elevated);
   }
 
   .sidebarOpen {

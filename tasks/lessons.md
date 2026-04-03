@@ -59,3 +59,7 @@
 [2026-03-31] | Missing try/finally on async init = permanent loading screen | Every async function that sets loading=true MUST use try/finally to guarantee setLoading(false) runs. A single uncaught error in init() can leave the entire app stuck on "Chargement..." forever. Add a safety timeout in layout as defense-in-depth.
 
 [2026-03-31] | select('*') wastes bandwidth and slows queries | Always use explicit column lists in Supabase .select() calls. Reduces payload size significantly for tables with JSON/text columns (meals_data, exercices, etc.). Also add .limit() to any query that could return many rows.
+
+[2026-04-03] | nutrition_logs meals_log structure: each meal has `foods[]` (with status/original/replacement) and `extras[]` | When building features on nutrition_logs, foods have `status: 'followed'|'replaced'|'pending'`, `original` (plan food), and `replacement` (athlete's choice). Extras are foods added by athlete outside the plan.
+
+[2026-04-03] | payment_history table missing coach_id and currency columns — all webhook inserts failed silently | The stripe_migration.sql defined these columns but they were never applied to the live DB. Supabase returns HTTP 400 when inserting unknown columns, and the code did not check for errors. Always: (1) verify DB schema matches migration SQL after running it, (2) check `.error` on every Supabase insert, (3) never assume a migration was fully applied.

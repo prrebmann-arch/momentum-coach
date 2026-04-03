@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -51,6 +51,14 @@ interface DietGroup {
   ids: string[]
 }
 
+interface PendingChange {
+  planId: string
+  mealIndex: number
+  foodIndex: number
+  type: 'replace' | 'extra'
+  foodData: any
+}
+
 type View = 'list' | 'editor' | 'detail' | 'history'
 
 export default function NutritionPage() {
@@ -82,6 +90,12 @@ export default function NutritionPage() {
   const [nutriLogs, setNutriLogs] = useState<NutritionLog[]>([])
   const [histWeekOffset, setHistWeekOffset] = useState(0)
   const [histSelectedDate, setHistSelectedDate] = useState<string | null>(null)
+
+  // Accept changes state (group acceptations with a 10s timer)
+  const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([])
+  const [acceptCountdown, setAcceptCountdown] = useState(0)
+  const acceptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const loadPlans = useCallback(async () => {
     setLoading(true)
@@ -157,6 +171,179 @@ export default function NutritionPage() {
     const logs = ((logsByUser?.length ? logsByUser : logsByAthlete) || []) as NutritionLog[]
     setNutriLogs(logs)
   }, [athleteId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── ACCEPT CHANGES LOGIC ──
+
+  // Flush pending changes: create a new version of the plan with accepted modifications
+  const flushPendingChanges = useCallback(async (changes: PendingChange[]) => {
+    if (changes.length === 0) return
+
+    // Group changes by planId
+    const byPlan: Record<string, PendingChange[]> = {}
+    changes.forEach((c) => {
+      if (!byPlan[c.planId]) byPlan[c.planId] = []
+      byPlan[c.planId].push(c)
+    })
+
+    for (const [planId, planChanges] of Object.entries(byPlan)) {
+      // Fetch current plan
+      const { data: plan } = await supabase
+        .from('nutrition_plans')
+        .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, macro_only, meal_times')
+        .eq('id', planId)
+        .single()
+      if (!plan) continue
+
+      // Parse meals_data
+      let meals: any[] = []
+      try {
+        meals = typeof plan.meals_data === 'string' ? JSON.parse(plan.meals_data) : (plan.meals_data || [])
+      } catch { meals = [] }
+
+      // Normalize meals to { foods: [...] } format
+      meals = meals.map((m: any) => {
+        if (m && !Array.isArray(m) && m.foods) return m
+        return { foods: Array.isArray(m) ? m : [] }
+      })
+
+      // Apply changes
+      planChanges.forEach((change) => {
+        if (change.type === 'replace') {
+          // Replace the food at the given index with the replacement data
+          if (meals[change.mealIndex]?.foods?.[change.foodIndex]) {
+            const repl = change.foodData
+            meals[change.mealIndex].foods[change.foodIndex] = {
+              aliment: repl.aliment || repl.nom || '?',
+              qte: repl.qte || 0,
+              kcal: repl.kcal || 0,
+              p: repl.p || 0,
+              g: repl.g || 0,
+              l: repl.l || 0,
+            }
+          }
+        } else if (change.type === 'extra') {
+          // Add extra food to the meal
+          if (meals[change.mealIndex]) {
+            if (!meals[change.mealIndex].foods) meals[change.mealIndex].foods = []
+            const ex = change.foodData
+            meals[change.mealIndex].foods.push({
+              aliment: ex.aliment || ex.nom || '?',
+              qte: ex.qte || 0,
+              kcal: ex.kcal || 0,
+              p: ex.p || 0,
+              g: ex.g || 0,
+              l: ex.l || 0,
+            })
+          }
+        }
+      })
+
+      // Recalculate total macros from meals
+      let totalK = 0, totalP = 0, totalG = 0, totalL = 0
+      meals.forEach((m: any) => {
+        (m.foods || []).forEach((f: any) => {
+          totalK += parseFloat(f.kcal) || 0
+          totalP += parseFloat(f.p) || 0
+          totalG += parseFloat(f.g) || 0
+          totalL += parseFloat(f.l) || 0
+        })
+      })
+
+      // Create a new version of the plan (insert, not update)
+      const { error } = await supabase.from('nutrition_plans').insert({
+        nom: plan.nom,
+        athlete_id: plan.athlete_id,
+        coach_id: plan.coach_id || user?.id,
+        meal_type: plan.meal_type,
+        calories_objectif: Math.round(totalK),
+        proteines: Math.round(totalP),
+        glucides: Math.round(totalG),
+        lipides: Math.round(totalL),
+        meals_data: JSON.stringify(meals),
+        actif: plan.actif,
+        valid_from: new Date().toISOString().split('T')[0],
+        macro_only: plan.macro_only || false,
+        meal_times: plan.meal_times,
+      })
+
+      if (error) {
+        toast('Erreur creation version: ' + error.message, 'error')
+      } else {
+        // Deactivate old plan if new one is active
+        if (plan.actif) {
+          await supabase.from('nutrition_plans').update({ actif: false }).eq('id', planId)
+        }
+        toast('Nouvelle version de diete creee avec les changements acceptes', 'success')
+      }
+    }
+
+    // Reload plans
+    loadPlans()
+  }, [user?.id, loadPlans, toast]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function acceptChange(change: PendingChange) {
+    setPendingChanges((prev) => {
+      const next = [...prev, change]
+
+      // Clear existing timer
+      if (acceptTimerRef.current) clearTimeout(acceptTimerRef.current)
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current)
+
+      // Start 10s countdown
+      setAcceptCountdown(10)
+      countdownIntervalRef.current = setInterval(() => {
+        setAcceptCountdown((c) => {
+          if (c <= 1) {
+            if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current)
+            return 0
+          }
+          return c - 1
+        })
+      }, 1000)
+
+      // Flush after 10s
+      acceptTimerRef.current = setTimeout(() => {
+        if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current)
+        setAcceptCountdown(0)
+        setPendingChanges((current) => {
+          flushPendingChanges(current)
+          return []
+        })
+      }, 10000)
+
+      return next
+    })
+  }
+
+  function cancelPendingChanges() {
+    if (acceptTimerRef.current) clearTimeout(acceptTimerRef.current)
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current)
+    setPendingChanges([])
+    setAcceptCountdown(0)
+  }
+
+  function flushNow() {
+    if (acceptTimerRef.current) clearTimeout(acceptTimerRef.current)
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current)
+    setAcceptCountdown(0)
+    setPendingChanges((current) => {
+      flushPendingChanges(current)
+      return []
+    })
+  }
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (acceptTimerRef.current) clearTimeout(acceptTimerRef.current)
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current)
+    }
+  }, [])
+
+  // Check if a specific change is already pending
+  function isChangePending(planId: string, mealIndex: number, foodIndex: number, type: 'replace' | 'extra'): boolean {
+    return pendingChanges.some((c) => c.planId === planId && c.mealIndex === mealIndex && c.foodIndex === foodIndex && c.type === type)
+  }
 
   // Open editor for new diet
   function createNewDiet() {
@@ -544,6 +731,41 @@ export default function NutritionPage() {
               <span style={{ color: 'var(--danger)' }}><i className="fa-solid fa-times-circle" /> {skippedCount} sautes</span>
             </div>
 
+            {/* Pending changes banner */}
+            {pendingChanges.length > 0 && (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 14px', marginBottom: 12, borderRadius: 8,
+                background: 'var(--primary-light, rgba(231,76,60,0.08))', border: '1px solid var(--primary)',
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>
+                  <i className="fa-solid fa-clock" style={{ marginRight: 6 }} />
+                  {pendingChanges.length} changement{pendingChanges.length > 1 ? 's' : ''} en attente
+                  {acceptCountdown > 0 && (
+                    <span style={{ color: 'var(--text3)', fontWeight: 400, marginLeft: 6 }}>
+                      — application dans {acceptCountdown}s
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    className="btn btn-outline btn-sm"
+                    style={{ fontSize: 10, padding: '2px 10px' }}
+                    onClick={cancelPendingChanges}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    className="btn btn-red btn-sm"
+                    style={{ fontSize: 10, padding: '2px 10px' }}
+                    onClick={flushNow}
+                  >
+                    <i className="fa-solid fa-check" /> Appliquer maintenant
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Meal details */}
             {mealsLog.map((meal: any, mIdx: number) => {
               const mealLabel = meal?.meal_label || `Repas ${mIdx + 1}`
@@ -568,9 +790,27 @@ export default function NutritionPage() {
                         {f.status === 'replaced' && f.replacement && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0 4px 22px', fontSize: 11, color: '#f59e0b' }}>
                             <i className="fa-solid fa-arrow-right" />
-                            <span>{f.replacement.aliment || '?'}</span>
-                            <span>{f.replacement.qte || 0}g</span>
-                            <span>{Math.round(parseFloat(f.replacement.kcal) || 0)} kcal</span>
+                            <span style={{ flex: 1 }}>{f.replacement.aliment || '?'} {f.replacement.qte || 0}g — {Math.round(parseFloat(f.replacement.kcal) || 0)} kcal</span>
+                            {dayLog?.plan_id && !isChangePending(dayLog.plan_id, mIdx, fIdx, 'replace') && (
+                              <button
+                                className="btn btn-outline btn-sm"
+                                style={{ fontSize: 10, padding: '2px 8px', lineHeight: 1.4 }}
+                                onClick={() => acceptChange({
+                                  planId: dayLog.plan_id!,
+                                  mealIndex: mIdx,
+                                  foodIndex: fIdx,
+                                  type: 'replace',
+                                  foodData: f.replacement,
+                                })}
+                              >
+                                <i className="fa-solid fa-check" /> Accepter
+                              </button>
+                            )}
+                            {dayLog?.plan_id && isChangePending(dayLog.plan_id, mIdx, fIdx, 'replace') && (
+                              <span style={{ fontSize: 10, color: 'var(--success)', fontWeight: 600 }}>
+                                <i className="fa-solid fa-check-circle" /> Accepte
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>
@@ -587,6 +827,26 @@ export default function NutritionPage() {
                           <span style={{ flex: 1 }}>{ex.aliment || '?'}</span>
                           <span style={{ color: 'var(--text3)' }}>{ex.qte || 0}g</span>
                           <span style={{ fontWeight: 600 }}>{Math.round(parseFloat(ex.kcal) || 0)} kcal</span>
+                          {dayLog?.plan_id && !isChangePending(dayLog.plan_id, mIdx, exIdx, 'extra') && (
+                            <button
+                              className="btn btn-outline btn-sm"
+                              style={{ fontSize: 10, padding: '2px 8px', lineHeight: 1.4 }}
+                              onClick={() => acceptChange({
+                                planId: dayLog.plan_id!,
+                                mealIndex: mIdx,
+                                foodIndex: exIdx,
+                                type: 'extra',
+                                foodData: ex,
+                              })}
+                            >
+                              <i className="fa-solid fa-check" /> Accepter
+                            </button>
+                          )}
+                          {dayLog?.plan_id && isChangePending(dayLog.plan_id, mIdx, exIdx, 'extra') && (
+                            <span style={{ fontSize: 10, color: 'var(--success)', fontWeight: 600 }}>
+                              <i className="fa-solid fa-check-circle" /> Accepte
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>

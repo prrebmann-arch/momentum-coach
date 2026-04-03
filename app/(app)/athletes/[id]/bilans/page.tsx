@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useAthleteContext } from '@/contexts/AthleteContext'
 import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
+import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import BilanAccordion from '@/components/bilans/BilanAccordion'
 import PhotoCompare from '@/components/bilans/PhotoCompare'
 import EmptyState from '@/components/ui/EmptyState'
@@ -40,25 +41,46 @@ function BilanTraitePopupInline({
   const supabase = createClient()
   const [selectedChip, setSelectedChip] = useState(0)
   const [customMsg, setCustomMsg] = useState('')
+  const [loomUrl, setLoomUrl] = useState('')
+  const recorder = useAudioRecorder({
+    bucket: 'coach-audio',
+    pathPrefix: `${user?.id || 'unknown'}/bilan_${userId}_`,
+  })
 
   const handleSend = async () => {
     const msg = customMsg.trim() || (selectedChip >= 0 ? BILAN_TRAITE_MESSAGES[selectedChip] : '')
-    if (!msg) { toast('Ajoutez un message', 'error'); return }
-    const body = 'Ton bilan a ete verifie : ' + msg.charAt(0).toLowerCase() + msg.slice(1)
+    const hasAudio = !!recorder.audioUrl
+    const hasLoom = !!loomUrl.trim()
+
+    if (!msg && !hasAudio && !hasLoom) {
+      toast('Ajoutez un message, vocal ou lien Loom', 'error')
+      return
+    }
+
+    const finalMsg = msg || 'Bilan verifie'
+    const body = 'Ton bilan a ete verifie : ' + finalMsg.charAt(0).toLowerCase() + finalMsg.slice(1)
 
     await supabase.from('bilan_retours').insert({
       athlete_id: athleteId,
       coach_id: user?.id,
+      loom_url: hasLoom ? loomUrl.trim() : null,
       titre: 'Bilan traite',
-      commentaire: msg,
-      type: 'message',
+      commentaire: finalMsg,
+      audio_url: hasAudio ? recorder.audioUrl : null,
+      type: hasLoom ? (hasAudio ? 'mixed' : 'loom') : (hasAudio ? 'audio' : 'message'),
     })
 
-    await notifyAthlete(userId, 'bilan', 'Bilan traite', body)
+    const meta: Record<string, string> = {}
+    if (hasAudio && recorder.audioUrl) meta.audio_url = recorder.audioUrl
+    if (hasLoom) meta.loom_url = loomUrl.trim()
+
+    await notifyAthlete(userId, 'bilan', 'Bilan traite', body, meta)
 
     onClose()
     toast('Notification envoyee !', 'success')
   }
+
+  const formatTime = (secs: number) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`
 
   const s = styles
 
@@ -88,6 +110,64 @@ function BilanTraitePopupInline({
           <div className={s.btSectionLabel} style={{ marginTop: 16 }}><i className="fas fa-pen" /> Ou message libre</div>
           <input type="text" className={s.btInput} placeholder="Ecrivez votre message..."
             value={customMsg} onChange={(e) => { setCustomMsg(e.target.value); setSelectedChip(-1) }} />
+
+          <div className={s.btDivider} />
+
+          <div className={s.btExtras}>
+            <div className={s.btExtraItem}>
+              <div className={s.btSectionLabel} style={{ margin: 0 }}>
+                <i className="fas fa-video" /> Lien Loom
+              </div>
+              <input
+                type="url"
+                className={s.btInput}
+                placeholder="https://www.loom.com/share/..."
+                value={loomUrl}
+                onChange={(e) => setLoomUrl(e.target.value)}
+              />
+            </div>
+            <div className={s.btExtraItem}>
+              <div className={s.btSectionLabel} style={{ margin: 0 }}>
+                <i className="fas fa-microphone" /> Message vocal
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  className={s.btMicBtn}
+                  onClick={() => recorder.isRecording ? recorder.stopRecording() : recorder.startRecording()}
+                  disabled={recorder.uploading}
+                  style={recorder.isRecording ? { borderColor: 'var(--danger)' } : undefined}
+                >
+                  {recorder.uploading ? (
+                    <i className="fas fa-spinner fa-spin" />
+                  ) : recorder.isRecording ? (
+                    <>
+                      <i className="fas fa-stop" style={{ color: 'var(--danger)' }} />
+                      <span>{formatTime(recorder.seconds)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-microphone" />
+                      <span>Enregistrer</span>
+                    </>
+                  )}
+                </button>
+                {recorder.audioUrl && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+                    <audio controls src={recorder.audioUrl} style={{ height: 32, flex: 1 }} />
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={recorder.clearAudio}
+                      style={{ padding: '3px 6px', color: 'var(--danger)' }}
+                    >
+                      <i className="fas fa-trash" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
         <div className={s.btPopupFooter}>
           <button className="btn btn-outline btn-sm" onClick={onClose}>Annuler</button>
