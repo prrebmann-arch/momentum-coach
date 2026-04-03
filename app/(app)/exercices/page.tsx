@@ -232,6 +232,7 @@ export default function ExercicesPage() {
             title={viewMode === 'list' ? 'Vue grille' : 'Vue liste'}
           >
             <i className={`fa-solid ${viewMode === 'list' ? 'fa-grid-2' : 'fa-list'}`} />
+            {viewMode === 'list' ? 'Grille' : 'Liste'}
           </button>
           <Button onClick={handleAdd}>
             <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
