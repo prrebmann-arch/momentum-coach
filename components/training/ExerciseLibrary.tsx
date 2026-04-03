@@ -9,10 +9,12 @@ interface ExerciseDB {
   nom: string
   muscle_principal: string | null
   categorie: string | null
+  default_tempo: string | null
+  default_reps: string | null
 }
 
 interface ExerciseLibraryProps {
-  onAdd: (id: string, nom: string, muscle: string) => void
+  onAdd: (id: string, nom: string, muscle: string, defaultTempo?: string | null, defaultReps?: string | null) => void
 }
 
 export default function ExerciseLibrary({ onAdd }: ExerciseLibraryProps) {
@@ -28,7 +30,7 @@ export default function ExerciseLibrary({ onAdd }: ExerciseLibraryProps) {
     async function load() {
       const { data } = await supabase
         .from('exercices')
-        .select('id, nom, muscle_principal, categorie')
+        .select('id, nom, muscle_principal, categorie, default_tempo, default_reps')
         .order('nom')
       setExercises(data || [])
       setLoaded(true)
@@ -106,7 +108,7 @@ export default function ExerciseLibrary({ onAdd }: ExerciseLibraryProps) {
             <div
               key={ex.id}
               className={styles.trLibItem}
-              onClick={() => onAdd(ex.id, ex.nom, ex.muscle_principal || '')}
+              onClick={() => onAdd(ex.id, ex.nom, ex.muscle_principal || '', ex.default_tempo, ex.default_reps)}
             >
               <div className={styles.trLibIcon}>
                 <i className="fa-solid fa-dumbbell" />

@@ -17,6 +17,8 @@ interface Exercice {
   categorie: string | null
   description: string | null
   youtube_url: string | null
+  default_tempo: string | null
+  default_reps: string | null
   coach_id: string | null
   created_at: string
 }
@@ -28,6 +30,8 @@ type FormData = {
   categorie: string
   description: string
   youtube_url: string
+  default_tempo: string
+  default_reps: string
 }
 
 const EMPTY_FORM: FormData = {
@@ -37,7 +41,11 @@ const EMPTY_FORM: FormData = {
   categorie: '',
   description: '',
   youtube_url: '',
+  default_tempo: '',
+  default_reps: '',
 }
+
+const VIEW_STORAGE_KEY = 'exercices-view-mode'
 
 export default function ExercicesPage() {
   const supabase = createClient()
@@ -49,6 +57,14 @@ export default function ExercicesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [muscleFilter, setMuscleFilter] = useState('')
   const searchTimeout = useRef<NodeJS.Timeout | null>(null)
+
+  // View mode: list or grid
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem(VIEW_STORAGE_KEY) as 'list' | 'grid') || 'list'
+    }
+    return 'list'
+  })
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false)
@@ -63,13 +79,21 @@ export default function ExercicesPage() {
   // Video preview
   const [videoPreview, setVideoPreview] = useState<string | null>(null)
 
+  const toggleViewMode = useCallback(() => {
+    setViewMode((prev) => {
+      const next = prev === 'list' ? 'grid' : 'list'
+      localStorage.setItem(VIEW_STORAGE_KEY, next)
+      return next
+    })
+  }, [])
+
   const loadExercices = useCallback(async () => {
     if (!user) return
     setLoading(true)
     try {
       const { data } = await supabase
         .from('exercices')
-        .select('*')
+        .select('id, nom, muscle_principal, muscle_secondaire, categorie, description, youtube_url, default_tempo, default_reps, coach_id, created_at')
         .or(`coach_id.eq.${user.id},coach_id.is.null`)
         .order('nom')
       setExercices(data || [])
@@ -120,6 +144,8 @@ export default function ExercicesPage() {
       categorie: ex.categorie || '',
       description: ex.description || '',
       youtube_url: ex.youtube_url || '',
+      default_tempo: ex.default_tempo || '',
+      default_reps: ex.default_reps || '',
     })
     setModalOpen(true)
   }
@@ -145,6 +171,8 @@ export default function ExercicesPage() {
         categorie: form.categorie || null,
         description: form.description || null,
         youtube_url: form.youtube_url || null,
+        default_tempo: form.default_tempo || null,
+        default_reps: form.default_reps || null,
         coach_id: user.id,
       }
 
@@ -197,10 +225,19 @@ export default function ExercicesPage() {
           <h1 className={styles.pageTitle}>Exercices</h1>
           <p className={styles.pageSub}>{exercices.length} exercice{exercices.length > 1 ? 's' : ''} au total</p>
         </div>
-        <Button onClick={handleAdd}>
-          <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
-          Nouvel exercice
-        </Button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            className={styles.viewToggle}
+            onClick={toggleViewMode}
+            title={viewMode === 'list' ? 'Vue grille' : 'Vue liste'}
+          >
+            <i className={`fa-solid ${viewMode === 'list' ? 'fa-grid-2' : 'fa-list'}`} />
+          </button>
+          <Button onClick={handleAdd}>
+            <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
+            Nouvel exercice
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -256,7 +293,8 @@ export default function ExercicesPage() {
           {/* Results */}
           {filtered.length === 0 ? (
             <EmptyState icon="fa-solid fa-search" message="Aucun exercice ne correspond a votre recherche" />
-          ) : (
+          ) : viewMode === 'list' ? (
+            /* LIST VIEW */
             filtered.map((ex) => (
               <div key={ex.id} className={styles.exRow} onClick={() => handleEdit(ex)}>
                 <div className={styles.exRowLeft}>
@@ -302,6 +340,62 @@ export default function ExercicesPage() {
                 </div>
               </div>
             ))
+          ) : (
+            /* GRID VIEW */
+            <div className={styles.exGrid}>
+              {filtered.map((ex) => (
+                <div key={ex.id} className={styles.exCard} onClick={() => handleEdit(ex)}>
+                  <div className={styles.exCardHeader}>
+                    <span className={styles.exCardName}>{ex.nom}</span>
+                    {ex.youtube_url && (
+                      <button
+                        className={styles.exCardPlay}
+                        title="Voir la video"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setVideoPreview(ex.youtube_url!)
+                        }}
+                      >
+                        <i className="fa-solid fa-circle-play" />
+                      </button>
+                    )}
+                  </div>
+                  <div className={styles.exCardMeta}>
+                    {ex.muscle_principal && <span className={styles.exCardBadge}>{ex.muscle_principal}</span>}
+                    {ex.categorie && <span className={styles.exCardBadge}>{ex.categorie}</span>}
+                  </div>
+                  {(ex.default_reps || ex.default_tempo) && (
+                    <div className={styles.exCardDefaults}>
+                      {ex.default_reps && (
+                        <span className={styles.exCardDefaultBadge}>
+                          <i className="fa-solid fa-repeat" /> {ex.default_reps}
+                        </span>
+                      )}
+                      {ex.default_tempo && (
+                        <span className={styles.exCardDefaultBadge}>
+                          <i className="fa-solid fa-stopwatch" /> {ex.default_tempo}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <div className={styles.exCardFooter}>
+                    {ex.coach_id && <span className={styles.exTagPerso}>perso</span>}
+                    {ex.coach_id && (
+                      <button
+                        className="btn-icon"
+                        title="Supprimer"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeleteConfirm(ex.id)
+                        }}
+                      >
+                        <i className="fa-solid fa-trash" style={{ color: 'var(--danger)', fontSize: 12 }} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </>
       )}
@@ -356,6 +450,28 @@ export default function ExercicesPage() {
               placeholder="Ex: Presse, Tirage, Rowing..."
             />
           </FormGroup>
+          <div className={styles.editorRow}>
+            <FormGroup label="Reps par defaut" htmlFor="ex-default-reps">
+              <input
+                id="ex-default-reps"
+                type="text"
+                className="input"
+                value={form.default_reps}
+                onChange={(e) => handleFormChange('default_reps', e.target.value)}
+                placeholder="Ex: 10-15"
+              />
+            </FormGroup>
+            <FormGroup label="Tempo par defaut" htmlFor="ex-default-tempo">
+              <input
+                id="ex-default-tempo"
+                type="text"
+                className="input"
+                value={form.default_tempo}
+                onChange={(e) => handleFormChange('default_tempo', e.target.value)}
+                placeholder="Ex: 3-1-2-0"
+              />
+            </FormGroup>
+          </div>
           <FormGroup label="Description" htmlFor="ex-desc">
             <textarea
               id="ex-desc"

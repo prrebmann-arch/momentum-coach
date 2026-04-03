@@ -122,6 +122,122 @@
   margin-left: 8px;
 }
 
+/* View toggle */
+.viewToggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--text2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.15s;
+}
+.viewToggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Grid view */
+.exGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+@media (max-width: 900px) {
+  .exGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 550px) {
+  .exGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.exCard {
+  background: var(--bg2);
+  border: var(--card-border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.exCard:hover {
+  background: var(--bg3);
+  border-color: var(--text3);
+}
+.exCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.exCardName {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.3;
+}
+.exCardPlay {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.exCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.exCardBadge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--bg3);
+  color: var(--text3);
+}
+.exCardDefaults {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.exCardDefaultBadge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(var(--primary-rgb, 239, 68, 68), 0.1);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.exCardFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+}
+
+/* Editor row (side by side fields) */
+.editorRow {
+  display: flex;
+  gap: 12px;
+}
+.editorRow > * {
+  flex: 1;
+}
+
 /* Editor */
 .editorWrap {
   max-width: 600px;

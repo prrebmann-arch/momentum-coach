@@ -123,7 +123,13 @@ export default function ProgramEditor({
   }, [activeSession])
 
   // -- Exercise management --
-  const addExFromLibrary = useCallback((id: string, nom: string, muscle: string) => {
+  const addExFromLibrary = useCallback((id: string, nom: string, muscle: string, defaultTempo?: string | null, defaultReps?: string | null) => {
+    const setTemplate: SetData = {
+      reps: defaultReps || DEFAULT_SET.reps,
+      tempo: defaultTempo || DEFAULT_SET.tempo,
+      repos: DEFAULT_SET.repos,
+      type: 'normal',
+    }
     setSessions((prev) => prev.map((s, i) => {
       if (i !== activeSession) return s
       return {
@@ -135,9 +141,9 @@ export default function ProgramEditor({
             exercice_id: id,
             muscle_principal: muscle,
             sets: [
-              { ...DEFAULT_SET },
-              { ...DEFAULT_SET },
-              { ...DEFAULT_SET },
+              { ...setTemplate },
+              { ...setTemplate },
+              { ...setTemplate },
             ],
           },
         ],
