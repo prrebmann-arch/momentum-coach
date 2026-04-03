@@ -20,7 +20,7 @@ export async function notifyAthlete(
     type,
     title,
     body,
-    meta: metadata,
+    metadata,
   })
 
   // 2. Push notification (Expo)
