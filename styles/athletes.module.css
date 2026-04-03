@@ -430,7 +430,212 @@
 .obAnswerQ { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
 .obAnswerA { font-size: 13px; font-weight: 600; color: var(--text); }
 
-/* ===== FORM EXTRAS ===== */
+/* ===== ADD ATHLETE FORM ===== */
+.addForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 4px;
+}
+.formSection {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.formSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.formSectionIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.formSectionIconIdentity {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--info);
+}
+.formSectionIconOnboarding {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--success);
+}
+.formSectionIconPayment {
+  background: rgba(179, 8, 8, 0.12);
+  color: var(--primary);
+}
+.formSectionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.formSectionSubtitle {
+  font-size: 12px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+.formGrid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* Payment toggle cards */
+.payToggleGroup {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.payToggleCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 16px;
+  border-radius: 14px;
+  border: 2px solid var(--border);
+  background: var(--bg3);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.payToggleCard:hover {
+  border-color: var(--hover-border-strong);
+  background: var(--hover-bg-strong);
+}
+.payToggleCardActive {
+  border-color: var(--primary);
+  background: rgba(179, 8, 8, 0.08);
+  box-shadow: 0 0 0 1px var(--primary), 0 4px 16px rgba(179, 8, 8, 0.12);
+}
+.payToggleCardActive::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--primary);
+}
+.payToggleIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: all 0.2s;
+}
+.payToggleIconFree {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--success);
+}
+.payToggleIconPaid {
+  background: rgba(179, 8, 8, 0.12);
+  color: var(--primary);
+}
+.payToggleCardActive .payToggleIconFree {
+  background: rgba(34, 197, 94, 0.2);
+}
+.payToggleCardActive .payToggleIconPaid {
+  background: rgba(179, 8, 8, 0.2);
+}
+.payToggleLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.payToggleDesc {
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.4;
+}
+.payToggleCard input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Payment details sub-card */
+.payDetailsCard {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.payDetailsTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.payHint {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* Submit button full width */
+.formSubmitBtn {
+  width: 100%;
+  padding: 14px 24px;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  background: var(--primary);
+  color: white;
+  font-family: 'Inter', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 2px 12px rgba(179, 8, 8, 0.2);
+  margin-top: 4px;
+}
+.formSubmitBtn:hover {
+  background: var(--primary-light);
+  box-shadow: 0 4px 20px rgba(179, 8, 8, 0.4), var(--red-glow);
+  transform: translateY(-1px);
+}
+.formSubmitBtn:active {
+  transform: translateY(0) scale(0.98);
+}
+.formSubmitBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 520px) {
+  .formGrid2 { grid-template-columns: 1fr; }
+  .payToggleGroup { grid-template-columns: 1fr; }
+  .formSection { padding: 18px; }
+}
+
+/* Legacy compat — keep old classes for anything else using them */
 .paymentSection {
   border-top: 1px solid var(--border);
   margin-top: 16px;

@@ -289,94 +289,140 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
   return (
     <>
       <Modal isOpen={isOpen} onClose={onClose} title="Ajouter un athlete" size="lg">
-        <form onSubmit={handleSubmit} style={{ padding: '0 20px 20px' }}>
-          <div className="form-row">
-            <FormGroup label="Prenom" htmlFor="add-prenom">
+        <form onSubmit={handleSubmit} className={styles.addForm}>
+
+          {/* ── Section: Identite ── */}
+          <div className={styles.formSection}>
+            <div className={styles.formSectionHeader}>
+              <div className={`${styles.formSectionIcon} ${styles.formSectionIconIdentity}`}>
+                <i className="fa-solid fa-user" />
+              </div>
+              <div>
+                <div className={styles.formSectionTitle}>Identite</div>
+                <div className={styles.formSectionSubtitle}>Informations de base de l&apos;athlete</div>
+              </div>
+            </div>
+
+            <div className={styles.formGrid2}>
+              <FormGroup label="Prenom" htmlFor="add-prenom">
+                <input
+                  id="add-prenom"
+                  type="text"
+                  value={prenom}
+                  onChange={(e) => setPrenom(e.target.value)}
+                  placeholder="Jean"
+                  required
+                />
+              </FormGroup>
+              <FormGroup label="Nom" htmlFor="add-nom">
+                <input
+                  id="add-nom"
+                  type="text"
+                  value={nom}
+                  onChange={(e) => setNom(e.target.value)}
+                  placeholder="Dupont"
+                  required
+                />
+              </FormGroup>
+            </div>
+
+            <FormGroup label="Email" htmlFor="add-email">
               <input
-                id="add-prenom"
-                type="text"
-                value={prenom}
-                onChange={(e) => setPrenom(e.target.value)}
-                required
-              />
-            </FormGroup>
-            <FormGroup label="Nom" htmlFor="add-nom">
-              <input
-                id="add-nom"
-                type="text"
-                value={nom}
-                onChange={(e) => setNom(e.target.value)}
+                id="add-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="jean.dupont@email.com"
                 required
               />
             </FormGroup>
           </div>
 
-          <FormGroup label="Email" htmlFor="add-email">
-            <input
-              id="add-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </FormGroup>
-
+          {/* ── Section: Onboarding ── */}
           {workflows.length > 0 && (
-            <FormGroup label="Parcours d'onboarding" htmlFor="add-workflow">
-              <select
-                id="add-workflow"
-                value={selectedWorkflow}
-                onChange={(e) => setSelectedWorkflow(e.target.value)}
-              >
-                <option value="">&mdash; Aucun &mdash;</option>
-                {workflows.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name}
-                  </option>
-                ))}
-              </select>
-            </FormGroup>
+            <div className={styles.formSection}>
+              <div className={styles.formSectionHeader}>
+                <div className={`${styles.formSectionIcon} ${styles.formSectionIconOnboarding}`}>
+                  <i className="fa-solid fa-route" />
+                </div>
+                <div>
+                  <div className={styles.formSectionTitle}>Parcours</div>
+                  <div className={styles.formSectionSubtitle}>Assigner un parcours d&apos;onboarding</div>
+                </div>
+              </div>
+
+              <FormGroup label="Parcours d'onboarding" htmlFor="add-workflow">
+                <select
+                  id="add-workflow"
+                  value={selectedWorkflow}
+                  onChange={(e) => setSelectedWorkflow(e.target.value)}
+                >
+                  <option value="">&mdash; Aucun &mdash;</option>
+                  {workflows.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+              </FormGroup>
+            </div>
           )}
 
-          {/* Payment section */}
-          <div className={styles.paymentSection}>
-            <h3 className={styles.paymentTitle}>
-              <i className="fa-solid fa-credit-card" style={{ marginRight: 6 }} />
-              Paiement
-            </h3>
-
-            <FormGroup label="Type">
-              <div className={styles.payTypeGroup}>
-                <label
-                  className={`${styles.payTypeLabel} ${paymentType === 'free' ? styles.payTypeLabelActive : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name="pay-type"
-                    checked={paymentType === 'free'}
-                    onChange={() => setPaymentType('free')}
-                    style={{ appearance: 'auto', width: 16, height: 16, accentColor: 'var(--primary)' }}
-                  />
-                  Gratuit
-                </label>
-                <label
-                  className={`${styles.payTypeLabel} ${paymentType === 'paid' ? styles.payTypeLabelActive : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name="pay-type"
-                    checked={paymentType === 'paid'}
-                    onChange={() => setPaymentType('paid')}
-                    style={{ appearance: 'auto', width: 16, height: 16, accentColor: 'var(--primary)' }}
-                  />
-                  Payant
-                </label>
+          {/* ── Section: Paiement ── */}
+          <div className={styles.formSection}>
+            <div className={styles.formSectionHeader}>
+              <div className={`${styles.formSectionIcon} ${styles.formSectionIconPayment}`}>
+                <i className="fa-solid fa-credit-card" />
               </div>
-            </FormGroup>
+              <div>
+                <div className={styles.formSectionTitle}>Paiement</div>
+                <div className={styles.formSectionSubtitle}>Definir la formule tarifaire</div>
+              </div>
+            </div>
 
+            {/* Toggle cards: Gratuit / Payant */}
+            <div className={styles.payToggleGroup}>
+              <label
+                className={`${styles.payToggleCard} ${paymentType === 'free' ? styles.payToggleCardActive : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="pay-type"
+                  checked={paymentType === 'free'}
+                  onChange={() => setPaymentType('free')}
+                />
+                <div className={`${styles.payToggleIcon} ${styles.payToggleIconFree}`}>
+                  <i className="fa-solid fa-gift" />
+                </div>
+                <span className={styles.payToggleLabel}>Gratuit</span>
+                <span className={styles.payToggleDesc}>Pas de facturation</span>
+              </label>
+              <label
+                className={`${styles.payToggleCard} ${paymentType === 'paid' ? styles.payToggleCardActive : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="pay-type"
+                  checked={paymentType === 'paid'}
+                  onChange={() => setPaymentType('paid')}
+                />
+                <div className={`${styles.payToggleIcon} ${styles.payToggleIconPaid}`}>
+                  <i className="fa-solid fa-coins" />
+                </div>
+                <span className={styles.payToggleLabel}>Payant</span>
+                <span className={styles.payToggleDesc}>Paiement recurrent via Stripe</span>
+              </label>
+            </div>
+
+            {/* Payment details */}
             {paymentType === 'paid' && (
-              <>
-                <div className="form-row">
+              <div className={styles.payDetailsCard}>
+                <div className={styles.payDetailsTitle}>
+                  <i className="fa-solid fa-sliders" />
+                  Details du paiement
+                </div>
+
+                <div className={styles.formGrid2}>
                   <FormGroup label="Montant (EUR)" htmlFor="add-amount">
                     <input
                       id="add-amount"
@@ -402,8 +448,8 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
                   </FormGroup>
                 </div>
 
-                <div className="form-row">
-                  <FormGroup label="Tous les" htmlFor="add-interval">
+                <div className={styles.formGrid2}>
+                  <FormGroup label="Tous les (intervalles)" htmlFor="add-interval">
                     <input
                       id="add-interval"
                       type="number"
@@ -426,7 +472,7 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
                 </div>
 
                 {payDuration === 'limited' && (
-                  <FormGroup label="Nombre de paiements" htmlFor="add-total">
+                  <FormGroup label="Nombre total de paiements" htmlFor="add-total">
                     <input
                       id="add-total"
                       type="number"
@@ -438,16 +484,17 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
                   </FormGroup>
                 )}
 
-                <div className="form-row">
+                <div className={styles.formGrid2}>
                   <FormGroup label="Engagement (mois)" htmlFor="add-engagement">
                     <input
                       id="add-engagement"
                       type="number"
                       min="0"
-                      placeholder="0 = sans"
+                      placeholder="0 = sans engagement"
                       value={engagementMonths}
                       onChange={(e) => setEngagementMonths(e.target.value)}
                     />
+                    <span className={styles.payHint}>0 = pas d&apos;engagement</span>
                   </FormGroup>
                   <FormGroup label="Date de prelevement" htmlFor="add-billing">
                     <select
@@ -455,7 +502,7 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
                       value={billingAnchor}
                       onChange={(e) => setBillingAnchor(e.target.value as 'anniversary' | 'fixed')}
                     >
-                      <option value="anniversary">Date anniversaire (inscription)</option>
+                      <option value="anniversary">Date anniversaire</option>
                       <option value="fixed">Date fixe du mois</option>
                     </select>
                   </FormGroup>
@@ -472,21 +519,25 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
                       value={billingDay}
                       onChange={(e) => setBillingDay(e.target.value)}
                     />
-                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>Entre 1 et 28</span>
+                    <span className={styles.payHint}>Entre 1 et 28</span>
                   </FormGroup>
                 )}
-              </>
+              </div>
             )}
           </div>
 
-          <button type="submit" className="btn btn-red" disabled={submitting} style={{ marginTop: 16 }}>
+          {/* ── Submit ── */}
+          <button type="submit" className={styles.formSubmitBtn} disabled={submitting}>
             {submitting ? (
               <>
-                <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: 6 }} />
+                <i className="fa-solid fa-spinner fa-spin" />
                 Ajout en cours...
               </>
             ) : (
-              "Ajouter l'athlete"
+              <>
+                <i className="fa-solid fa-user-plus" />
+                Ajouter l&apos;athlete
+              </>
             )}
           </button>
         </form>
