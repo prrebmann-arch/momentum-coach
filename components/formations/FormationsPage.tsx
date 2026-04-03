@@ -486,7 +486,7 @@ export default function FormationsPage() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Formations</h1>
-        <Button variant="primary" onClick={openCreateModal}>
+        <Button variant="primary" size="sm" onClick={openCreateModal}>
           <i className="fas fa-plus" /> Nouvelle formation
         </Button>
       </div>
