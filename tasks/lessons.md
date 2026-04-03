@@ -63,3 +63,5 @@
 [2026-04-03] | nutrition_logs meals_log structure: each meal has `foods[]` (with status/original/replacement) and `extras[]` | When building features on nutrition_logs, foods have `status: 'followed'|'replaced'|'pending'`, `original` (plan food), and `replacement` (athlete's choice). Extras are foods added by athlete outside the plan.
 
 [2026-04-03] | payment_history table missing coach_id and currency columns — all webhook inserts failed silently | The stripe_migration.sql defined these columns but they were never applied to the live DB. Supabase returns HTTP 400 when inserting unknown columns, and the code did not check for errors. Always: (1) verify DB schema matches migration SQL after running it, (2) check `.error` on every Supabase insert, (3) never assume a migration was fully applied.
+
+[2026-04-03] | Hardcoded athlete objective badge instead of dynamic roadmap phase | The infos page header badge showed `athletes.objectif` (static field) instead of querying `roadmap_phases` with `status='en_cours'`. Always prefer live roadmap data over static athlete fields for current phase display.

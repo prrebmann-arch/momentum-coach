@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -90,6 +90,9 @@ export default function NutritionPage() {
   const [nutriLogs, setNutriLogs] = useState<NutritionLog[]>([])
   const [histWeekOffset, setHistWeekOffset] = useState(0)
   const [histSelectedDate, setHistSelectedDate] = useState<string | null>(null)
+
+  // Versions expand state
+  const [expandedVersions, setExpandedVersions] = useState<string | null>(null)
 
   // Accept changes state (group acceptations with a 10s timer)
   const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([])
@@ -915,64 +918,106 @@ export default function NutritionPage() {
                 const tMacro = d.tPlan ? `P:${d.tPlan.proteines || 0} G:${d.tPlan.glucides || 0} L:${d.tPlan.lipides || 0}` : ''
                 const rMacro = d.rPlan ? `P:${d.rPlan.proteines || 0} G:${d.rPlan.glucides || 0} L:${d.rPlan.lipides || 0}` : ''
 
+                // Get all versions for this diet sorted by date (newest first)
+                const allVersions = plans.filter((p) => (p.nom || 'Diete') === d.name).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+                const isExpanded = expandedVersions === d.name
+
                 return (
-                  <tr
-                    key={idx}
-                    className={`${styles.dietTr} ${d.isActive ? styles.dietTrActive : ''}`}
-                    onClick={() => viewDiet(d.tPlan, d.rPlan)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontWeight: 700, color: 'var(--text)' }}>{d.name}</span>
-                        {d.isActive && (
-                          <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: 'var(--primary)', color: '#fff', fontWeight: 700 }}>ACTIF</span>
+                  <React.Fragment key={idx}>
+                    <tr
+                      className={`${styles.dietTr} ${d.isActive ? styles.dietTrActive : ''}`}
+                      onClick={() => viewDiet(d.tPlan, d.rPlan)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontWeight: 700, color: 'var(--text)' }}>{d.name}</span>
+                          {d.isActive && (
+                            <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: 'var(--primary)', color: '#fff', fontWeight: 700 }}>ACTIF</span>
+                          )}
+                        </div>
+                        {d.versionCount > 1 && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setExpandedVersions(isExpanded ? null : d.name) }}
+                            style={{ fontSize: 10, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 4 }}
+                          >
+                            <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'}`} style={{ fontSize: 8 }} />
+                            {d.versionCount} versions
+                          </button>
                         )}
-                      </div>
-                      {d.versionCount > 1 && (
-                        <span style={{ fontSize: 10, color: 'var(--text3)' }}>{d.versionCount} versions</span>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {tK !== null ? (
-                        <>
-                          <div style={{ fontWeight: 700, color: 'var(--text)' }}>{tK.toLocaleString('fr-FR')}</div>
-                          <div style={{ fontSize: 10, color: 'var(--text3)' }}>{tMacro}</div>
-                        </>
-                      ) : <span style={{ color: 'var(--text3)' }}>—</span>}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      {rK !== null ? (
-                        <>
-                          <div style={{ fontWeight: 700, color: 'var(--text)' }}>{rK.toLocaleString('fr-FR')}</div>
-                          <div style={{ fontSize: 10, color: 'var(--text3)' }}>{rMacro}</div>
-                        </>
-                      ) : <span style={{ color: 'var(--text3)' }}>—</span>}
-                    </td>
-                    <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                      <Toggle
-                        checked={d.isActive}
-                        onChange={(checked) => toggleActive(checked, d.tPlan?.id || null, d.rPlan?.id || null)}
-                      />
-                    </td>
-                    <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <button
-                        className={styles.dietBtn}
-                        onClick={() => editDiet(d.tPlan?.id || null, d.rPlan?.id || null)}
-                        title="Modifier"
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {tK !== null ? (
+                          <>
+                            <div style={{ fontWeight: 700, color: 'var(--text)' }}>{tK.toLocaleString('fr-FR')}</div>
+                            <div style={{ fontSize: 10, color: 'var(--text3)' }}>{tMacro}</div>
+                          </>
+                        ) : <span style={{ color: 'var(--text3)' }}>--</span>}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {rK !== null ? (
+                          <>
+                            <div style={{ fontWeight: 700, color: 'var(--text)' }}>{rK.toLocaleString('fr-FR')}</div>
+                            <div style={{ fontSize: 10, color: 'var(--text3)' }}>{rMacro}</div>
+                          </>
+                        ) : <span style={{ color: 'var(--text3)' }}>--</span>}
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                        <Toggle
+                          checked={d.isActive}
+                          onChange={(checked) => toggleActive(checked, d.tPlan?.id || null, d.rPlan?.id || null)}
+                        />
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button
+                          className={styles.dietBtn}
+                          onClick={() => editDiet(d.tPlan?.id || null, d.rPlan?.id || null)}
+                          title="Modifier"
+                        >
+                          <i className="fa-solid fa-pen" />
+                        </button>
+                        <button
+                          className={`${styles.dietBtn} ${styles.dietBtnDel}`}
+                          onClick={() => deleteDiet(d)}
+                          title="Supprimer"
+                          style={{ marginLeft: 4 }}
+                        >
+                          <i className="fa-solid fa-trash" />
+                        </button>
+                      </td>
+                    </tr>
+                    {isExpanded && allVersions.map((v, vi) => (
+                      <tr
+                        key={`ver-${v.id}`}
+                        style={{ cursor: 'pointer', background: vi === 0 ? 'rgba(179,8,8,0.03)' : 'transparent' }}
+                        onClick={() => {
+                          // Find the matching pair (training/rest) for this version date
+                          const pairT = allVersions.find((p) => p.created_at === v.created_at && (p.meal_type === 'training' || p.meal_type === 'entrainement')) || null
+                          const pairR = allVersions.find((p) => p.created_at === v.created_at && (p.meal_type === 'rest' || p.meal_type === 'repos')) || null
+                          viewDiet(pairT, pairR || v)
+                        }}
                       >
-                        <i className="fa-solid fa-pen" />
-                      </button>
-                      <button
-                        className={`${styles.dietBtn} ${styles.dietBtnDel}`}
-                        onClick={() => deleteDiet(d)}
-                        title="Supprimer"
-                        style={{ marginLeft: 4 }}
-                      >
-                        <i className="fa-solid fa-trash" />
-                      </button>
-                    </td>
-                  </tr>
+                        <td style={{ paddingLeft: 28 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <i className="fa-solid fa-code-branch" style={{ fontSize: 10, color: 'var(--text3)' }} />
+                            <span style={{ fontSize: 12, color: 'var(--text2)' }}>
+                              {v.created_at ? new Date(v.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Date inconnue'}
+                            </span>
+                            {v.actif && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 6, background: 'var(--primary)', color: '#fff', fontWeight: 700 }}>ACTIF</span>}
+                            <span style={{ fontSize: 10, color: 'var(--text3)' }}>{v.meal_type === 'training' || v.meal_type === 'entrainement' ? 'ON' : 'OFF'}</span>
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'right', fontSize: 12, color: 'var(--text2)' }}>
+                          {v.calories_objectif ? v.calories_objectif.toLocaleString('fr-FR') : '--'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontSize: 10, color: 'var(--text3)' }}>
+                          P:{v.proteines || 0} G:{v.glucides || 0} L:{v.lipides || 0}
+                        </td>
+                        <td />
+                        <td />
+                      </tr>
+                    ))}
+                  </React.Fragment>
                 )
               })}
             </tbody>

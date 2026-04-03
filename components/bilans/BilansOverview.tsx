@@ -72,7 +72,7 @@ function BilanTraitePopup({
   const { toast } = useToast()
   const supabase = createClient()
 
-  const [selectedChip, setSelectedChip] = useState(0)
+  const [selectedChip, setSelectedChip] = useState(-1)
   const [customMsg, setCustomMsg] = useState('')
   const [loomUrl, setLoomUrl] = useState('')
   const recorder = useAudioRecorder({

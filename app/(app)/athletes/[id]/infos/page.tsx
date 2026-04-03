@@ -67,6 +67,7 @@ export default function InfosPage() {
   const [athlete, setAthlete] = useState<any>(null)
   const [editingCard, setEditingCard] = useState<string | null>(null)
   const [formData, setFormData] = useState<Record<string, any>>({})
+  const [activePhase, setActivePhase] = useState<any>(null)
 
   // Payment state
   const [paymentPlan, setPaymentPlan] = useState<any>(null)
@@ -93,6 +94,16 @@ export default function InfosPage() {
         setPaymentPlan(plan)
         setPaymentHistory(payments || [])
         setCancelRequests(cancels || [])
+
+        // Load active roadmap phase
+        const { data: phaseData } = await supabase
+          .from('roadmap_phases')
+          .select('id, phase, name, status')
+          .eq('athlete_id', params.id)
+          .eq('status', 'en_cours')
+          .order('position')
+          .limit(1)
+        setActivePhase(phaseData?.[0] || null)
 
         // Load onboarding
         let ob: any = null
@@ -606,7 +617,11 @@ export default function InfosPage() {
           <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>{a.prenom} {a.nom}</div>
           <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 3 }}>{a.email || ''}</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            {a.objectif && <span style={{ fontSize: 11, fontWeight: 600, background: 'rgba(179,8,8,0.1)', color: 'var(--primary)', padding: '3px 10px', borderRadius: 6 }}>{OBJECTIF_LABELS[a.objectif] || a.objectif}</span>}
+            {activePhase ? (
+              <span style={{ fontSize: 11, fontWeight: 600, background: 'rgba(179,8,8,0.1)', color: 'var(--primary)', padding: '3px 10px', borderRadius: 6 }}>{activePhase.name || OBJECTIF_LABELS[activePhase.phase] || activePhase.phase}</span>
+            ) : a.objectif ? (
+              <span style={{ fontSize: 11, fontWeight: 600, background: 'rgba(179,8,8,0.1)', color: 'var(--primary)', padding: '3px 10px', borderRadius: 6 }}>{OBJECTIF_LABELS[a.objectif] || a.objectif}</span>
+            ) : null}
             {a.poids_actuel && <span style={{ fontSize: 11, fontWeight: 600, background: 'var(--tint-medium, rgba(255,255,255,0.06))', color: 'var(--text2)', padding: '3px 10px', borderRadius: 6 }}>{a.poids_actuel} kg</span>}
           </div>
         </div>

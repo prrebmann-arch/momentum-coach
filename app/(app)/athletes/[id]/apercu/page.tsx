@@ -201,13 +201,15 @@ export default function ApercuPage() {
 
   const dayLabels = last7.map((d) => d.day)
 
-  function renderMiniBar(values: number[], maxVal: number, colorFn: (v: number) => string) {
+  function renderMiniBar(values: number[], maxVal: number, colorFn: (v: number) => string, formatFn?: (v: number) => string) {
     return (
       <div className={styles.miniBar}>
         {values.map((val, i) => {
           const h = Math.max(4, (val / Math.max(maxVal, 1)) * 60)
+          const label = formatFn ? formatFn(val) : String(val)
           return (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, flex: 1 }}>
+            <div key={i} className={styles.miniBarCol}>
+              {val > 0 && <div className={styles.miniBarTooltip}>{label}</div>}
               <div style={{ height: 60, display: 'flex', alignItems: 'flex-end', width: '100%' }}>
                 <div style={{ width: '100%', height: h, background: colorFn(val), borderRadius: '3px 3px 0 0', opacity: val ? 1 : 0.2 }} />
               </div>
@@ -273,18 +275,18 @@ export default function ApercuPage() {
         <div className={styles.chartsRow}>
           <div className={styles.chartCard}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><i className="fas fa-shoe-prints" style={{ color: '#3b82f6', fontSize: 11 }} /> PAS (7J)</div>
-            {renderMiniBar(stepsValues, stepsMax, (v) => v >= stepsTarget ? 'var(--success)' : 'var(--primary)')}
+            {renderMiniBar(stepsValues, stepsMax, (v) => v >= stepsTarget ? 'var(--success)' : 'var(--primary)', (v) => v.toLocaleString('fr-FR') + ' pas')}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text2)', marginTop: 8 }}>
               <span>{daysReached}/7 objectifs</span><span>Moy: {avgSteps.toLocaleString('fr-FR')}</span>
             </div>
           </div>
           <div className={styles.chartCard}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><i className="fas fa-moon" style={{ color: sleepColor, fontSize: 11 }} /> SOMMEIL (7J)</div>
-            {renderMiniBar(last7.map((d) => d.report?.sleep_quality ?? 0), 10, (v) => v >= 7 ? 'var(--success)' : v >= 5 ? 'var(--warning)' : v > 0 ? 'var(--danger)' : 'var(--bg4)')}
+            {renderMiniBar(last7.map((d) => d.report?.sleep_quality ?? 0), 10, (v) => v >= 7 ? 'var(--success)' : v >= 5 ? 'var(--warning)' : v > 0 ? 'var(--danger)' : 'var(--bg4)', (v) => v + '/10')}
           </div>
           <div className={styles.chartCard}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><i className="fas fa-tint" style={{ color: '#3b82f6', fontSize: 11 }} /> EAU (7J)</div>
-            {renderMiniBar(last7.map((d) => trackingMap[d.date]?.water_ml ?? 0), waterGoal, (v) => v >= waterGoal ? 'var(--success)' : '#3b82f6')}
+            {renderMiniBar(last7.map((d) => trackingMap[d.date]?.water_ml ?? 0), waterGoal, (v) => v >= waterGoal ? 'var(--success)' : '#3b82f6', (v) => (v / 1000).toFixed(1) + ' L')}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text2)', marginTop: 8 }}>
               <span>{daysWaterReached}/7 objectifs</span><span>Obj: {(waterGoal / 1000).toFixed(1)}L</span>
             </div>
