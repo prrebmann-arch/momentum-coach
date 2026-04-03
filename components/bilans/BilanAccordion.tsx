@@ -555,51 +555,7 @@ export default function BilanAccordion({
                 </div>
               )}
 
-              {/* Mensuration summary + charts */}
-              {hasMensWeek && (
-                <>
-                  <div className={styles.mens}>
-                    {w.belly !== null && (
-                      <div className={styles.mensItem}>
-                        <span className={styles.mensLabel}><i className="fas fa-ruler-horizontal" style={{ color: '#E85D04', marginRight: 4 }} />Ventre</span>
-                        <span className={styles.mensVal}>{w.belly} cm</span>
-                        {deltaBelly !== null && (
-                          <span style={{ fontSize: 11, color: deltaBelly < 0 ? 'var(--success)' : deltaBelly > 0 ? 'var(--danger)' : 'var(--text3)' }}>
-                            {deltaBelly > 0 ? '+' : ''}{deltaBelly}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {w.hip !== null && (
-                      <div className={styles.mensItem}>
-                        <span className={styles.mensLabel}><i className="fas fa-ruler-combined" style={{ color: '#7209B7', marginRight: 4 }} />Hanches</span>
-                        <span className={styles.mensVal}>{w.hip} cm</span>
-                        {deltaHip !== null && (
-                          <span style={{ fontSize: 11, color: deltaHip < 0 ? 'var(--success)' : deltaHip > 0 ? 'var(--danger)' : 'var(--text3)' }}>
-                            {deltaHip > 0 ? '+' : ''}{deltaHip}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {w.thigh !== null && (
-                      <div className={styles.mensItem}>
-                        <span className={styles.mensLabel}><i className="fas fa-ruler" style={{ color: '#0096C7', marginRight: 4 }} />Cuisses</span>
-                        <span className={styles.mensVal}>{w.thigh} cm</span>
-                        {deltaThigh !== null && (
-                          <span style={{ fontSize: 11, color: deltaThigh < 0 ? 'var(--success)' : deltaThigh > 0 ? 'var(--danger)' : 'var(--text3)' }}>
-                            {deltaThigh > 0 ? '+' : ''}{deltaThigh}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <MensurationCharts
-                    bilans={bilans}
-                    upToDate={sorted[sorted.length - 1]?.date || w.key}
-                    suffix={w.key.replace(/-/g, '') + '_wk'}
-                  />
-                </>
-              )}
+              {/* Mensurations shown in daily detail expandable only */}
 
               {/* Daily detail table */}
               <div className={styles.daysTable}>
