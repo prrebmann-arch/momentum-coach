@@ -987,11 +987,12 @@ export default function NutritionPage() {
                       </td>
                     </tr>
                     {isExpanded && (() => {
-                      // Group versions by created_at date (pair ON/OFF together)
-                      const versionDates = [...new Set(allVersions.map(v => v.created_at || ''))].filter(Boolean).sort((a, b) => b.localeCompare(a))
-                      return versionDates.map((dateStr, vi) => {
-                        const vT = allVersions.find(p => p.created_at === dateStr && (p.meal_type === 'training' || p.meal_type === 'entrainement')) || null
-                        const vR = allVersions.find(p => p.created_at === dateStr && (p.meal_type === 'rest' || p.meal_type === 'repos')) || null
+                      // Group versions by date (day only, not full timestamp) to pair ON/OFF
+                      const toDay = (s: string) => s.slice(0, 10) // '2026-04-04T...' → '2026-04-04'
+                      const versionDays = [...new Set(allVersions.map(v => toDay(v.created_at || '')))].filter(Boolean).sort((a, b) => b.localeCompare(a))
+                      return versionDays.map((dayStr, vi) => {
+                        const vT = allVersions.find(p => toDay(p.created_at || '') === dayStr && (p.meal_type === 'training' || p.meal_type === 'entrainement')) || null
+                        const vR = allVersions.find(p => toDay(p.created_at || '') === dayStr && (p.meal_type === 'rest' || p.meal_type === 'repos')) || null
                         const isCurrentActive = (vT?.actif || vR?.actif)
                         const vKcalT = vT?.calories_objectif || null
                         const vKcalR = vR?.calories_objectif || null
@@ -1007,7 +1008,7 @@ export default function NutritionPage() {
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                 <i className="fa-solid fa-code-branch" style={{ fontSize: 10, color: 'var(--text3)' }} />
                                 <span style={{ fontSize: 12, color: 'var(--text2)' }}>
-                                  {new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  {new Date(dayStr + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
                                 </span>
                                 {isCurrentActive && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 6, background: 'var(--primary)', color: '#fff', fontWeight: 700 }}>ACTIF</span>}
                               </div>
