@@ -38,6 +38,18 @@ function getIntervalDays(freq: string): number {
   return map[freq] || 0
 }
 
+function isDueDate(startDate: string | null, intervalDays: number, checkDate: string): boolean {
+  if (!startDate || intervalDays <= 0) return true
+  if (intervalDays <= 1) return true
+  const start = new Date(startDate + 'T00:00:00')
+  const check = new Date(checkDate + 'T00:00:00')
+  const diffDays = Math.round((check.getTime() - start.getTime()) / 86400000)
+  if (diffDays < 0) return false
+  return diffDays % Math.round(intervalDays) === 0
+}
+
+const HISTORY_DAYS = 14
+
 export default function SupplementsPage() {
   const params = useParams<{ id: string }>()
   const { user } = useAuth()
@@ -66,9 +78,9 @@ export default function SupplementsPage() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const sevenDaysAgo = new Date()
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-      const startDate = sevenDaysAgo.toISOString().slice(0, 10)
+      const rangeStart = new Date()
+      rangeStart.setDate(rangeStart.getDate() - (HISTORY_DAYS - 1))
+      const startDate = rangeStart.toISOString().slice(0, 10)
       const today = new Date().toISOString().slice(0, 10)
 
       const [{ data: assigns }, { data: ath }, { data: logData }] = await Promise.all([
@@ -155,23 +167,73 @@ export default function SupplementsPage() {
   const assigned = assignments.filter((a: any) => a.supplements?.type === tab)
   const today = new Date().toISOString().slice(0, 10)
 
-  // Compliance grid for supplementation
+  // Build per-assignment history for 14 days + delay detection
+  function getAssignmentHistory(a: any) {
+    const intervalDays = a.intervalle_jours || getIntervalDays(a.frequence) || 1
+    const isOnDemand = a.frequence === 'au besoin'
+    const days: { date: string; label: string; status: 'taken' | 'missed' | 'not_due' | 'today_pending' | 'today_taken' }[] = []
+    let missedCount = 0
+    let lastDueMissed: string | null = null
+
+    for (let i = HISTORY_DAYS - 1; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i)
+      const ds = d.toISOString().slice(0, 10)
+      const log = logs.find((l: any) => l.athlete_supplement_id === a.id && l.taken_date === ds)
+      const due = isOnDemand ? false : isDueDate(a.start_date, intervalDays, ds)
+      const isToday = ds === today
+
+      let status: typeof days[0]['status']
+      if (isToday) {
+        status = log?.taken ? 'today_taken' : 'today_pending'
+      } else if (!due) {
+        status = 'not_due'
+      } else if (log?.taken) {
+        status = 'taken'
+      } else {
+        status = 'missed'
+        missedCount++
+        if (!lastDueMissed || ds > lastDueMissed) lastDueMissed = ds
+      }
+
+      days.push({
+        date: ds,
+        label: d.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 2) + ' ' + d.getDate(),
+        status,
+      })
+    }
+
+    // Calculate delay in days from last missed due date
+    let delayDays = 0
+    if (lastDueMissed) {
+      delayDays = Math.round((new Date(today + 'T00:00:00').getTime() - new Date(lastDueMissed + 'T00:00:00').getTime()) / 86400000)
+    }
+
+    return { days, missedCount, delayDays, isOnDemand }
+  }
+
+  // Compliance grid for supplementation (summary)
   let complianceHtml = null
   if (tab === 'supplementation' && assigned.length) {
     const suppIds = assigned.map((a: any) => a.id)
     const todayLogs = logs.filter((l: any) => l.taken_date === today && suppIds.includes(l.athlete_supplement_id))
     const takenTodayCount = todayLogs.filter((l: any) => l.taken).length
 
-    const days: { label: string; taken: number; total: number; pct: number }[] = []
-    for (let i = 6; i >= 0; i--) {
+    const days: { label: string; taken: number; due: number; pct: number }[] = []
+    for (let i = HISTORY_DAYS - 1; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i)
       const ds = d.toISOString().slice(0, 10)
       const dayLogs = logs.filter((l: any) => l.taken_date === ds && suppIds.includes(l.athlete_supplement_id))
       const taken = dayLogs.filter((l: any) => l.taken).length
+      // Count how many supplements were due that day
+      let dueCount = 0
+      for (const a of assigned) {
+        const intervalDays = a.intervalle_jours || getIntervalDays(a.frequence) || 1
+        if (a.frequence !== 'au besoin' && isDueDate(a.start_date, intervalDays, ds)) dueCount++
+      }
       days.push({
-        label: d.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 3),
-        taken, total: assigned.length,
-        pct: assigned.length > 0 ? taken / assigned.length : 0,
+        label: d.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0, 2) + '\n' + d.getDate(),
+        taken, due: dueCount,
+        pct: dueCount > 0 ? taken / dueCount : 0,
       })
     }
 
@@ -179,7 +241,7 @@ export default function SupplementsPage() {
       <div style={{ background: 'var(--bg2)', border: '1px solid var(--border-subtle)', borderRadius: 10, padding: 14, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-            <i className="fas fa-chart-bar" style={{ marginRight: 6, color: 'var(--text3)' }} />Suivi des prises
+            <i className="fas fa-chart-bar" style={{ marginRight: 6, color: 'var(--text3)' }} />Suivi des prises (14 jours)
           </div>
           <div style={{ fontSize: 12, fontWeight: 600, color: takenTodayCount === assigned.length ? 'var(--success)' : 'var(--warning)' }}>
             Aujourd&apos;hui : {takenTodayCount}/{assigned.length}
@@ -187,12 +249,12 @@ export default function SupplementsPage() {
         </div>
         <div className={styles.complianceGrid}>
           {days.map((d, i) => {
-            const color = d.pct === 0 ? 'var(--bg4)' : d.pct >= 1 ? 'var(--success)' : 'var(--warning)'
+            const color = d.due === 0 ? 'var(--bg4)' : d.pct >= 1 ? 'var(--success)' : d.pct > 0 ? 'var(--warning)' : 'var(--danger)'
             return (
               <div key={i} className={styles.complianceDay}>
-                <div className={styles.complianceDayLabel}>{d.label}</div>
+                <div className={styles.complianceDayLabel} style={{ whiteSpace: 'pre-line' }}>{d.label}</div>
                 <div className={styles.complianceDayBar} style={{ background: color }}>
-                  {d.taken > 0 && <span className={styles.complianceDayCount}>{d.taken}/{d.total}</span>}
+                  {d.due > 0 && <span className={styles.complianceDayCount}>{d.taken}/{d.due}</span>}
                 </div>
               </div>
             )
@@ -265,7 +327,8 @@ export default function SupplementsPage() {
           {assigned.map((a: any) => {
             const s = a.supplements || {}
             const weekly = calcWeekly(a)
-            const todayLog = logs.find((l: any) => l.athlete_supplement_id === a.id && l.taken_date === today)
+            const history = getAssignmentHistory(a)
+            const todayStatus = history.days[history.days.length - 1]?.status
             return (
               <div key={a.id} className={styles.suppCard}>
                 <div className={styles.suppCardHeader}>
@@ -279,11 +342,18 @@ export default function SupplementsPage() {
                         <i className="fas fa-shopping-cart" /> Acheter
                       </a>
                     )}
-                    {tab === 'supplementation' && (
-                      <div style={{ fontSize: 10, fontWeight: 600, color: todayLog?.taken ? 'var(--success)' : 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <i className={todayLog?.taken ? 'fas fa-check-circle' : 'far fa-circle'} />
-                        {todayLog?.taken ? 'Pris aujourd\'hui' : 'Pas encore pris'}
-                      </div>
+                    {/* Delay / on-track badge */}
+                    {!history.isOnDemand && (
+                      history.delayDays > 0 ? (
+                        <span className={styles.suppBadgeLate}>
+                          <i className="fas fa-exclamation-triangle" style={{ marginRight: 3 }} />
+                          En retard de {history.delayDays}j
+                        </span>
+                      ) : (
+                        <span className={styles.suppBadgeOk}>
+                          <i className="fas fa-check" style={{ marginRight: 3 }} />A jour
+                        </span>
+                      )
                     )}
                   </div>
                 </div>
@@ -303,6 +373,49 @@ export default function SupplementsPage() {
                   )}
                   {a.notes && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>{a.notes}</div>}
                 </div>
+
+                {/* 14-day history grid */}
+                <div className={styles.suppHistorySection}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)' }}>Historique 14 jours</span>
+                    {!history.isOnDemand && history.missedCount > 0 && (
+                      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--danger)' }}>
+                        {history.missedCount} manquee{history.missedCount > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <div className={styles.suppHistoryGrid}>
+                    {history.days.map((d, i) => {
+                      let bg: string
+                      let title: string
+                      switch (d.status) {
+                        case 'taken': bg = 'var(--success)'; title = 'Pris'; break
+                        case 'missed': bg = 'var(--danger)'; title = 'Manque'; break
+                        case 'not_due': bg = 'var(--bg4)'; title = 'Pas prevu'; break
+                        case 'today_taken': bg = 'var(--success)'; title = 'Pris aujourd\'hui'; break
+                        case 'today_pending': bg = 'var(--info, #3b82f6)'; title = 'En attente'; break
+                      }
+                      return (
+                        <div key={i} className={styles.suppHistoryCell} title={`${d.date} — ${title}`} style={{ background: bg }} />
+                      )
+                    })}
+                  </div>
+                  <div className={styles.suppHistoryLegend}>
+                    <span><span className={styles.suppDot} style={{ background: 'var(--success)' }} /> Pris</span>
+                    <span><span className={styles.suppDot} style={{ background: 'var(--danger)' }} /> Manque</span>
+                    <span><span className={styles.suppDot} style={{ background: 'var(--bg4)' }} /> Pas prevu</span>
+                    <span><span className={styles.suppDot} style={{ background: 'var(--info, #3b82f6)' }} /> Aujourd&apos;hui</span>
+                  </div>
+                </div>
+
+                {/* Today status */}
+                {tab === 'supplementation' && (
+                  <div style={{ fontSize: 10, fontWeight: 600, color: todayStatus === 'today_taken' ? 'var(--success)' : 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
+                    <i className={todayStatus === 'today_taken' ? 'fas fa-check-circle' : 'far fa-circle'} />
+                    {todayStatus === 'today_taken' ? 'Pris aujourd\'hui' : 'Pas encore pris'}
+                  </div>
+                )}
+
                 <div className={styles.suppCardFooter}>
                   <button className="btn btn-outline btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeAssignment(a.id)}>
                     <i className="fas fa-trash" />
