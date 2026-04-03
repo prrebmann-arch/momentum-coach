@@ -52,6 +52,7 @@ export default function AlimentsPage() {
     const { data, error } = await supabase
       .from('aliments_db')
       .select('id, nom, calories, proteines, glucides, lipides, coach_id')
+      .or(`coach_id.eq.${user?.id},coach_id.is.null`)
       .order('nom', { ascending: true })
     if (error) { toast('Erreur chargement aliments', 'error'); return }
     setAliments((data || []) as Aliment[])
