@@ -1,5 +1,12 @@
 # Phase 6 - Business Pages & Formations
 
+## Payment Status Visibility Fix
+- [x] AthleteContext fetches athlete_payment_plans and attaches `_payment` to each Athlete
+- [x] Athlete list cards show payment status badge (Actif/En attente/Gratuit)
+- [x] Dashboard shows MRR stat card with monthly revenue and active subscriptions count
+- [x] Infos page shows "Gratuit / Aucun plan" when no payment plan exists (was hidden)
+- [x] Build passes, pushed to main
+
 ## Completed
 - [x] `app/(app)/business/page.tsx` -> BusinessDashboard
 - [x] `app/(app)/business/leads/page.tsx` -> LeadsPipeline

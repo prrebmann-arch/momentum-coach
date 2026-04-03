@@ -123,6 +123,22 @@ async function handleCoachEvent(event: Stripe.Event, supabase: ReturnType<typeof
             stripe_customer_id: session.customer,
           }).eq('id', planId);
         }
+
+        // If a billing anchor was requested, update the subscription's
+        // billing_cycle_anchor now (after payment was collected)
+        const anchorTs = session.metadata?.billing_anchor_ts;
+        if (anchorTs && coachConnect && session.subscription) {
+          try {
+            await coachConnect.stripe.subscriptions.update(
+              session.subscription as string,
+              { billing_cycle_anchor: parseInt(anchorTs) as unknown as Stripe.SubscriptionUpdateParams['billing_cycle_anchor'], proration_behavior: 'none' },
+              { stripeAccount: coachConnect.accountId }
+            );
+            console.log('[webhook] Updated billing_cycle_anchor to', anchorTs);
+          } catch (anchorErr) {
+            console.error('[webhook] Failed to set billing anchor:', (anchorErr as Error).message);
+          }
+        }
       } else if (session.mode === 'payment') {
         if (planId) {
           await supabase.from('athlete_payment_plans').update({

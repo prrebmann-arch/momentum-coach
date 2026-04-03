@@ -501,18 +501,16 @@ async function handleCreateCheckout(body: Record<string, string>, req: NextReque
     }
     if (plan.total_payments) (params.metadata as Record<string, string>).total_payments = String(plan.total_payments)
 
+    // Don't use billing_cycle_anchor at checkout — it causes prorata to be
+    // deferred to next invoice instead of charged immediately.
+    // Instead: charge the full amount now, then update the subscription's
+    // billing_cycle_anchor in the webhook after checkout completes.
+    // Store the desired anchor in metadata so the webhook can use it.
     if (plan.billing_anchor === 'fixed' && plan.billing_day) {
-      // Simple approach: billing_cycle_anchor tells Stripe when the next full
-      // billing cycle starts. Stripe automatically charges the prorata amount
-      // at checkout for the partial period until the anchor date.
-      // NO trial_end (trial = no charge), NO extra line items.
       const now = new Date()
       const anchorDate = new Date(now.getFullYear(), now.getMonth(), plan.billing_day)
       if (anchorDate <= now) anchorDate.setMonth(anchorDate.getMonth() + 1)
-
-      params.subscription_data = {
-        billing_cycle_anchor: Math.floor(anchorDate.getTime() / 1000),
-      }
+      metadata.billing_anchor_ts = String(Math.floor(anchorDate.getTime() / 1000))
     }
 
     session = await stripeInstance.checkout.sessions.create(params as Stripe.Checkout.SessionCreateParams, stripeOpts)

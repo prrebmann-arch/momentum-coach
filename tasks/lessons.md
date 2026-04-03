@@ -48,4 +48,6 @@
 
 [2026-03-31] | Stripe Connect webhook needs separate endpoint with its own secret | Connected account events are sent to a different webhook endpoint (registered via Stripe API for Connect). The handler must try both platform and connect secrets to verify signatures. Always log webhook hits before signature verification to diagnose delivery issues.
 
+[2026-03-31] | BusinessDashboard queried stripe_customers with user_id instead of coach_id | The biz_clients table uses user_id, but stripe_customers and athlete_payment_plans use coach_id. Always check the correct column name per table before writing queries. The stripe_customers, athlete_payment_plans, and payment_history tables all use coach_id.
+
 [2026-03-31] | Next.js redirects in next.config.ts intercept POST before route handlers | A `permanent: true` redirect causes a 308 on POST requests, which Stripe (and most webhook senders) will NOT follow. Never use config-level redirects for webhook paths — use a proxy route handler instead. Always verify webhook URLs return 400 (not 308/301) with an empty POST.
