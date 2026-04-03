@@ -146,7 +146,7 @@ body {
 
 /* ===== BUTTONS ===== */
 .btn-primary {
-  width: 100%;
+  width: auto;
   background: var(--primary);
   color: white;
   border: none;
