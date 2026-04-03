@@ -9,7 +9,8 @@ export async function notifyAthlete(
   type: string,
   title: string,
   body: string,
-  metadata: Record<string, unknown> = {}
+  metadata: Record<string, unknown> = {},
+  accessToken?: string | null
 ) {
   const supabase = createClient()
 
@@ -23,7 +24,7 @@ export async function notifyAthlete(
   })
 
   // 2. Push notification (Expo)
-  await sendExpoPush([userId], title, body, { type, ...metadata })
+  await sendExpoPush([userId], title, body, { type, ...metadata }, accessToken)
 }
 
 /**
@@ -34,7 +35,8 @@ export async function sendExpoPush(
   userIds: string[],
   title: string,
   body: string,
-  data: Record<string, unknown> = {}
+  data: Record<string, unknown> = {},
+  accessToken?: string | null
 ) {
   try {
     if (!userIds.length) return
@@ -55,9 +57,18 @@ export async function sendExpoPush(
       data,
     }))
 
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    // Get token from Supabase session if not provided
+    let token = accessToken
+    if (!token) {
+      const { data: { session } } = await supabase.auth.getSession()
+      token = session?.access_token ?? null
+    }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
     const resp = await fetch('/api/push', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(messages),
     })
 

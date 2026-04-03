@@ -183,6 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(data.session?.access_token ?? null)
       try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
       const profile = await fetchCoach(data.user.id)
+      setLoading(false)
       return profile
     } finally {
       signingInRef.current = false
@@ -218,6 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(data.session?.access_token ?? null)
       try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
       const profile = await fetchCoach(data.user.id)
+      setLoading(false)
       return profile
     } finally {
       signingInRef.current = false
