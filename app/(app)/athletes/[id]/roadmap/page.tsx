@@ -62,7 +62,7 @@ export default function RoadmapPage() {
       const [phasesRes, progsRes, nutritionsRes, reportsRes] = await Promise.all([
         supabase
           .from('roadmap_phases')
-          .select('id, athlete_id, coach_id, phase, name, start_date, end_date, position, status, program_id, nutrition_id, notes')
+          .select('id, athlete_id, coach_id, phase, name, start_date, end_date, position, status, programme_id, nutrition_id, description')
           .eq('athlete_id', athleteId)
           .order('position')
           .order('start_date'),

@@ -494,7 +494,7 @@ export default function DashboardPage() {
               <div className={styles.dashCardBody}>
                 {lateAthletes.length > 0 ? (
                   lateAthletes.map(l => (
-                    <div key={l.athlete.id} className={styles.dashItem} style={{ cursor: 'default' }}>
+                    <Link key={l.athlete.id} href={`/athletes/${l.athlete.id}/bilans`} className={styles.dashItem} style={{ textDecoration: 'none', color: 'inherit' }}>
                       <div className={`${styles.dashAvatar} ${styles.dashAvatarWarn}`}>
                         {l.athlete.prenom.charAt(0)}{l.athlete.nom.charAt(0)}
                       </div>
@@ -511,6 +511,7 @@ export default function DashboardPage() {
                         disabled={sendingRappel.has(l.athlete.id) || sentRappels.has(l.athlete.id)}
                         onClick={e => {
                           e.stopPropagation()
+                          e.preventDefault()
                           sendBilanRappel(l.athlete)
                         }}
                         title="Envoyer un rappel"
@@ -519,7 +520,7 @@ export default function DashboardPage() {
                           sentRappels.has(l.athlete.id) ? 'fa-check' : sendingRappel.has(l.athlete.id) ? 'fa-spinner fa-spin' : 'fa-bell'
                         }`} />
                       </button>
-                    </div>
+                    </Link>
                   ))
                 ) : (
                   <div className={styles.dashEmpty}>

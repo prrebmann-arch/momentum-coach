@@ -129,7 +129,7 @@ export default function BilansPage() {
     setLoading(true)
     try {
       const [bilansRes, progRes, nutriRes, phasesRes, wlogsRes] = await Promise.all([
-        supabase.from('daily_reports').select('user_id, date, weight, sessions_executed, session_performance, energy, sleep_quality, steps, adherence, digestion, stress, humeur, douleurs, notes, photo_front, photo_side, photo_back, menstrual_flow, menstrual_symptoms').eq('user_id', selectedAthlete.user_id).order('date', { ascending: false }).limit(200),
+        supabase.from('daily_reports').select('user_id, date, weight, sessions_executed, session_performance, energy, sleep_quality, steps, adherence, stress, soreness, general_notes, photo_front, photo_side, photo_back').eq('user_id', selectedAthlete.user_id).order('date', { ascending: false }).limit(200),
         supabase.from('programming_weeks').select('week_date, phase').eq('athlete_id', selectedAthlete.id).order('week_date'),
         supabase.from('nutrition_plans').select('id, valid_from, meal_type, nom, calories_objectif, proteines, glucides, lipides, created_at').eq('athlete_id', selectedAthlete.id),
         supabase.from('roadmap_phases').select('phase, name, start_date, end_date').eq('athlete_id', selectedAthlete.id).order('start_date'),

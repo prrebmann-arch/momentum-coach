@@ -265,7 +265,7 @@ export default function BilansOverview() {
     try {
       const { data } = await supabase
         .from('daily_reports')
-        .select('id, user_id, date, weight, energy, sleep_quality, stress, adherence, sessions_executed, session_performance, steps')
+        .select('id, user_id, date, weight, energy, sleep_quality, stress, adherence, sessions_executed, session_performance, steps, photo_front, photo_side, photo_back')
         .in('user_id', athleteUserIds)
         .order('date', { ascending: false })
         .limit(1000)

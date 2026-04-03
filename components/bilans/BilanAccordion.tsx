@@ -401,9 +401,9 @@ export default function BilanAccordion({
           if (!w.perfSummary) return '\u2014'
           const { p, s, r } = w.perfSummary
           const parts: React.ReactNode[] = []
-          if (p) parts.push(<span key="p" style={{ color: 'var(--success)' }}>{p}\u2191</span>)
-          if (s) parts.push(<span key="s" style={{ color: 'var(--warning)' }}>{s}\u2192</span>)
-          if (r) parts.push(<span key="r" style={{ color: 'var(--danger)' }}>{r}\u2193</span>)
+          if (p) parts.push(<span key="p" style={{ color: 'var(--success)' }}>{p}{'↑'}</span>)
+          if (s) parts.push(<span key="s" style={{ color: 'var(--warning)' }}>{s}{'→'}</span>)
+          if (r) parts.push(<span key="r" style={{ color: 'var(--danger)' }}>{r}{'↓'}</span>)
           return <>{parts.map((p, i) => <span key={i}>{i > 0 && ' '}{p}</span>)}</>
         })()
 
