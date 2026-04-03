@@ -35,6 +35,17 @@
 - [x] window.location usage verified: all external redirects (Stripe, Instagram) are correct
 - [x] confirm() usage: kept as-is (works in all modern browsers, acceptable UX pattern)
 
+## Critical Performance Fix
+- [x] AuthContext: added try/catch/finally to init() — prevents permanent loading screen if getSession/fetchCoach throws
+- [x] AuthContext: memoized context value with useMemo — prevents ALL consumers re-rendering on every provider render
+- [x] AuthContext: added signingInRef to prevent onAuthStateChange from racing with signIn/signUp — fixes login not working on first click
+- [x] AuthContext: wrapped fetchCoach in try/catch — prevents uncaught errors from bubbling
+- [x] AuthContext: wrapped signIn/signUp/signOut in useCallback — stable references for memoized value
+- [x] App layout: added 8s safety timeout on loading state — prevents permanent black screen
+- [x] ProfilePage: added try/finally to load function — prevents stuck loading state
+- [x] vercel.json: fixed buildCommand to use --webpack flag — prevents Turbopack ENOENT build failures on Vercel
+- [x] Build passes (0 errors, 40+ pages)
+
 ## Notes
 - `styles/business.module.css` already existed with all biz-* styles converted to camelCase
 - `styles/formations.module.css` already existed with all fm-* styles

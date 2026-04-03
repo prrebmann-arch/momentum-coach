@@ -51,3 +51,9 @@
 [2026-03-31] | BusinessDashboard queried stripe_customers with user_id instead of coach_id | The biz_clients table uses user_id, but stripe_customers and athlete_payment_plans use coach_id. Always check the correct column name per table before writing queries. The stripe_customers, athlete_payment_plans, and payment_history tables all use coach_id.
 
 [2026-03-31] | Next.js redirects in next.config.ts intercept POST before route handlers | A `permanent: true` redirect causes a 308 on POST requests, which Stripe (and most webhook senders) will NOT follow. Never use config-level redirects for webhook paths — use a proxy route handler instead. Always verify webhook URLs return 400 (not 308/301) with an empty POST.
+
+[2026-03-31] | AuthContext value not memoized = all consumers re-render constantly | Always useMemo the context value object in providers. Without it, every provider render creates a new object reference, triggering ALL useContext consumers to re-render even when values haven't changed.
+
+[2026-03-31] | onAuthStateChange races with explicit signIn/signUp | Supabase fires onAuthStateChange synchronously during signIn. If both the listener AND the signIn caller set state, you get double renders and race conditions. Use a ref (signingInRef) to skip the listener during explicit auth calls.
+
+[2026-03-31] | Missing try/finally on async init = permanent loading screen | Every async function that sets loading=true MUST use try/finally to guarantee setLoading(false) runs. A single uncaught error in init() can leave the entire app stuck on "Chargement..." forever. Add a safety timeout in layout as defense-in-depth.

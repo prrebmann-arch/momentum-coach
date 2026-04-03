@@ -63,14 +63,19 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!user) return
     const load = async () => {
-      const { data } = await supabase
-        .from('platform_invoices')
-        .select('*')
-        .eq('coach_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(12)
-      setInvoices((data as PlatformInvoice[]) || [])
-      setLoading(false)
+      try {
+        const { data } = await supabase
+          .from('platform_invoices')
+          .select('*')
+          .eq('coach_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(12)
+        setInvoices((data as PlatformInvoice[]) || [])
+      } catch (err) {
+        console.error('[ProfilePage] load error:', err)
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
