@@ -486,7 +486,7 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
       </div>
 
       {/* Training comparison section */}
-      <VideoCompare video={video} compVideos={compVideos} compIdx={compIdx} />
+      <VideoCompare video={video} compVideos={compVideos} compIdx={compIdx} showCompare={showCompare} />
     </div>
   )
 }

@@ -46,6 +46,7 @@ interface VideoCompareProps {
   video: VideoRow
   compVideos: CompVideo[]
   compIdx: number
+  showCompare?: boolean
 }
 
 function parseLogExs(log: any): any[] {
@@ -90,7 +91,7 @@ function normalizeExSets(ex: any): ExSet[] {
   return sets
 }
 
-export default function VideoCompare({ video, compVideos, compIdx }: VideoCompareProps) {
+export default function VideoCompare({ video, compVideos, compIdx, showCompare = false }: VideoCompareProps) {
   const supabase = createClient()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
@@ -426,6 +427,7 @@ export default function VideoCompare({ video, compVideos, compIdx }: VideoCompar
       <div className={styles.vtGrid}>
         <div className={styles.vtComparison}>
           <div className={styles.vtCompHeaders}>
+            {showCompare && (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div className={styles.vtColTitle}>Seance precedente</div>
@@ -464,6 +466,7 @@ export default function VideoCompare({ video, compVideos, compIdx }: VideoCompar
                 <div style={{ color: 'var(--text3)', fontSize: 13 }}>Aucune donnee</div>
               )}
             </div>
+            )}
             <div>
               <div className={styles.vtColTitle}>Seance courante</div>
               {currentLog ? (
@@ -509,6 +512,7 @@ export default function VideoCompare({ video, compVideos, compIdx }: VideoCompar
                 key={mIdx}
                 className={`${styles.vtCompRow} ${rowHighlight ? styles.vtCompRowActive : ''}`}
               >
+                {showCompare && (
                 <div>
                   <div className={styles.vtExHeader}>
                     <span className={styles.vtExName}>{name}</span>
@@ -518,6 +522,7 @@ export default function VideoCompare({ video, compVideos, compIdx }: VideoCompar
                   </div>
                   {renderSets(prevEx, null, false, highlightPrevEx, compVideo?.serie_number)}
                 </div>
+                )}
                 <div>
                   <div className={styles.vtExHeader}>
                     <span className={`${styles.vtExName} ${missed ? styles.vtExMissed : ''}`}>
