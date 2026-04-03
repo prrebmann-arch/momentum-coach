@@ -501,16 +501,37 @@ async function handleCreateCheckout(body: Record<string, string>, req: NextReque
     }
     if (plan.total_payments) (params.metadata as Record<string, string>).total_payments = String(plan.total_payments)
 
-    // Don't use billing_cycle_anchor at checkout — it causes prorata to be
-    // deferred to next invoice instead of charged immediately.
-    // Instead: charge the full amount now, then update the subscription's
-    // billing_cycle_anchor in the webhook after checkout completes.
-    // Store the desired anchor in metadata so the webhook can use it.
+    // For fixed billing day: use mode 'payment' for the prorata, then create
+    // the subscription separately in the webhook with billing_cycle_anchor.
+    // This charges ONLY the prorata amount now (e.g. 0.23€ for 7 days).
     if (plan.billing_anchor === 'fixed' && plan.billing_day) {
       const now = new Date()
       const anchorDate = new Date(now.getFullYear(), now.getMonth(), plan.billing_day)
       if (anchorDate <= now) anchorDate.setMonth(anchorDate.getMonth() + 1)
+
+      // Calculate prorata: days until anchor / days in billing period * amount
+      const msPerDay = 1000 * 60 * 60 * 24
+      const daysUntilAnchor = Math.max(1, Math.ceil((anchorDate.getTime() - now.getTime()) / msPerDay))
+      const daysInPeriod = 30 // approximate month
+      const prorataAmount = Math.round((plan.amount * daysUntilAnchor) / daysInPeriod)
+
+      // Switch to payment mode (not subscription) — charge prorata now
+      params.mode = 'payment'
+      params.line_items = [{
+        price_data: {
+          currency: plan.currency || 'eur',
+          product_data: { name: `Coaching ${athleteName || 'Athlète'} — prorata (${daysUntilAnchor}j)` },
+          unit_amount: prorataAmount,
+        },
+        quantity: 1,
+      }]
+      // Store anchor info in metadata for webhook to create the subscription
       metadata.billing_anchor_ts = String(Math.floor(anchorDate.getTime() / 1000))
+      metadata.recurring_amount = String(plan.amount)
+      metadata.recurring_interval = interval
+      metadata.recurring_interval_count = String(plan.frequency_interval || 1)
+      // Remove subscription_data since we're in payment mode now
+      delete params.subscription_data
     }
 
     session = await stripeInstance.checkout.sessions.create(params as Stripe.Checkout.SessionCreateParams, stripeOpts)

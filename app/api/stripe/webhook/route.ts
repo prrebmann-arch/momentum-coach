@@ -140,12 +140,75 @@ async function handleCoachEvent(event: Stripe.Event, supabase: ReturnType<typeof
           }
         }
       } else if (session.mode === 'payment') {
-        if (planId) {
-          await supabase.from('athlete_payment_plans').update({
-            payment_status: 'completed', payments_completed: 1,
-            stripe_customer_id: session.customer,
-          }).eq('id', planId);
+        // Check if this is a prorata payment that needs a subscription created
+        const anchorTs = session.metadata?.billing_anchor_ts;
+        const recurringAmount = session.metadata?.recurring_amount;
+
+        if (anchorTs && recurringAmount) {
+          // Prorata paid — now create the recurring subscription
+          const coachConnect = await getCoachStripeInstance(supabase, coachId);
+          if (coachConnect) {
+            try {
+              const interval = (session.metadata?.recurring_interval || 'month') as Stripe.PriceCreateParams.Recurring.Interval;
+              const intervalCount = parseInt(session.metadata?.recurring_interval_count || '1');
+
+              // Create price
+              const price = await coachConnect.stripe.prices.create({
+                currency: session.currency || 'eur',
+                unit_amount: parseInt(recurringAmount),
+                recurring: { interval, interval_count: intervalCount },
+                product_data: { name: `Coaching ${session.customer_details?.name || 'Athlète'}` },
+              }, { stripeAccount: coachConnect.accountId });
+
+              // Create subscription starting at anchor date
+              const sub = await coachConnect.stripe.subscriptions.create({
+                customer: session.customer as string,
+                items: [{ price: price.id }],
+                billing_cycle_anchor: parseInt(anchorTs),
+                proration_behavior: 'none',
+                default_payment_method: session.payment_intent ? undefined : undefined,
+              }, { stripeAccount: coachConnect.accountId });
+
+              console.log('[webhook] Created subscription', sub.id, 'with anchor', anchorTs);
+
+              // Save subscription to DB
+              await supabase.from('stripe_customers').upsert({
+                stripe_customer_id: session.customer,
+                stripe_subscription_id: sub.id,
+                coach_id: coachId,
+                athlete_id: athleteId,
+                subscription_status: 'active',
+                monthly_amount: parseInt(recurringAmount),
+              }, { onConflict: 'stripe_customer_id' });
+
+              if (planId) {
+                await supabase.from('athlete_payment_plans').update({
+                  payment_status: 'active',
+                  stripe_subscription_id: sub.id,
+                  stripe_customer_id: session.customer,
+                }).eq('id', planId);
+              }
+            } catch (subErr) {
+              console.error('[webhook] Failed to create subscription after prorata:', (subErr as Error).message);
+              // Still mark as active since prorata was paid
+              if (planId) {
+                await supabase.from('athlete_payment_plans').update({
+                  payment_status: 'active',
+                  stripe_customer_id: session.customer,
+                }).eq('id', planId);
+              }
+            }
+          }
+        } else {
+          // Regular one-time payment
+          if (planId) {
+            await supabase.from('athlete_payment_plans').update({
+              payment_status: 'completed', payments_completed: 1,
+              stripe_customer_id: session.customer,
+            }).eq('id', planId);
+          }
         }
+
         await supabase.from('payment_history').insert({
           stripe_customer_id: session.customer, coach_id: coachId, athlete_id: athleteId,
           amount: session.amount_total, currency: session.currency, status: 'succeeded',
