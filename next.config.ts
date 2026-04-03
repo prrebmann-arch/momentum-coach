@@ -4,7 +4,8 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       // Backwards compatibility — old API paths redirect to new Next.js routes
-      { source: '/api/stripe-webhook', destination: '/api/stripe/webhook', permanent: true },
+      // stripe-webhook redirect REMOVED — it caused 308 on POST, breaking Stripe delivery.
+      // The proxy route at app/api/stripe-webhook/route.ts handles forwarding instead.
       { source: '/api/stripe-cron', destination: '/api/stripe/cron', permanent: true },
       { source: '/api/ig-auth', destination: '/api/instagram/auth', permanent: true },
       { source: '/api/ig-messages', destination: '/api/instagram/messages', permanent: true },

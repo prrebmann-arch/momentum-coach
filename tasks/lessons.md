@@ -47,3 +47,5 @@
 [2026-03-31] | Stripe Checkout subscription mode cannot mix one-time and recurring line items | When using `mode: 'subscription'`, all line items must be recurring. For prorata billing, use `subscription_data.billing_cycle_anchor` only — Stripe calculates and charges the prorata automatically at checkout. Do NOT use `trial_end` (it means no charge) or add separate one-time line items.
 
 [2026-03-31] | Stripe Connect webhook needs separate endpoint with its own secret | Connected account events are sent to a different webhook endpoint (registered via Stripe API for Connect). The handler must try both platform and connect secrets to verify signatures. Always log webhook hits before signature verification to diagnose delivery issues.
+
+[2026-03-31] | Next.js redirects in next.config.ts intercept POST before route handlers | A `permanent: true` redirect causes a 308 on POST requests, which Stripe (and most webhook senders) will NOT follow. Never use config-level redirects for webhook paths — use a proxy route handler instead. Always verify webhook URLs return 400 (not 308/301) with an empty POST.
