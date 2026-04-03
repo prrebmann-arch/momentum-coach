@@ -47,6 +47,7 @@ interface VideoCompareProps {
   compVideos: CompVideo[]
   compIdx: number
   showCompare?: boolean
+  onNavigateLog?: (logIdx: number) => void
 }
 
 function parseLogExs(log: any): any[] {
@@ -91,7 +92,7 @@ function normalizeExSets(ex: any): ExSet[] {
   return sets
 }
 
-export default function VideoCompare({ video, compVideos, compIdx, showCompare = false }: VideoCompareProps) {
+export default function VideoCompare({ video, compVideos, compIdx, showCompare = false, onNavigateLog }: VideoCompareProps) {
   const supabase = createClient()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
@@ -204,10 +205,10 @@ export default function VideoCompare({ video, compVideos, compIdx, showCompare =
     const curLog = all.find((l: any) => l.date === video.date) || null
     setCurrentLog(curLog)
 
-    // Find first log with different date for comparison
+    // Find first log with date strictly BEFORE the current video date
     let defaultPrevIdx = -1
     for (let i = 0; i < all.length; i++) {
-      if (all[i].date !== video.date) {
+      if (all[i].date < video.date) {
         defaultPrevIdx = i
         break
       }

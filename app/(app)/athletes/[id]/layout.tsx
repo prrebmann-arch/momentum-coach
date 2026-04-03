@@ -10,16 +10,16 @@ import styles from '@/styles/athletes.module.css'
 const TABS = [
   { label: 'Apercu', route: 'apercu', icon: 'fa-eye' },
   { label: 'Infos', route: 'infos', icon: 'fa-id-card' },
-  { label: 'Entrainement', route: 'training', icon: 'fa-dumbbell' },
+  { label: 'Entr.', route: 'training', icon: 'fa-dumbbell' },
   { label: 'Nutrition', route: 'nutrition', icon: 'fa-utensils' },
   { label: 'Roadmap', route: 'roadmap', icon: 'fa-route' },
   { label: 'Bilans', route: 'bilans', icon: 'fa-clipboard-check' },
   { label: 'Videos', route: 'videos', icon: 'fa-video' },
   { label: 'Retours', route: 'retours', icon: 'fa-comments' },
   { label: 'Posing', route: 'posing', icon: 'fa-person' },
-  { label: 'Questionnaires', route: 'questionnaires', icon: 'fa-clipboard-list' },
-  { label: 'Supplements', route: 'supplements', icon: 'fa-capsules' },
-  { label: 'Menstruel', route: 'menstrual', icon: 'fa-calendar-days' },
+  { label: 'Quest.', route: 'questionnaires', icon: 'fa-clipboard-list' },
+  { label: 'Suppl.', route: 'supplements', icon: 'fa-capsules' },
+  { label: 'Menstr.', route: 'menstrual', icon: 'fa-calendar-days' },
 ]
 
 export default function AthleteDetailLayout({ children }: { children: React.ReactNode }) {

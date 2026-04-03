@@ -170,28 +170,27 @@
 .athleteTabs {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0px;
   margin-bottom: 24px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 0;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
 }
 .athleteTabBtn {
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text3);
-  padding: 10px 14px;
+  padding: 6px 8px;
   cursor: pointer;
   font-family: 'Inter', sans-serif;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
   transition: all 0.15s;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   position: relative;
   margin-bottom: -1px;
   text-decoration: none;
@@ -205,9 +204,9 @@
 }
 .tabSep {
   width: 1px;
-  height: 16px;
+  height: 14px;
   background: var(--border);
-  margin: 0 6px;
+  margin: 0 2px;
   flex-shrink: 0;
 }
 
