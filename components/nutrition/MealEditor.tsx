@@ -176,9 +176,12 @@ export default function MealEditor({
         pre_workout: false,
         time: source.time,
       }
-      return [...prev, copy]
+      // Insert right after the source meal
+      const updated = [...prev]
+      updated.splice(sourceIdx + 1, 0, copy)
+      return updated
     })
-    setActiveMealIdx(meals.length)
+    setActiveMealIdx(sourceIdx + 1)
   }
 
   // Remove meal
