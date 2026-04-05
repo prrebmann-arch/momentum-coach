@@ -286,16 +286,7 @@ export default function BilansPage() {
     setPhotoOpen(true)
   }, [])
 
-  if (!selectedAthlete) {
-    return (
-      <EmptyState
-        icon="fa-solid fa-exclamation-triangle"
-        message="Athlete non selectionne"
-      />
-    )
-  }
-
-  if (loading) {
+  if (!selectedAthlete || loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {[1, 2, 3].map(i => <Skeleton key={i} height={120} />)}

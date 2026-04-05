@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -131,7 +131,7 @@ export default function RoadmapPage() {
     }
   }, [athleteId, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleAdd = () => {
+  const handleAdd = useCallback(() => {
     let defaultStart: Date
     if (phases.length) {
       const last = phases[phases.length - 1]
@@ -155,9 +155,9 @@ export default function RoadmapPage() {
       nutrition_id: null,
     })
     setModalOpen(true)
-  }
+  }, [phases])
 
-  const handleEdit = (id: string) => {
+  const handleEdit = useCallback((id: string) => {
     const phase = phases.find((p) => p.id === id)
     if (!phase) return
     setModalData({
@@ -172,9 +172,9 @@ export default function RoadmapPage() {
       nutrition_id: phase.nutrition_id || null,
     })
     setModalOpen(true)
-  }
+  }, [phases])
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     if (!confirm('Supprimer cette phase ?')) return
     const { error } = await supabase.from('roadmap_phases').delete().eq('id', id)
     if (error) {
@@ -184,9 +184,9 @@ export default function RoadmapPage() {
     toast('Phase supprimee', 'success')
     await syncProgrammingWeeks()
     await loadData()
-  }
+  }, [toast, syncProgrammingWeeks, loadData]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleStart = async (id: string) => {
+  const handleStart = useCallback(async (id: string) => {
     const today = toDateStr(new Date())
     const targetPhase = phases.find((p) => p.id === id)
     if (!targetPhase) return
@@ -219,9 +219,9 @@ export default function RoadmapPage() {
     toast('Phase demarree !', 'success')
     await syncProgrammingWeeks()
     await loadData()
-  }
+  }, [phases, toast, syncProgrammingWeeks, loadData]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleComplete = async (id: string) => {
+  const handleComplete = useCallback(async (id: string) => {
     const today = toDateStr(new Date())
     const { error } = await supabase
       .from('roadmap_phases')
@@ -234,9 +234,9 @@ export default function RoadmapPage() {
     toast('Phase terminee !', 'success')
     await syncProgrammingWeeks()
     await loadData()
-  }
+  }, [toast, syncProgrammingWeeks, loadData]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSave = async (formData: PhaseFormData) => {
+  const handleSave = useCallback(async (formData: PhaseFormData) => {
     if (!user) return
     const position = formData.id
       ? (phases.find((p) => p.id === formData.id)?.position || 0)
@@ -272,7 +272,7 @@ export default function RoadmapPage() {
     toast(formData.id ? 'Phase mise a jour !' : 'Phase creee !', 'success')
     await syncProgrammingWeeks()
     await loadData()
-  }
+  }, [user, phases, athleteId, toast, syncProgrammingWeeks, loadData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (

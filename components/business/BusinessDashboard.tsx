@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { createClient } from '@/lib/supabase/client'
@@ -338,11 +338,15 @@ export default function BusinessDashboard() {
     if (!user) return
     setLoading(true)
     try {
-    const [cfgRes, entriesRes, clientsRes, stripeRes] = await Promise.all([
+    // Single parallel batch for all independent queries (was 2 sequential batches)
+    const [cfgRes, entriesRes, clientsRes, stripeRes, plansRes, paymentsRes, athletesRes] = await Promise.all([
       supabase.from('project_config').select('user_id, target_name, target_mrr, target_deadline, week_number, start_followers').eq('user_id', user.id).single(),
       supabase.from('daily_entries').select('id, user_id, week_number, day_name, dms, rdvs, rdvs_attended, clients_online, clients_offline, clients_lost_online, clients_lost_offline, reels, followers, meta_ads_budget').eq('user_id', user.id),
       supabase.from('biz_clients').select('id, user_id, name, email, price, client_type, billing_day, start_date, status, archived_at, archive_reason, created_at').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase.from('stripe_customers').select('id, coach_id, athlete_id, stripe_customer_id').eq('coach_id', user.id),
+      supabase.from('athlete_payment_plans').select('id, athlete_id, coach_id, payment_status, amount, frequency, is_free').eq('coach_id', user.id),
+      supabase.from('payment_history').select('id, athlete_id, coach_id, amount, status, stripe_invoice_id, created_at').eq('coach_id', user.id).eq('is_platform_payment', false).order('created_at', { ascending: false }).limit(50),
+      supabase.from('athletes').select('id, prenom, nom').eq('coach_id', user.id),
     ])
 
     const cfg = cfgRes.data || DEFAULT_CONFIG
@@ -354,12 +358,6 @@ export default function BusinessDashboard() {
     ;(stripeRes.data || []).forEach((s: StripeCustomer) => { if (s.athlete_id) sMap[s.athlete_id] = s })
     setStripeData(sMap)
 
-    // Load athlete payment plans + payment history
-    const [plansRes, paymentsRes, athletesRes] = await Promise.all([
-      supabase.from('athlete_payment_plans').select('id, athlete_id, coach_id, payment_status, amount, frequency, is_free').eq('coach_id', user.id),
-      supabase.from('payment_history').select('id, athlete_id, coach_id, amount, status, stripe_invoice_id, created_at').eq('coach_id', user.id).eq('is_platform_payment', false).order('created_at', { ascending: false }).limit(50),
-      supabase.from('athletes').select('id, prenom, nom').eq('coach_id', user.id),
-    ])
     setAthletePaymentPlans((plansRes.data || []) as AthletePaymentPlan[])
     setAthletePayments((paymentsRes.data || []) as AthletePaymentHistory[])
     const aMap: Record<string, { prenom: string; nom: string }> = {}
@@ -387,75 +385,93 @@ export default function BusinessDashboard() {
   useEffect(() => { loadAll() }, [loadAll])
 
   // Derived data
-  const weekEntries = allEntries.filter(e => e.week_number === week)
-  const dayEntry = weekEntries.find(e => e.day_name === day) || {} as DailyEntry
-  const mrr = calcMRR(clients)
-  const totalFollowers = (config.start_followers || 0) + sumField(allEntries, 'followers')
-  const pct = Math.min(100, Math.round((mrr.total / (config.target_mrr || 10000)) * 100))
+  const weekEntries = useMemo(() => allEntries.filter(e => e.week_number === week), [allEntries, week])
+  const dayEntry = useMemo(() => weekEntries.find(e => e.day_name === day) || {} as DailyEntry, [weekEntries, day])
+  const mrr = useMemo(() => calcMRR(clients), [clients])
+  const totalFollowers = useMemo(() => (config.start_followers || 0) + sumField(allEntries, 'followers'), [config.start_followers, allEntries])
+  const pct = useMemo(() => Math.min(100, Math.round((mrr.total / (config.target_mrr || 10000)) * 100)), [mrr.total, config.target_mrr])
 
   // Week totals
-  const wDms = sumField(weekEntries, 'dms')
-  const wRdvs = sumField(weekEntries, 'rdvs')
-  const wRdvsA = sumField(weekEntries, 'rdvs_attended')
-  const wCli = sumField(weekEntries, 'clients_online') + sumField(weekEntries, 'clients_offline')
-  const wReels = sumField(weekEntries, 'reels')
-  const wFoll = sumField(weekEntries, 'followers')
-  const filled = new Set(weekEntries.map(e => e.day_name)).size
-  const daysLeft = 6 - filled
+  const weekTotals = useMemo(() => {
+    const wDms = sumField(weekEntries, 'dms')
+    const wRdvs = sumField(weekEntries, 'rdvs')
+    const wRdvsA = sumField(weekEntries, 'rdvs_attended')
+    const wCli = sumField(weekEntries, 'clients_online') + sumField(weekEntries, 'clients_offline')
+    const wReels = sumField(weekEntries, 'reels')
+    const wFoll = sumField(weekEntries, 'followers')
+    const filled = new Set(weekEntries.map(e => e.day_name)).size
+    const daysLeft = 6 - filled
+    return { wDms, wRdvs, wRdvsA, wCli, wReels, wFoll, filled, daysLeft }
+  }, [weekEntries])
+  const { wDms, wRdvs, wRdvsA, wCli, wReels, wFoll, daysLeft } = weekTotals
 
   // All-time
-  const aDms = sumField(allEntries, 'dms')
-  const aCli = sumField(allEntries, 'clients_online') + sumField(allEntries, 'clients_offline')
-  const aMeta = sumField(allEntries, 'meta_ads_budget')
-  const aLost = sumField(allEntries, 'clients_lost_online' as keyof DailyEntry) + sumField(allEntries, 'clients_lost_offline' as keyof DailyEntry)
+  const allTimeTotals = useMemo(() => {
+    const aDms = sumField(allEntries, 'dms')
+    const aCli = sumField(allEntries, 'clients_online') + sumField(allEntries, 'clients_offline')
+    const aMeta = sumField(allEntries, 'meta_ads_budget')
+    const aLost = sumField(allEntries, 'clients_lost_online' as keyof DailyEntry) + sumField(allEntries, 'clients_lost_offline' as keyof DailyEntry)
+    return { aDms, aCli, aMeta, aLost }
+  }, [allEntries])
+  const { aDms, aCli, aMeta, aLost } = allTimeTotals
 
   // Athlete payment plan stats
-  const activePlans = athletePaymentPlans.filter(p => p.payment_status === 'active')
-  const pendingPlans = athletePaymentPlans.filter(p => p.payment_status === 'pending')
-  const stripeMrr = activePlans.reduce((s, p) => {
+  const activePlans = useMemo(() => athletePaymentPlans.filter(p => p.payment_status === 'active'), [athletePaymentPlans])
+  const pendingPlans = useMemo(() => athletePaymentPlans.filter(p => p.payment_status === 'pending'), [athletePaymentPlans])
+  const stripeMrr = useMemo(() => activePlans.reduce((s, p) => {
     if (p.is_free) return s
     const amt = p.amount || 0
     if (p.frequency === 'week') return s + amt * 4
     if (p.frequency === 'day') return s + amt * 30
     return s + amt // month or default
-  }, 0)
-  const totalRevenue = athletePayments.filter(p => p.status === 'succeeded').reduce((s, p) => s + (p.amount || 0), 0)
+  }, 0), [activePlans])
+  const totalRevenue = useMemo(() => athletePayments.filter(p => p.status === 'succeeded').reduce((s, p) => s + (p.amount || 0), 0), [athletePayments])
 
   // Probabilities
-  const pDms = calcProb(wDms, objectives.dms_target, daysLeft)
-  const pRdvs = calcProb(wRdvs, objectives.rdvs_target, daysLeft)
-  const pCli = calcProb(wCli, objectives.clients_target, daysLeft)
-  const pReels = calcProb(wReels, objectives.reels_target, daysLeft)
-  const pFoll = calcProb(wFoll, objectives.followers_target, daysLeft)
+  const probabilities = useMemo(() => ({
+    pDms: calcProb(wDms, objectives.dms_target, daysLeft),
+    pRdvs: calcProb(wRdvs, objectives.rdvs_target, daysLeft),
+    pCli: calcProb(wCli, objectives.clients_target, daysLeft),
+    pReels: calcProb(wReels, objectives.reels_target, daysLeft),
+    pFoll: calcProb(wFoll, objectives.followers_target, daysLeft),
+  }), [wDms, wRdvs, wCli, wReels, wFoll, objectives, daysLeft])
+  const { pDms, pRdvs, pCli, pReels, pFoll } = probabilities
 
-  const dDms = Math.ceil(objectives.dms_target / 6)
-  const dReels = Math.ceil(objectives.reels_target / 6)
-  const dFoll = Math.ceil(objectives.followers_target / 6)
+  const dDms = useMemo(() => Math.ceil(objectives.dms_target / 6), [objectives.dms_target])
+  const dReels = useMemo(() => Math.ceil(objectives.reels_target / 6), [objectives.reels_target])
+  const dFoll = useMemo(() => Math.ceil(objectives.followers_target / 6), [objectives.followers_target])
 
   // Dynamic forecast
   const targetMrr = config.target_mrr || 10000
-  const totalW = config.target_deadline
-    ? Math.max(1, Math.ceil((new Date(config.target_deadline + 'T00:00:00').getTime() - new Date(config.created_at || new Date().toISOString()).getTime()) / (7 * MS_PER_DAY)))
-    : 16
-  const fcMrr = Math.round(targetMrr * (week / totalW))
-  const fcClients = Math.round(fcMrr / (mrr.count > 0 ? mrr.total / mrr.count : 150))
-  const fcFollowers = Math.round((config.start_followers || 0) + (week / totalW) * 1200)
-  const deltaCli = mrr.count - fcClients
-  const deltaMrr = mrr.total - fcMrr
-  const deltaFoll = totalFollowers - fcFollowers
+  const forecast = useMemo(() => {
+    const totalW = config.target_deadline
+      ? Math.max(1, Math.ceil((new Date(config.target_deadline + 'T00:00:00').getTime() - new Date(config.created_at || new Date().toISOString()).getTime()) / (7 * MS_PER_DAY)))
+      : 16
+    const fcMrr = Math.round(targetMrr * (week / totalW))
+    const fcClients = Math.round(fcMrr / (mrr.count > 0 ? mrr.total / mrr.count : 150))
+    const fcFollowers = Math.round((config.start_followers || 0) + (week / totalW) * 1200)
+    const deltaCli = mrr.count - fcClients
+    const deltaMrr = mrr.total - fcMrr
+    const deltaFoll = totalFollowers - fcFollowers
+    const weeksLeft = config.target_deadline ? Math.max(0, Math.ceil((new Date(config.target_deadline + 'T00:00:00').getTime() - Date.now()) / (7 * MS_PER_DAY))) : null
+    return { totalW, fcMrr, fcClients, fcFollowers, deltaCli, deltaMrr, deltaFoll, weeksLeft }
+  }, [config, targetMrr, week, mrr, totalFollowers])
+  const { totalW, fcMrr, fcClients, fcFollowers, deltaCli, deltaMrr, deltaFoll, weeksLeft } = forecast
 
   // KPIs
-  const avgPrice = mrr.count > 0 ? Math.round(mrr.total / mrr.count) : 0
-  const dmToClient = aDms > 0 ? (aCli / aDms * 100).toFixed(1) + '%' : '--'
-  const cac = aCli > 0 && aMeta > 0 ? Math.round(aMeta / aCli) + 'EUR' : '--'
-  const ltv = avgPrice * 6
-  const roi = aMeta > 0 && aCli > 0 ? ((aCli * avgPrice * 6 / aMeta - 1) * 100).toFixed(0) + '%' : '--'
-  const churn = aLost > 0 && aCli > 0 ? (aLost / (aCli + aLost) * 100).toFixed(1) + '%' : '0%'
-
-  const weeksLeft = config.target_deadline ? Math.max(0, Math.ceil((new Date(config.target_deadline + 'T00:00:00').getTime() - Date.now()) / (7 * MS_PER_DAY))) : null
+  const kpis = useMemo(() => {
+    const avgPrice = mrr.count > 0 ? Math.round(mrr.total / mrr.count) : 0
+    const dmToClient = aDms > 0 ? (aCli / aDms * 100).toFixed(1) + '%' : '--'
+    const cac = aCli > 0 && aMeta > 0 ? Math.round(aMeta / aCli) + 'EUR' : '--'
+    const ltv = avgPrice * 6
+    const roi = aMeta > 0 && aCli > 0 ? ((aCli * avgPrice * 6 / aMeta - 1) * 100).toFixed(0) + '%' : '--'
+    const churn = aLost > 0 && aCli > 0 ? (aLost / (aCli + aLost) * 100).toFixed(1) + '%' : '0%'
+    return { avgPrice, dmToClient, cac, ltv, roi, churn }
+  }, [mrr, aDms, aCli, aMeta, aLost])
+  const { avgPrice, dmToClient, cac, ltv, roi, churn } = kpis
 
   // ── Actions ──
-  async function updateField(field: string, value: number) {
+  const updateField = useCallback(async (field: string, value: number) => {
     if (!user) return
     await supabase.from('daily_entries').upsert(
       { user_id: user.id, week_number: week, day_name: day, [field]: value },
@@ -463,18 +479,18 @@ export default function BusinessDashboard() {
     )
     const { data } = await supabase.from('daily_entries').select('id, user_id, week_number, day_name, dms, rdvs, rdvs_attended, clients_online, clients_offline, clients_lost_online, clients_lost_offline, reels, followers, meta_ads_budget').eq('user_id', user.id)
     setAllEntries((data || []) as DailyEntry[])
-  }
+  }, [user, week, day, supabase])
 
-  async function changeWeek(dir: number) {
+  const changeWeek = useCallback(async (dir: number) => {
     const nw = week + dir
     if (nw < 1) return
     setWeek(nw)
     await supabase.from('project_config').upsert({ user_id: user!.id, week_number: nw }, { onConflict: 'user_id' })
     const objRes = await supabase.from('weekly_objectives').select('id, user_id, start_week, dms_target, rdvs_target, clients_target, reels_target, followers_target').eq('user_id', user!.id).lte('start_week', nw).order('start_week', { ascending: false }).limit(1).single()
     setObjectives((objRes.data || DEFAULT_OBJ) as WeeklyObjectives)
-  }
+  }, [week, user, supabase])
 
-  async function saveObjectiveConfig() {
+  const saveObjectiveConfig = useCallback(async () => {
     if (!user) return
     await supabase.from('project_config').upsert({
       user_id: user.id, target_name: objName, target_mrr: objMrr,
@@ -483,18 +499,18 @@ export default function BusinessDashboard() {
     setShowObjModal(false)
     toast('Objectif mis a jour !', 'success')
     loadAll()
-  }
+  }, [user, objName, objMrr, objDeadline, objWeek, objFollowers, supabase, toast, loadAll])
 
-  async function saveWeeklyObj() {
+  const saveWeeklyObj = useCallback(async () => {
     if (!user) return
     await supabase.from('weekly_objectives').upsert({
       user_id: user.id, start_week: week, ...editObj,
     }, { onConflict: 'user_id,start_week' })
     setObjectives(editObj)
     toast('Objectifs sauvegardes !', 'success')
-  }
+  }, [user, week, editObj, supabase, toast])
 
-  async function submitClient() {
+  const submitClient = useCallback(async () => {
     if (!user) return
     const name = cName.trim()
     const price = parseInt(cPrice)
@@ -515,9 +531,9 @@ export default function BusinessDashboard() {
     toast(editingClient ? 'Client mis a jour !' : 'Client ajoute !', 'success')
     const { data } = await supabase.from('biz_clients').select('id, user_id, name, email, price, client_type, billing_day, start_date, status, archived_at, archive_reason, created_at').eq('user_id', user.id).order('created_at', { ascending: false })
     setClients((data || []) as BizClient[])
-  }
+  }, [user, cName, cEmail, cPrice, cType, cBilling, cStart, editingClient, supabase, toast])
 
-  async function archiveClient() {
+  const archiveClient = useCallback(async () => {
     if (!archiveId) return
     await supabase.from('biz_clients').update({
       status: 'archived', archived_at: new Date().toISOString(), archive_reason: archiveReason,
@@ -527,18 +543,18 @@ export default function BusinessDashboard() {
     toast('Client archive', 'success')
     const { data } = await supabase.from('biz_clients').select('id, user_id, name, email, price, client_type, billing_day, start_date, status, archived_at, archive_reason, created_at').eq('user_id', user!.id).order('created_at', { ascending: false })
     setClients((data || []) as BizClient[])
-  }
+  }, [archiveId, archiveReason, user, supabase, toast])
 
-  async function deleteClient(id: string) {
+  const deleteClient = useCallback(async (id: string) => {
     if (!confirm('Supprimer definitivement ce client ?')) return
     await supabase.from('biz_clients').delete().eq('id', id)
     setShowClientModal(false)
     toast('Client supprime', 'success')
     const { data } = await supabase.from('biz_clients').select('id, user_id, name, email, price, client_type, billing_day, start_date, status, archived_at, archive_reason, created_at').eq('user_id', user!.id).order('created_at', { ascending: false })
     setClients((data || []) as BizClient[])
-  }
+  }, [user, supabase, toast])
 
-  function openEditClient(id: string) {
+  const openEditClient = useCallback((id: string) => {
     const c = clients.find(cl => cl.id === id)
     if (!c) return
     setEditingClient(c)
@@ -549,26 +565,26 @@ export default function BusinessDashboard() {
     setCBilling(c.billing_day || '1')
     setCStart(c.start_date)
     setShowClientModal(true)
-  }
+  }, [clients])
 
-  function openAddClient() {
+  const openAddClient = useCallback(() => {
     setEditingClient(null)
     setCName(''); setCEmail(''); setCPrice(''); setCType('online')
     setCBilling('1'); setCStart(new Date().toISOString().split('T')[0])
     setShowClientModal(true)
-  }
+  }, [])
 
-  function openArchive(id: string) {
+  const openArchive = useCallback((id: string) => {
     setArchiveId(id)
     setArchiveReason('')
     setShowArchiveModal(true)
-  }
+  }, [])
 
-  async function copyPayLink(clientId: string) {
+  const copyPayLink = useCallback(async (_clientId: string) => {
     toast('Lien de paiement -- fonctionnalite Stripe', 'success')
-  }
+  }, [toast])
 
-  async function openPaymentHistory(clientId: string) {
+  const openPaymentHistory = useCallback(async (clientId: string) => {
     const client = clients.find((c) => c.id === clientId)
     const stripe = stripeData[clientId]
     if (!stripe?.stripe_customer_id) {
@@ -589,16 +605,16 @@ export default function BusinessDashboard() {
     } finally {
       setLoadingPayments(false)
     }
-  }
+  }, [clients, stripeData, supabase, toast])
 
-  function openObjModal() {
+  const openObjModal = useCallback(() => {
     setObjName(config.target_name || 'Objectif Business')
     setObjMrr(config.target_mrr || 10000)
     setObjDeadline(config.target_deadline || '')
     setObjWeek(config.week_number || 1)
     setObjFollowers(config.start_followers || 0)
     setShowObjModal(true)
-  }
+  }, [config])
 
   if (loading) return <Skeleton />
 

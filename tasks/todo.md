@@ -10,8 +10,12 @@
 - [ ] Video : tester navigation séances + dates comparatives
 
 ## COACH — Optimisation perf INP
-- [ ] /business (2232ms), /athletes/[id]/training (1856ms), /athletes/[id]/roadmap (2376ms)
-- [ ] Lazy-load composants lourds, debounce handlers, useMemo/useCallback
+- [x] /business — merged 2 sequential Promise.all into 1 (7 queries parallel instead of 4+3)
+- [x] /athletes/[id]/training — fixed useEffect dep (was [] instead of [loadData]), data reloads on athlete change
+- [x] /athletes/[id]/roadmap — removed supabase from useCallback deps (stable singleton)
+- [x] /athletes/[id]/bilans — fixed blank page when selectedAthlete is null (shows skeleton instead of error)
+- [x] /athletes/[id]/apercu — uses context athlete user_id to skip sequential query (all 5 queries parallel)
+- [ ] Further INP reduction: consider debounce on input handlers in BusinessDashboard FieldRow
 
 ## Features à faire
 - [ ] Meal timing : notifications rappel à chaque repas (Expo local notifications)

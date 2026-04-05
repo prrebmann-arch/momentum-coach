@@ -65,3 +65,9 @@
 [2026-04-03] | payment_history table missing coach_id and currency columns — all webhook inserts failed silently | The stripe_migration.sql defined these columns but they were never applied to the live DB. Supabase returns HTTP 400 when inserting unknown columns, and the code did not check for errors. Always: (1) verify DB schema matches migration SQL after running it, (2) check `.error` on every Supabase insert, (3) never assume a migration was fully applied.
 
 [2026-04-03] | Hardcoded athlete objective badge instead of dynamic roadmap phase | The infos page header badge showed `athletes.objectif` (static field) instead of querying `roadmap_phases` with `status='en_cours'`. Always prefer live roadmap data over static athlete fields for current phase display.
+
+[2026-04-03] | useEffect with empty [] deps ignores useCallback changes | Training page had `useEffect(() => { loadData() }, [])` which never re-ran when `loadData` changed (e.g., when athleteId changed). Always use `[loadData]` as dependency when loadData is a useCallback.
+
+[2026-04-03] | Early return in loadData without setLoading(false) leaves loading=true forever | Bilans page had `if (!selectedAthlete?.user_id) return` before `setLoading(true)`, but `loading` was initialized as `true`. The guard prevented data from loading AND prevented the loading state from being reset. Fix: combine loading and null checks so the UI shows skeleton until data is ready.
+
+[2026-04-03] | Sequential queries avoidable via context data | Apercu page fetched athlete from DB just to get user_id, then ran 5 parallel queries. Since AthleteContext already has all athletes loaded, use `selectedAthlete.user_id` from context to skip the sequential fetch and run everything in parallel.

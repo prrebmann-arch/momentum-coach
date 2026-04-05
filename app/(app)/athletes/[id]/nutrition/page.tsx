@@ -1,14 +1,19 @@
 'use client'
 
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import Toggle from '@/components/ui/Toggle'
 import Skeleton from '@/components/ui/Skeleton'
-import MealEditor, { type MealData } from '@/components/nutrition/MealEditor'
+import { type MealData } from '@/components/nutrition/MealEditor'
 import styles from '@/styles/nutrition.module.css'
+
+const MealEditor = dynamic(() => import('@/components/nutrition/MealEditor'), {
+  loading: () => <Skeleton height={400} borderRadius={12} />,
+})
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -321,7 +326,7 @@ export default function NutritionPage() {
     loadPlans()
   }, [user?.id, loadPlans, toast]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function acceptChange(change: PendingChange) {
+  const acceptChange = useCallback((change: PendingChange) => {
     setPendingChanges((prev) => {
       const next = [...prev, change]
 
@@ -353,16 +358,16 @@ export default function NutritionPage() {
 
       return next
     })
-  }
+  }, [flushPendingChanges])
 
-  function cancelPendingChanges() {
+  const cancelPendingChanges = useCallback(() => {
     if (acceptTimerRef.current) clearTimeout(acceptTimerRef.current)
     if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current)
     setPendingChanges([])
     setAcceptCountdown(0)
-  }
+  }, [])
 
-  function flushNow() {
+  const flushNow = useCallback(() => {
     if (acceptTimerRef.current) clearTimeout(acceptTimerRef.current)
     if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current)
     setAcceptCountdown(0)
@@ -370,7 +375,7 @@ export default function NutritionPage() {
       flushPendingChanges(current)
       return []
     })
-  }
+  }, [flushPendingChanges])
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -381,12 +386,12 @@ export default function NutritionPage() {
   }, [])
 
   // Check if a specific change is already pending
-  function isChangePending(planId: string, mealIndex: number, foodIndex: number, type: 'replace' | 'extra'): boolean {
+  const isChangePending = useCallback((planId: string, mealIndex: number, foodIndex: number, type: 'replace' | 'extra'): boolean => {
     return pendingChanges.some((c) => c.planId === planId && c.mealIndex === mealIndex && c.foodIndex === foodIndex && c.type === type)
-  }
+  }, [pendingChanges])
 
   // Open editor for new diet
-  function createNewDiet() {
+  const createNewDiet = useCallback(() => {
     setEditPlanId(null)
     setEditPlanName('')
     setEditMealType('training')
@@ -394,10 +399,10 @@ export default function NutritionPage() {
     setEditMacroOnly(false)
     setEditMacros({ calories: 0, proteines: 0, glucides: 0, lipides: 0 })
     setView('editor')
-  }
+  }, [])
 
   // Open editor for existing diet
-  async function editDiet(tId: string | null, rId: string | null) {
+  const editDiet = useCallback(async (tId: string | null, rId: string | null) => {
     const id = tId || rId
     if (!id) return
     const { data: plan } = await supabase.from('nutrition_plans').select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, created_at, macro_only, meal_times').eq('id', id).single()
@@ -425,18 +430,18 @@ export default function NutritionPage() {
       lipides: plan.lipides || 0,
     })
     setView('editor')
-  }
+  }, [supabase, toast])
 
   // Open detail view
-  function viewDiet(tPlan: NutritionPlan | null, rPlan: NutritionPlan | null) {
+  const viewDiet = useCallback((tPlan: NutritionPlan | null, rPlan: NutritionPlan | null) => {
     setDetailDiet({ tPlan, rPlan })
     setDetailPlan(tPlan || rPlan)
     setDetailType(tPlan ? 'training' : 'rest')
     setView('detail')
-  }
+  }, [])
 
   // Toggle active
-  async function toggleActive(isActive: boolean, tId: string | null, rId: string | null) {
+  const toggleActive = useCallback(async (isActive: boolean, tId: string | null, rId: string | null) => {
     if (isActive) {
       await supabase.from('nutrition_plans').update({ actif: false }).eq('athlete_id', athleteId)
       const activations: Promise<any>[] = []
@@ -452,16 +457,16 @@ export default function NutritionPage() {
       toast('Diete desactivee', 'success')
     }
     loadPlans()
-  }
+  }, [athleteId, supabase, toast, loadPlans])
 
   // Delete diet
-  async function deleteDiet(diet: DietGroup) {
+  const deleteDiet = useCallback(async (diet: DietGroup) => {
     if (!confirm(`Supprimer "${diet.name}" et toutes ses versions ?`)) return
     const { error } = await supabase.from('nutrition_plans').delete().in('id', diet.ids)
     if (error) { toast('Erreur: ' + error.message, 'error'); return }
     toast('Diete supprimee', 'success')
     loadPlans()
-  }
+  }, [supabase, toast, loadPlans])
 
   // ── EDITOR VIEW ──
   if (view === 'editor') {

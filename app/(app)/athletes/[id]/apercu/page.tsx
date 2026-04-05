@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useAthleteContext } from '@/contexts/AthleteContext'
 import { toDateStr } from '@/lib/utils'
 import { DEFAULT_STEPS_GOAL, DEFAULT_WATER_GOAL, PROG_PHASES, MS_PER_DAY } from '@/lib/constants'
 import type { ProgPhaseKey } from '@/lib/constants'
@@ -17,6 +18,7 @@ const WeightChart = dynamic(() => import('@/components/charts/WeightChart'), { s
 export default function ApercuPage() {
   const params = useParams<{ id: string }>()
   const supabase = createClient()
+  const { selectedAthlete } = useAthleteContext()
 
   const [loading, setLoading] = useState(true)
   const [athlete, setAthlete] = useState<any>(null)
@@ -26,16 +28,23 @@ export default function ApercuPage() {
   const [nutritionPlans, setNutritionPlans] = useState<any[]>([])
   const [trackingRows, setTrackingRows] = useState<any[]>([])
 
-  useEffect(() => {
-    if (!params.id) return
-    loadData()
-  }, [params.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Use context athlete's user_id to avoid a sequential query
+  const contextUserId = selectedAthlete?.id === params.id ? selectedAthlete.user_id : null
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
+    if (!params.id) return
     setLoading(true)
     try {
-      const { data: ath } = await supabase.from('athletes').select('id, user_id, prenom, nom, pas_journalier, water_goal_ml, date_naissance').eq('id', params.id).single()
-      const userId = ath?.user_id
+      // If we already have user_id from context, skip the athlete fetch and run all queries in parallel
+      let userId = contextUserId
+      let athData: any = selectedAthlete?.id === params.id ? selectedAthlete : null
+
+      if (!userId) {
+        // Fallback: fetch athlete to get user_id (only on first render before context is ready)
+        const { data: ath } = await supabase.from('athletes').select('id, user_id, prenom, nom, pas_journalier, water_goal_ml, date_naissance').eq('id', params.id).single()
+        userId = ath?.user_id
+        athData = ath
+      }
 
       const [reportsRes, phasesRes, progsRes, nutriRes, trackRes] = await Promise.all([
         userId
@@ -47,7 +56,7 @@ export default function ApercuPage() {
         supabase.from('daily_tracking').select('date, water_ml, steps').eq('athlete_id', params.id).order('date', { ascending: false }).limit(7),
       ])
 
-      setAthlete(ath)
+      setAthlete(athData)
       setReports(reportsRes.data || [])
       setActivePhase(phasesRes.data?.[0] || null)
       setActiveProg(progsRes.data?.[0] || null)
@@ -56,7 +65,11 @@ export default function ApercuPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [params.id, contextUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   if (loading) {
     return (

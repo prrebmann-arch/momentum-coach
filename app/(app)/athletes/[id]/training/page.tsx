@@ -1,17 +1,21 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/contexts/ToastContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAthleteContext } from '@/contexts/AthleteContext'
 import { notifyAthlete } from '@/lib/push'
-import ProgramEditor from '@/components/training/ProgramEditor'
 import CardioSection from '@/components/training/CardioSection'
 import EmptyState from '@/components/ui/EmptyState'
 import type { SetData } from '@/components/training/SetRow'
 import styles from '@/styles/training.module.css'
+
+const ProgramEditor = dynamic(() => import('@/components/training/ProgramEditor'), {
+  loading: () => <div className="text-center" style={{ padding: 40 }}><i className="fa-solid fa-spinner fa-spin fa-2x" /></div>,
+})
 
 interface WorkoutSession {
   id: string
@@ -228,7 +232,7 @@ export default function TrainingPage() {
 
   useEffect(() => {
     loadData()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loadData])
 
   // Push browser history state when entering sub-views, so back button returns to list
   useEffect(() => {
@@ -249,7 +253,7 @@ export default function TrainingPage() {
   }, [view])
 
   // -- Actions --
-  async function toggleProgram(id: string, activate: boolean) {
+  const toggleProgram = useCallback(async (id: string, activate: boolean) => {
     try {
       if (activate) {
         await supabase.from('workout_programs').update({ actif: false }).eq('athlete_id', athleteId)
@@ -276,9 +280,9 @@ export default function TrainingPage() {
     } catch (err) {
       toast('Erreur', 'error')
     }
-  }
+  }, [athleteId, athlete?.user_id, toast, loadData]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function deleteProgram(id: string) {
+  const deleteProgram = useCallback(async (id: string) => {
     if (!confirm('Supprimer ce programme et toutes ses seances ?')) return
     await supabase.from('workout_sessions').delete().eq('program_id', id)
     const { error } = await supabase.from('workout_programs').delete().eq('id', id)
@@ -288,9 +292,9 @@ export default function TrainingPage() {
     }
     toast('Programme supprime !')
     loadData()
-  }
+  }, [toast, loadData]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function openEditor(programId?: string) {
+  const openEditor = useCallback((programId?: string) => {
     if (!programId) {
       setEditProgramId(null)
       setEditProgramData(null)
@@ -327,13 +331,13 @@ export default function TrainingPage() {
       sessions,
     })
     setView('editor')
-  }
+  }, [programs])
 
-  function openDetail(programId: string) {
+  const openDetail = useCallback((programId: string) => {
     setViewProgramId(programId)
     setViewSessionIdx(0)
     setView('detail')
-  }
+  }, [])
 
   // -- Editor view --
   if (view === 'editor') {
