@@ -167,6 +167,20 @@ export default function MealEditor({
     setActiveMealIdx(meals.length)
   }
 
+  // Copy meal — duplicate an existing meal's foods
+  function copyMeal(sourceIdx: number) {
+    setMeals((prev) => {
+      const source = prev[sourceIdx]
+      const copy: MealData = {
+        foods: source.foods.map((f) => ({ ...f })),
+        pre_workout: false,
+        time: source.time,
+      }
+      return [...prev, copy]
+    })
+    setActiveMealIdx(meals.length)
+  }
+
   // Remove meal
   function removeMeal(idx: number) {
     if (meals.length <= 1) { toast('Minimum 1 repas', 'error'); return }
@@ -202,8 +216,8 @@ export default function MealEditor({
 
     const today = new Date().toISOString().split('T')[0]
 
-    // Deactivate all plans for this athlete
-    await supabase.from('nutrition_plans').update({ actif: false }).eq('athlete_id', athleteId)
+    // Deactivate only plans of the current meal type (preserve the other type's plan)
+    await supabase.from('nutrition_plans').update({ actif: false }).eq('athlete_id', athleteId).eq('meal_type', mealType)
 
     const payload = {
       nom: planName.trim(),
@@ -223,12 +237,15 @@ export default function MealEditor({
     const { error } = await supabase.from('nutrition_plans').insert(payload)
     if (error) { toast('Erreur: ' + error.message, 'error'); setSaving(false); return }
 
-    // Save paired plan (other tab) if it has food data
+    // Save paired plan (other tab) if coach edited it during this session
     const otherType = mealType === 'training' ? 'rest' : 'training'
     const otherTemp = tempMeals[otherType]
     if (otherTemp?.meals?.length) {
       const hasFood = otherTemp.meals.some((m) => m.foods.length > 0)
       if (hasFood) {
+        // Deactivate existing plans for the other type before inserting updated version
+        await supabase.from('nutrition_plans').update({ actif: false }).eq('athlete_id', athleteId).eq('meal_type', otherType)
+
         const otherMealsData = otherTemp.meals.map((m) => {
           const foods = m.foods.map((f) => {
             const macros = calcFoodMacros(f)
@@ -470,6 +487,11 @@ export default function MealEditor({
               <button className="btn btn-outline" onClick={addMeal}>
                 <i className="fa-solid fa-plus" /> Repas
               </button>
+              {meals.length > 0 && (
+                <button className="btn btn-outline" onClick={() => copyMeal(activeMealIdx)}>
+                  <i className="fa-solid fa-copy" /> Copier repas
+                </button>
+              )}
             </div>
           </div>
         )}
