@@ -1121,8 +1121,23 @@ export default function NutritionPage() {
                                     // Deactivate ALL plans for this diet name (both ON and OFF, all versions)
                                     const allIds = plans.filter(p => (p.nom || 'Diete') === d.name).map(p => p.id)
                                     await supabase.from('nutrition_plans').update({ actif: false }).in('id', allIds)
-                                    // Reactivate only the selected version's direct plans
-                                    const toActivate = [vT?.id, vR?.id].filter(Boolean) as string[]
+                                    // Reactivate using direct IDs of this version
+                                    // For any missing type, find the closest plan of that type from this date or before
+                                    const toActivate: string[] = []
+                                    if (tDirectId) {
+                                      toActivate.push(tDirectId)
+                                    } else {
+                                      // No direct ON — find most recent ON before this date
+                                      const fallbackT = allVersions.find(p => (p.meal_type === 'training' || p.meal_type === 'entrainement') && toDay(p.created_at || '') <= dayStr)
+                                      if (fallbackT) toActivate.push(fallbackT.id)
+                                    }
+                                    if (rDirectId) {
+                                      toActivate.push(rDirectId)
+                                    } else {
+                                      // No direct OFF — find most recent OFF before this date
+                                      const fallbackR = allVersions.find(p => (p.meal_type === 'rest' || p.meal_type === 'repos') && toDay(p.created_at || '') <= dayStr)
+                                      if (fallbackR) toActivate.push(fallbackR.id)
+                                    }
                                     if (toActivate.length > 0) {
                                       await supabase.from('nutrition_plans').update({ actif: true }).in('id', toActivate)
                                     }
