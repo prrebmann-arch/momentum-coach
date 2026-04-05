@@ -92,6 +92,7 @@ export default function MealEditor({
   const [isMacroOnly, setIsMacroOnly] = useState(initMacroOnly || false)
   const [manualMacros, setManualMacros] = useState(initialMacros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 })
   const [saving, setSaving] = useState(false)
+  const [clipboardMeal, setClipboardMeal] = useState<MealData | null>(null)
   const [foodRefreshKey, setFoodRefreshKey] = useState(0)
 
   // Paired plan: store meals for the other tab so we can save both on submit
@@ -422,6 +423,24 @@ export default function MealEditor({
                     <div className={styles.mealActions}>
                       <button
                         type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={(e) => { e.stopPropagation(); setClipboardMeal({ foods: meal.foods.map(f => ({ ...f })), pre_workout: meal.pre_workout, time: meal.time }); toast('Repas copie', 'success') }}
+                        title="Copier ce repas"
+                      >
+                        <i className="fa-solid fa-copy" />
+                      </button>
+                      {clipboardMeal && (
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={(e) => { e.stopPropagation(); setMeals(prev => { const updated = [...prev]; updated[mealIdx] = { ...updated[mealIdx], foods: clipboardMeal.foods.map(f => ({ ...f })) }; return updated }) }}
+                          title="Coller le repas copie ici"
+                        >
+                          <i className="fa-solid fa-paste" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
                         className={`btn btn-outline btn-sm ${meal.pre_workout ? 'active' : ''}`}
                         onClick={(e) => { e.stopPropagation(); togglePreWorkout(mealIdx) }}
                         title="Pre training"
@@ -490,11 +509,6 @@ export default function MealEditor({
               <button className="btn btn-outline" onClick={addMeal}>
                 <i className="fa-solid fa-plus" /> Repas
               </button>
-              {meals.length > 0 && (
-                <button className="btn btn-outline" onClick={() => copyMeal(activeMealIdx)}>
-                  <i className="fa-solid fa-copy" /> Copier repas
-                </button>
-              )}
             </div>
           </div>
         )}
