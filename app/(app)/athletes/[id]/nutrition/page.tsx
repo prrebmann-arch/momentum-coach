@@ -1118,12 +1118,14 @@ export default function NutritionPage() {
                                   className="btn btn-outline btn-sm"
                                   style={{ fontSize: 10, padding: '2px 8px' }}
                                   onClick={async () => {
-                                    // Deactivate all versions of this diet
+                                    // Deactivate ALL plans for this diet name (both ON and OFF, all versions)
                                     const allIds = plans.filter(p => (p.nom || 'Diete') === d.name).map(p => p.id)
                                     await supabase.from('nutrition_plans').update({ actif: false }).in('id', allIds)
-                                    // Reactivate this version
-                                    if (vT) await supabase.from('nutrition_plans').update({ actif: true }).eq('id', vT.id)
-                                    if (vR) await supabase.from('nutrition_plans').update({ actif: true }).eq('id', vR.id)
+                                    // Reactivate only the selected version's direct plans
+                                    const toActivate = [vT?.id, vR?.id].filter(Boolean) as string[]
+                                    if (toActivate.length > 0) {
+                                      await supabase.from('nutrition_plans').update({ actif: true }).in('id', toActivate)
+                                    }
                                     toast('Version reactivee', 'success')
                                     loadPlans()
                                   }}
