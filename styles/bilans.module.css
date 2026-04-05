@@ -184,7 +184,7 @@
   background: var(--bg4); border: 1px solid var(--border);
 }
 .photo img {
-  width: 100%; aspect-ratio: 3/4; object-fit: cover;
+  width: 100%; aspect-ratio: 9/16; object-fit: cover;
   display: block; cursor: pointer; transition: opacity 0.15s;
 }
 .photo img:hover { opacity: 0.85; }
