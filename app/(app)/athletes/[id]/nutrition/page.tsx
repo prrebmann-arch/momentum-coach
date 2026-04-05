@@ -1031,26 +1031,43 @@ export default function NutritionPage() {
                       const toDay = (s: string) => s.slice(0, 10) // '2026-04-04T...' → '2026-04-04'
                       const versionDays = [...new Set(allVersions.map(v => toDay(v.created_at || '')))].filter(Boolean).sort((a, b) => b.localeCompare(a))
 
-                      // Build version pairs for comparison
-                      const versionPairs = versionDays.map((dayStr) => ({
-                        dayStr,
-                        tPlan: allVersions.find(p => toDay(p.created_at || '') === dayStr && (p.meal_type === 'training' || p.meal_type === 'entrainement')) || null,
-                        rPlan: allVersions.find(p => toDay(p.created_at || '') === dayStr && (p.meal_type === 'rest' || p.meal_type === 'repos')) || null,
-                      }))
+                      // Build version pairs — if a type is missing on a given day, inherit the most recent plan of that type before that date
+                      const versionPairs = versionDays.map((dayStr) => {
+                        const tDirect = allVersions.find(p => toDay(p.created_at || '') === dayStr && (p.meal_type === 'training' || p.meal_type === 'entrainement')) || null
+                        const rDirect = allVersions.find(p => toDay(p.created_at || '') === dayStr && (p.meal_type === 'rest' || p.meal_type === 'repos')) || null
 
-                      // Helper: compare kcal with previous version, return indicator or null
-                      function kcalIndicator(current: number | null, previous: number | null, prevExisted: boolean): React.ReactNode {
-                        if (current === null || !prevExisted) return null
-                        if (previous === null) return null // previous version didn't have this type
+                        // If one type is missing, find the most recent plan of that type created before this day
+                        const tInherited = !tDirect
+                          ? allVersions.find(p => (p.meal_type === 'training' || p.meal_type === 'entrainement') && toDay(p.created_at || '') < dayStr) || null
+                          : null
+                        const rInherited = !rDirect
+                          ? allVersions.find(p => (p.meal_type === 'rest' || p.meal_type === 'repos') && toDay(p.created_at || '') < dayStr) || null
+                          : null
+
+                        return {
+                          dayStr,
+                          tPlan: tDirect || tInherited,
+                          rPlan: rDirect || rInherited,
+                          tInherited: !!tInherited, // true if ON kcal is inherited (not from this version)
+                          rInherited: !!rInherited, // true if OFF kcal is inherited (not from this version)
+                          // Keep direct references for delete
+                          tDirectId: tDirect?.id || null,
+                          rDirectId: rDirect?.id || null,
+                        }
+                      })
+
+                      // Helper: compare kcal with previous version, return indicator
+                      function kcalIndicator(current: number | null, previous: number | null): React.ReactNode {
+                        if (current === null || previous === null) return null
                         if (current > previous) return <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--success)', marginLeft: 4 }}>&#8593;</span>
                         if (current < previous) return <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--danger)', marginLeft: 4 }}>&#8595;</span>
                         return <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', marginLeft: 4 }}>=</span>
                       }
 
-                      return versionPairs.map(({ dayStr, tPlan: vT, rPlan: vR }, vi) => {
+                      return versionPairs.map(({ dayStr, tPlan: vT, rPlan: vR, tInherited, rInherited, tDirectId, rDirectId }, vi) => {
                         const isCurrentActive = (vT?.actif || vR?.actif)
-                        const vKcalT = vT?.calories_objectif || null
-                        const vKcalR = vR?.calories_objectif || null
+                        const vKcalT = vT?.calories_objectif ?? null
+                        const vKcalR = vR?.calories_objectif ?? null
                         const vMacroT = vT ? `P:${vT.proteines || 0} G:${vT.glucides || 0} L:${vT.lipides || 0}` : ''
                         const vMacroR = vR ? `P:${vR.proteines || 0} G:${vR.glucides || 0} L:${vR.lipides || 0}` : ''
 
@@ -1058,8 +1075,11 @@ export default function NutritionPage() {
                         const prev = vi < versionPairs.length - 1 ? versionPairs[vi + 1] : null
                         const prevKcalT = prev?.tPlan?.calories_objectif ?? null
                         const prevKcalR = prev?.rPlan?.calories_objectif ?? null
-                        const indicatorT = prev ? kcalIndicator(vKcalT, prevKcalT, !!prev.tPlan) : null
-                        const indicatorR = prev ? kcalIndicator(vKcalR, prevKcalR, !!prev.rPlan) : null
+                        const indicatorT = prev ? kcalIndicator(vKcalT, prevKcalT) : null
+                        const indicatorR = prev ? kcalIndicator(vKcalR, prevKcalR) : null
+
+                        // IDs to delete for this version (only direct plans, not inherited)
+                        const deletableIds = [tDirectId, rDirectId].filter(Boolean) as string[]
 
                         return (
                           <tr
@@ -1077,17 +1097,17 @@ export default function NutritionPage() {
                               </div>
                             </td>
                             <td style={{ textAlign: 'right' }}>
-                              {vKcalT ? (
+                              {vKcalT !== null ? (
                                 <>
-                                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>{vKcalT.toLocaleString('fr-FR')}{indicatorT}</div>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: tInherited ? 'var(--text3)' : 'var(--text2)' }}>{vKcalT.toLocaleString('fr-FR')}{indicatorT}</div>
                                   <div style={{ fontSize: 9, color: 'var(--text3)' }}>{vMacroT}</div>
                                 </>
                               ) : <span style={{ color: 'var(--text3)' }}>--</span>}
                             </td>
                             <td style={{ textAlign: 'right' }}>
-                              {vKcalR ? (
+                              {vKcalR !== null ? (
                                 <>
-                                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)' }}>{vKcalR.toLocaleString('fr-FR')}{indicatorR}</div>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: rInherited ? 'var(--text3)' : 'var(--text2)' }}>{vKcalR.toLocaleString('fr-FR')}{indicatorR}</div>
                                   <div style={{ fontSize: 9, color: 'var(--text3)' }}>{vMacroR}</div>
                                 </>
                               ) : <span style={{ color: 'var(--text3)' }}>--</span>}
@@ -1112,7 +1132,31 @@ export default function NutritionPage() {
                                 </button>
                               )}
                             </td>
-                            <td />
+                            <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right' }}>
+                              {deletableIds.length > 0 && (
+                                <button
+                                  className={`${styles.dietBtn} ${styles.dietBtnDel}`}
+                                  title="Supprimer cette version"
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    if (!confirm('Supprimer cette version ?')) return
+                                    const wasActive = isCurrentActive
+                                    const { error } = await supabase.from('nutrition_plans').delete().in('id', deletableIds)
+                                    if (error) { toast('Erreur: ' + error.message, 'error'); return }
+                                    // If deleted version was active, activate the previous version
+                                    if (wasActive && vi < versionPairs.length - 1) {
+                                      const prevVersion = versionPairs[vi + 1]
+                                      if (prevVersion.tDirectId) await supabase.from('nutrition_plans').update({ actif: true }).eq('id', prevVersion.tDirectId)
+                                      if (prevVersion.rDirectId) await supabase.from('nutrition_plans').update({ actif: true }).eq('id', prevVersion.rDirectId)
+                                    }
+                                    toast('Version supprimee', 'success')
+                                    loadPlans()
+                                  }}
+                                >
+                                  <i className="fa-solid fa-trash" />
+                                </button>
+                              )}
+                            </td>
                           </tr>
                         )
                       })
