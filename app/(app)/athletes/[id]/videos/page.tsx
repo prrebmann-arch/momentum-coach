@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { getPageCache, setPageCache } from '@/lib/utils'
 import { MAX_VIDEOS_LOAD } from '@/lib/constants'
 import VideosGrid, { type VideoItem } from '@/components/videos/VideosGrid'
 import dynamic from 'next/dynamic'
@@ -18,14 +19,17 @@ export default function AthleteVideosPage() {
   const athleteId = params.id
   const supabase = createClient()
 
-  const [videos, setVideos] = useState<VideoItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const cacheKey = `athlete_${athleteId}_videos`
+  const cached = useMemo(() => getPageCache<VideoItem[]>(cacheKey), [cacheKey])
+
+  const [videos, setVideos] = useState<VideoItem[]>(cached ?? [])
+  const [loading, setLoading] = useState(!cached)
   const [filter, setFilter] = useState<Filter>('a_traiter')
   const [view, setView] = useState<View>('grid')
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
 
   const loadVideos = useCallback(async () => {
-    setLoading(true)
+    if (!videos.length) setLoading(true)
     try {
       const { data: vids } = await supabase
         .from('execution_videos')
@@ -34,7 +38,9 @@ export default function AthleteVideosPage() {
         .order('created_at', { ascending: false })
         .limit(MAX_VIDEOS_LOAD)
 
-      setVideos((vids || []) as VideoItem[])
+      const videoData = (vids || []) as VideoItem[]
+      setVideos(videoData)
+      setPageCache(cacheKey, videoData)
     } finally {
       setLoading(false)
     }

@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAthleteContext } from '@/contexts/AthleteContext'
 import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
+import { getPageCache, setPageCache } from '@/lib/utils'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import BilanAccordion from '@/components/bilans/BilanAccordion'
 import PhotoCompare from '@/components/bilans/PhotoCompare'
@@ -183,17 +185,26 @@ function BilanTraitePopupInline({
 // ── Page ──
 
 export default function BilansPage() {
+  const params = useParams<{ id: string }>()
   const { user } = useAuth()
-  const { selectedAthlete } = useAthleteContext()
+  const { selectedAthlete, athletes } = useAthleteContext()
   const { toast } = useToast()
   const supabase = createClient()
 
-  const [loading, setLoading] = useState(true)
-  const [bilans, setBilans] = useState<DailyReport[]>([])
-  const [allWLogs, setAllWLogs] = useState<Array<{ id: string; date: string; session_id?: string | null; session_name?: string | null; titre?: string | null; type?: string | null; started_at?: string | null; finished_at?: string | null; exercices_completes?: string | unknown[] | null }>>([])
-  const [progWeeks, setProgWeeks] = useState<Array<{ week_date: string; phase?: string | null; _phaseNum?: number }>>([])
-  const [nutriPlans, setNutriPlans] = useState<Array<{ id: string; valid_from?: string | null; meal_type?: string | null; nom?: string | null; calories_objectif?: number | null; proteines?: number | null; glucides?: number | null; lipides?: number | null; created_at?: string | null }>>([])
-  const [roadmapPhases, setRoadmapPhases] = useState<Array<{ phase?: string | null; name?: string | null; start_date?: string | null; end_date?: string | null }>>([])
+  // Use selectedAthlete if it matches params.id, otherwise fallback to athletes list
+  const athlete = selectedAthlete?.id === params.id ? selectedAthlete : athletes.find(a => a.id === params.id)
+  const athleteId = params.id
+  const athleteUserId = athlete?.user_id
+
+  const cacheKey = `athlete_${athleteId}_bilans`
+  const cached = useMemo(() => getPageCache<{ bilans: DailyReport[]; wlogs: unknown[]; progWeeks: unknown[]; nutriPlans: unknown[]; phases: unknown[] }>(cacheKey), [cacheKey])
+
+  const [loading, setLoading] = useState(!cached)
+  const [bilans, setBilans] = useState<DailyReport[]>((cached?.bilans as DailyReport[]) ?? [])
+  const [allWLogs, setAllWLogs] = useState<Array<{ id: string; date: string; session_id?: string | null; session_name?: string | null; titre?: string | null; type?: string | null; started_at?: string | null; finished_at?: string | null; exercices_completes?: string | unknown[] | null }>>((cached?.wlogs as any) ?? [])
+  const [progWeeks, setProgWeeks] = useState<Array<{ week_date: string; phase?: string | null; _phaseNum?: number }>>((cached?.progWeeks as any) ?? [])
+  const [nutriPlans, setNutriPlans] = useState<Array<{ id: string; valid_from?: string | null; meal_type?: string | null; nom?: string | null; calories_objectif?: number | null; proteines?: number | null; glucides?: number | null; lipides?: number | null; created_at?: string | null }>>((cached?.nutriPlans as any) ?? [])
+  const [roadmapPhases, setRoadmapPhases] = useState<Array<{ phase?: string | null; name?: string | null; start_date?: string | null; end_date?: string | null }>>((cached?.phases as any) ?? [])
   const [photoHistory, setPhotoHistory] = useState<Record<PhotoType, PhotoEntry[]>>({ front: [], side: [], back: [] })
 
   // Photo compare state
@@ -205,23 +216,34 @@ export default function BilansPage() {
   const [bilanTraiteOpen, setBilanTraiteOpen] = useState(false)
 
   const loadData = useCallback(async () => {
-    if (!selectedAthlete?.user_id) return
-    setLoading(true)
+    // Resolve user_id: from context or fallback via DB query
+    let userId = athleteUserId
+    if (!userId) {
+      const { data: ath } = await supabase.from('athletes').select('user_id').eq('id', athleteId).single()
+      userId = ath?.user_id
+    }
+    if (!userId) return
+
+    if (!bilans.length) setLoading(true)
     try {
       const [bilansRes, progRes, nutriRes, phasesRes, wlogsRes] = await Promise.all([
-        supabase.from('daily_reports').select('id, user_id, date, weight, sessions_executed, session_performance, energy, sleep_quality, steps, adherence, stress, soreness, general_notes, belly_measurement, hip_measurement, thigh_measurement, photo_front, photo_side, photo_back').eq('user_id', selectedAthlete.user_id).order('date', { ascending: false }).limit(200),
-        supabase.from('programming_weeks').select('week_date, phase').eq('athlete_id', selectedAthlete.id).order('week_date'),
-        supabase.from('nutrition_plans').select('id, valid_from, meal_type, nom, calories_objectif, proteines, glucides, lipides, created_at').eq('athlete_id', selectedAthlete.id),
-        supabase.from('roadmap_phases').select('phase, name, start_date, end_date').eq('athlete_id', selectedAthlete.id).order('start_date'),
-        supabase.from('workout_logs').select('id, date, session_id, session_name, titre, type, started_at, finished_at, exercices_completes').eq('athlete_id', selectedAthlete.id).order('date', { ascending: false }).limit(500),
+        supabase.from('daily_reports').select('id, user_id, date, weight, sessions_executed, session_performance, energy, sleep_quality, steps, adherence, stress, soreness, general_notes, belly_measurement, hip_measurement, thigh_measurement, photo_front, photo_side, photo_back').eq('user_id', userId).order('date', { ascending: false }).limit(200),
+        supabase.from('programming_weeks').select('week_date, phase').eq('athlete_id', athleteId).order('week_date'),
+        supabase.from('nutrition_plans').select('id, valid_from, meal_type, nom, calories_objectif, proteines, glucides, lipides, created_at').eq('athlete_id', athleteId),
+        supabase.from('roadmap_phases').select('phase, name, start_date, end_date').eq('athlete_id', athleteId).order('start_date'),
+        supabase.from('workout_logs').select('id, date, session_id, session_name, titre, type, started_at, finished_at, exercices_completes').eq('athlete_id', athleteId).order('date', { ascending: false }).limit(500),
       ])
 
       const bilanData = (bilansRes.data || []) as DailyReport[]
       setBilans(bilanData)
-      setAllWLogs(wlogsRes.data || [])
-      setProgWeeks(progRes.data || [])
-      setNutriPlans(nutriRes.data || [])
-      setRoadmapPhases((phasesRes.data || []).sort((a: { start_date?: string }, b: { start_date?: string }) => (a.start_date || '').localeCompare(b.start_date || '')))
+      const wlogs = wlogsRes.data || []
+      setAllWLogs(wlogs)
+      const pw = progRes.data || []
+      setProgWeeks(pw)
+      const np = nutriRes.data || []
+      setNutriPlans(np)
+      const phases = (phasesRes.data || []).sort((a: { start_date?: string }, b: { start_date?: string }) => (a.start_date || '').localeCompare(b.start_date || ''))
+      setRoadmapPhases(phases)
 
       // Build photo history with signed URLs
       const history: Record<PhotoType, PhotoEntry[]> = { front: [], side: [], back: [] }
@@ -257,10 +279,13 @@ export default function BilansPage() {
       await Promise.all(photoPromises)
       Object.values(history).forEach(arr => arr.sort((a, b) => a.date.localeCompare(b.date)))
       setPhotoHistory(history)
+
+      // Persist to sessionStorage (excluding photos which have signed URLs that expire)
+      setPageCache(cacheKey, { bilans: bilanData, wlogs, progWeeks: pw, nutriPlans: np, phases })
     } finally {
       setLoading(false)
     }
-  }, [selectedAthlete?.id, selectedAthlete?.user_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [athleteId, athleteUserId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadData() }, [loadData])
 

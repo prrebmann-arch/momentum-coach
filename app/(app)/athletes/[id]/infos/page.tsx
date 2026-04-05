@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAthleteContext } from '@/contexts/AthleteContext'
 import { useToast } from '@/contexts/ToastContext'
+import { getPageCache, setPageCache } from '@/lib/utils'
 import { DEFAULT_STEPS_GOAL, DEFAULT_WATER_GOAL, DEFAULT_NOTIF_TIME, JOURS_SEMAINE } from '@/lib/constants'
 import Skeleton from '@/components/ui/Skeleton'
 import styles from '@/styles/athlete-tabs.module.css'
@@ -63,65 +64,63 @@ export default function InfosPage() {
   const { toast } = useToast()
   const supabase = createClient()
 
-  const [loading, setLoading] = useState(true)
-  const [athlete, setAthlete] = useState<any>(null)
+  const cacheKey = `athlete_${params.id}_infos`
+  const cached = useMemo(() => getPageCache<{ athlete: any; phase: any; plan: any; payments: any[]; cancels: any[] }>(cacheKey), [cacheKey])
+
+  const [loading, setLoading] = useState(!cached)
+  const [athlete, setAthlete] = useState<any>(cached?.athlete ?? null)
   const [editingCard, setEditingCard] = useState<string | null>(null)
   const [formData, setFormData] = useState<Record<string, any>>({})
-  const [activePhase, setActivePhase] = useState<any>(null)
+  const [activePhase, setActivePhase] = useState<any>(cached?.phase ?? null)
 
   // Payment state
-  const [paymentPlan, setPaymentPlan] = useState<any>(null)
-  const [paymentHistory, setPaymentHistory] = useState<any[]>([])
-  const [cancelRequests, setCancelRequests] = useState<any[]>([])
+  const [paymentPlan, setPaymentPlan] = useState<any>(cached?.plan ?? null)
+  const [paymentHistory, setPaymentHistory] = useState<any[]>(cached?.payments ?? [])
+  const [cancelRequests, setCancelRequests] = useState<any[]>(cached?.cancels ?? [])
 
   // Onboarding state
   const [onboarding, setOnboarding] = useState<any>(null)
   const [workflow, setWorkflow] = useState<any>(null)
 
   const loadAthlete = useCallback(async () => {
-    setLoading(true)
+    if (!athlete) setLoading(true)
     try {
-      const { data } = await supabase.from('athletes').select('id, user_id, coach_id, prenom, nom, email, avatar_url, date_naissance, genre, telephone, objectif, poids_actuel, poids_objectif, access_mode, pas_journalier, water_goal_ml, blessures, allergies, medicaments, notes_sante, onboarding_workflow_id, bilan_frequency, bilan_interval, bilan_day, bilan_anchor_date, bilan_month_day, bilan_notif_time, complete_bilan_frequency, complete_bilan_interval, complete_bilan_day, complete_bilan_anchor_date, complete_bilan_month_day, complete_bilan_notif_time, created_at').eq('id', params.id).single()
+      // Run athlete + payment + phase queries all in parallel
+      const [athleteRes, planRes, paymentsRes, cancelsRes, phaseRes, obRes1] = await Promise.all([
+        supabase.from('athletes').select('id, user_id, coach_id, prenom, nom, email, avatar_url, date_naissance, genre, telephone, objectif, poids_actuel, poids_objectif, access_mode, pas_journalier, water_goal_ml, blessures, allergies, medicaments, notes_sante, onboarding_workflow_id, bilan_frequency, bilan_interval, bilan_day, bilan_anchor_date, bilan_month_day, bilan_notif_time, complete_bilan_frequency, complete_bilan_interval, complete_bilan_day, complete_bilan_anchor_date, complete_bilan_month_day, complete_bilan_notif_time, created_at').eq('id', params.id).single(),
+        supabase.from('athlete_payment_plans').select('id, athlete_id, coach_id, payment_status, amount, frequency, is_free, stripe_subscription_id, stripe_customer_id, created_at').eq('athlete_id', params.id).eq('coach_id', user?.id).maybeSingle(),
+        supabase.from('payment_history').select('id, athlete_id, amount, status, stripe_invoice_id, created_at').eq('athlete_id', params.id).eq('is_platform_payment', false).order('created_at', { ascending: false }).limit(10),
+        supabase.from('cancellation_requests').select('id, athlete_id, coach_id, reason, status, created_at').eq('athlete_id', params.id).eq('coach_id', user?.id).order('created_at', { ascending: false }).limit(5),
+        supabase.from('roadmap_phases').select('id, phase, name, status').eq('athlete_id', params.id).eq('status', 'en_cours').order('position').limit(1),
+        supabase.from('athlete_onboarding').select('id, athlete_id, workflow_id, completed, steps_completed, started_at').eq('athlete_id', params.id).limit(1),
+      ])
+
+      const data = athleteRes.data
       setAthlete(data)
+      const plan = planRes.data
+      setPaymentPlan(plan)
+      const payments = paymentsRes.data || []
+      setPaymentHistory(payments)
+      const cancels = cancelsRes.data || []
+      setCancelRequests(cancels)
+      const phase = phaseRes.data?.[0] || null
+      setActivePhase(phase)
 
-      if (data) {
-        // Load payment data
-        const [{ data: plan }, { data: payments }, { data: cancels }] = await Promise.all([
-          supabase.from('athlete_payment_plans').select('id, athlete_id, coach_id, payment_status, amount, frequency, is_free, stripe_subscription_id, stripe_customer_id, created_at').eq('athlete_id', params.id).eq('coach_id', user?.id).maybeSingle(),
-          supabase.from('payment_history').select('id, athlete_id, amount, status, stripe_invoice_id, created_at').eq('athlete_id', params.id).eq('is_platform_payment', false).order('created_at', { ascending: false }).limit(10),
-          supabase.from('cancellation_requests').select('id, athlete_id, coach_id, reason, status, created_at').eq('athlete_id', params.id).eq('coach_id', user?.id).order('created_at', { ascending: false }).limit(5),
-        ])
-        setPaymentPlan(plan)
-        setPaymentHistory(payments || [])
-        setCancelRequests(cancels || [])
+      // Cache main data
+      setPageCache(cacheKey, { athlete: data, phase, plan, payments, cancels })
 
-        // Load active roadmap phase
-        const { data: phaseData } = await supabase
-          .from('roadmap_phases')
-          .select('id, phase, name, status')
-          .eq('athlete_id', params.id)
-          .eq('status', 'en_cours')
-          .order('position')
-          .limit(1)
-        setActivePhase(phaseData?.[0] || null)
-
-        // Load onboarding
-        let ob: any = null
-        if (data.user_id || data.id) {
-          const r1 = await supabase.from('athlete_onboarding').select('id, athlete_id, workflow_id, completed, steps_completed, started_at').eq('athlete_id', data.user_id).limit(1)
-          ob = r1.data?.[0] || null
-          if (!ob) {
-            const r2 = await supabase.from('athlete_onboarding').select('id, athlete_id, workflow_id, completed, steps_completed, started_at').eq('athlete_id', data.id).limit(1)
-            ob = r2.data?.[0] || null
-          }
-        }
-        setOnboarding(ob)
-        if (ob?.workflow_id) {
-          const { data: wf } = await supabase.from('onboarding_workflows').select('id, name, steps, created_at').eq('id', ob.workflow_id).single()
-          setWorkflow(wf)
-        } else {
-          setWorkflow(null)
-        }
+      // Onboarding: try athlete_id first, fallback to user_id
+      let ob: any = obRes1.data?.[0] || null
+      if (!ob && data?.user_id) {
+        const r2 = await supabase.from('athlete_onboarding').select('id, athlete_id, workflow_id, completed, steps_completed, started_at').eq('athlete_id', data.user_id).limit(1)
+        ob = r2.data?.[0] || null
+      }
+      setOnboarding(ob)
+      if (ob?.workflow_id) {
+        const { data: wf } = await supabase.from('onboarding_workflows').select('id, name, steps, created_at').eq('id', ob.workflow_id).single()
+        setWorkflow(wf)
+      } else {
+        setWorkflow(null)
       }
     } finally {
       setLoading(false)

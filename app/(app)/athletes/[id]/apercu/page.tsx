@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAthleteContext } from '@/contexts/AthleteContext'
-import { toDateStr } from '@/lib/utils'
+import { toDateStr, getPageCache, setPageCache } from '@/lib/utils'
 import { DEFAULT_STEPS_GOAL, DEFAULT_WATER_GOAL, PROG_PHASES, MS_PER_DAY } from '@/lib/constants'
 import type { ProgPhaseKey } from '@/lib/constants'
 import dynamic from 'next/dynamic'
@@ -20,20 +20,23 @@ export default function ApercuPage() {
   const supabase = createClient()
   const { selectedAthlete } = useAthleteContext()
 
-  const [loading, setLoading] = useState(true)
-  const [athlete, setAthlete] = useState<any>(null)
-  const [reports, setReports] = useState<any[]>([])
-  const [activePhase, setActivePhase] = useState<any>(null)
-  const [activeProg, setActiveProg] = useState<any>(null)
-  const [nutritionPlans, setNutritionPlans] = useState<any[]>([])
-  const [trackingRows, setTrackingRows] = useState<any[]>([])
+  const cacheKey = `athlete_${params.id}_apercu`
+  const cached = useMemo(() => getPageCache<{ athlete: any; reports: any[]; phase: any; prog: any; nutrition: any[]; tracking: any[] }>(cacheKey), [cacheKey])
+
+  const [loading, setLoading] = useState(!cached)
+  const [athlete, setAthlete] = useState<any>(cached?.athlete ?? null)
+  const [reports, setReports] = useState<any[]>(cached?.reports ?? [])
+  const [activePhase, setActivePhase] = useState<any>(cached?.phase ?? null)
+  const [activeProg, setActiveProg] = useState<any>(cached?.prog ?? null)
+  const [nutritionPlans, setNutritionPlans] = useState<any[]>(cached?.nutrition ?? [])
+  const [trackingRows, setTrackingRows] = useState<any[]>(cached?.tracking ?? [])
 
   // Use context athlete's user_id to avoid a sequential query
   const contextUserId = selectedAthlete?.id === params.id ? selectedAthlete.user_id : null
 
   const loadData = useCallback(async () => {
     if (!params.id) return
-    setLoading(true)
+    if (!athlete) setLoading(true)
     try {
       // If we already have user_id from context, skip the athlete fetch and run all queries in parallel
       let userId = contextUserId
@@ -57,11 +60,19 @@ export default function ApercuPage() {
       ])
 
       setAthlete(athData)
-      setReports(reportsRes.data || [])
-      setActivePhase(phasesRes.data?.[0] || null)
-      setActiveProg(progsRes.data?.[0] || null)
-      setNutritionPlans(nutriRes.data || [])
-      setTrackingRows(trackRes.data || [])
+      const reportsData = reportsRes.data || []
+      setReports(reportsData)
+      const phaseData = phasesRes.data?.[0] || null
+      setActivePhase(phaseData)
+      const progData = progsRes.data?.[0] || null
+      setActiveProg(progData)
+      const nutriData = nutriRes.data || []
+      setNutritionPlans(nutriData)
+      const trackData = trackRes.data || []
+      setTrackingRows(trackData)
+
+      // Persist to sessionStorage for instant load next time
+      setPageCache(cacheKey, { athlete: athData, reports: reportsData, phase: phaseData, prog: progData, nutrition: nutriData, tracking: trackData })
     } finally {
       setLoading(false)
     }

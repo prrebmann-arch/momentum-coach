@@ -71,3 +71,7 @@
 [2026-04-03] | Early return in loadData without setLoading(false) leaves loading=true forever | Bilans page had `if (!selectedAthlete?.user_id) return` before `setLoading(true)`, but `loading` was initialized as `true`. The guard prevented data from loading AND prevented the loading state from being reset. Fix: combine loading and null checks so the UI shows skeleton until data is ready.
 
 [2026-04-03] | Sequential queries avoidable via context data | Apercu page fetched athlete from DB just to get user_id, then ran 5 parallel queries. Since AthleteContext already has all athletes loaded, use `selectedAthlete.user_id` from context to skip the sequential fetch and run everything in parallel.
+
+[2026-04-03] | SessionStorage cache pattern for instant tab loads | For each athlete tab page: (1) read cache at mount via useMemo (getPageCache), (2) initialize state from cache, (3) set loading=false if cache exists, (4) fetch fresh data in background, (5) write to cache after fetch. Cache key format: `athlete_{id}_{page}`. This makes tab switching feel instant while keeping data fresh.
+
+[2026-04-03] | Pages relying solely on selectedAthlete block on context | Bilans page used `if (!selectedAthlete?.user_id) return` which blocked loading when context wasn't ready yet. Always use `params.id` as primary identifier and resolve user_id via context OR fallback DB query. Never gate loading on context-only data.

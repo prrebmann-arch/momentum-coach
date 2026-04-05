@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useAthleteContext } from '@/contexts/AthleteContext'
-import { toDateStr } from '@/lib/utils'
+import { toDateStr, getPageCache, setPageCache } from '@/lib/utils'
 import { PROG_PHASES, type ProgPhaseKey } from '@/lib/constants'
 import RoadmapTimeline from '@/components/roadmap/RoadmapTimeline'
 import type { RoadmapPhase } from '@/components/roadmap/RoadmapTimeline'
@@ -45,17 +45,20 @@ export default function RoadmapPage() {
   const { toast } = useToast()
   const { selectedAthlete } = useAthleteContext()
 
-  const [phases, setPhases] = useState<RoadmapPhase[]>([])
-  const [programs, setPrograms] = useState<ProgramRef[]>([])
-  const [nutritions, setNutritions] = useState<NutritionRef[]>([])
-  const [reports, setReports] = useState<DailyReport[]>([])
-  const [loading, setLoading] = useState(true)
+  const cacheKey = `athlete_${athleteId}_roadmap`
+  const cached = useMemo(() => getPageCache<{ phases: RoadmapPhase[]; programs: ProgramRef[]; nutritions: NutritionRef[]; reports: DailyReport[] }>(cacheKey), [cacheKey])
+
+  const [phases, setPhases] = useState<RoadmapPhase[]>(cached?.phases ?? [])
+  const [programs, setPrograms] = useState<ProgramRef[]>(cached?.programs ?? [])
+  const [nutritions, setNutritions] = useState<NutritionRef[]>(cached?.nutritions ?? [])
+  const [reports, setReports] = useState<DailyReport[]>(cached?.reports ?? [])
+  const [loading, setLoading] = useState(!cached)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [modalData, setModalData] = useState<PhaseFormData | null>(null)
 
   const loadData = useCallback(async () => {
-    setLoading(true)
+    if (!phases.length) setLoading(true)
     try {
       const userId = selectedAthlete?.user_id
 
@@ -73,10 +76,16 @@ export default function RoadmapPage() {
           : Promise.resolve({ data: [] }),
       ])
 
-      setPhases((phasesRes.data || []) as RoadmapPhase[])
-      setPrograms((progsRes.data || []) as ProgramRef[])
-      setNutritions((nutritionsRes.data || []) as NutritionRef[])
-      setReports((reportsRes.data || []) as DailyReport[])
+      const phasesData = (phasesRes.data || []) as RoadmapPhase[]
+      const progsData = (progsRes.data || []) as ProgramRef[]
+      const nutritionsData = (nutritionsRes.data || []) as NutritionRef[]
+      const reportsData = (reportsRes.data || []) as DailyReport[]
+      setPhases(phasesData)
+      setPrograms(progsData)
+      setNutritions(nutritionsData)
+      setReports(reportsData)
+
+      setPageCache(cacheKey, { phases: phasesData, programs: progsData, nutritions: nutritionsData, reports: reportsData })
     } finally {
       setLoading(false)
     }

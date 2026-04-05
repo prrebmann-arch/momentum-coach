@@ -17,6 +17,23 @@
 - [x] /athletes/[id]/apercu — uses context athlete user_id to skip sequential query (all 5 queries parallel)
 - [ ] Further INP reduction: consider debounce on input handlers in BusinessDashboard FieldRow
 
+## COACH — SessionStorage cache + instant tab switching (2026-04-03)
+- [x] lib/utils.ts — added getPageCache/setPageCache helpers
+- [x] training — sessionStorage cache (programs, cardio, logs) + skeleton loading
+- [x] nutrition — sessionStorage cache (plans, diets)
+- [x] bilans — sessionStorage cache + params.id fallback (was dependent on selectedAthlete only)
+- [x] apercu — sessionStorage cache (athlete, reports, phase, prog, nutrition, tracking)
+- [x] roadmap — sessionStorage cache (phases, programs, nutritions, reports)
+- [x] infos — sessionStorage cache + parallelized all queries (6 in parallel instead of 3 sequential stages)
+- [x] videos — sessionStorage cache
+- [x] supplements — sessionStorage cache (assignments, unlocked)
+- [x] retours — sessionStorage cache
+- [x] posing — sessionStorage cache (enabled, videos, retours)
+- [x] questionnaires — sessionStorage cache + parallelized assignments+templates fetch
+- [x] menstrual — sessionStorage cache (enabled, entries)
+- [x] All pages: loading=false when cache exists (instant display from cache, background refresh)
+- [x] Build passes (0 errors in modified files)
+
 ## Features à faire
 - [ ] Meal timing : notifications rappel à chaque repas (Expo local notifications)
 - [ ] Calculateur repas : à tester sur téléphone

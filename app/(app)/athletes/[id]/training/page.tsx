@@ -8,8 +8,10 @@ import { useToast } from '@/contexts/ToastContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAthleteContext } from '@/contexts/AthleteContext'
 import { notifyAthlete } from '@/lib/push'
+import { getPageCache, setPageCache } from '@/lib/utils'
 import CardioSection from '@/components/training/CardioSection'
 import EmptyState from '@/components/ui/EmptyState'
+import Skeleton from '@/components/ui/Skeleton'
 import type { SetData } from '@/components/training/SetRow'
 import styles from '@/styles/training.module.css'
 
@@ -179,9 +181,12 @@ export default function TrainingPage() {
   const { athletes } = useAthleteContext()
   const athlete = athletes.find((a) => a.id === athleteId)
 
-  const [loading, setLoading] = useState(true)
-  const [programs, setPrograms] = useState<WorkoutProgram[]>([])
-  const [athleteCardio, setAthleteCardio] = useState<AthleteCardio>({ cardio_config: null, pas_journalier: null })
+  const cacheKey = `athlete_${athleteId}_training`
+  const cached = useMemo(() => getPageCache<{ programs: WorkoutProgram[]; cardio: AthleteCardio; logs: WorkoutLog[] }>(cacheKey), [cacheKey])
+
+  const [loading, setLoading] = useState(!cached)
+  const [programs, setPrograms] = useState<WorkoutProgram[]>(cached?.programs ?? [])
+  const [athleteCardio, setAthleteCardio] = useState<AthleteCardio>(cached?.cardio ?? { cardio_config: null, pas_journalier: null })
   const [view, setView] = useState<'list' | 'editor' | 'detail' | 'history'>('list')
   const [editProgramId, setEditProgramId] = useState<string | null>(null)
   const [editProgramData, setEditProgramData] = useState<{
@@ -194,27 +199,29 @@ export default function TrainingPage() {
   const [viewSessionIdx, setViewSessionIdx] = useState(0)
 
   // History state
-  const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([])
+  const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>(cached?.logs ?? [])
   const [sessionMap, setSessionMap] = useState<Record<string, WorkoutSession & { _exs: Record<string, unknown>[]; _progName: string }>>({})
   const [histWeekOffset, setHistWeekOffset] = useState(0)
   const [histSelectedDate, setHistSelectedDate] = useState<string | null>(null)
   const [histPrevLogIdx, setHistPrevLogIdx] = useState(0)
 
   const loadData = useCallback(async () => {
-    setLoading(true)
+    if (!programs.length) setLoading(true)
     try {
       const [athleteRes, programsRes, logsRes] = await Promise.all([
         supabase.from('athletes').select('cardio_config, pas_journalier').eq('id', athleteId).single(),
         supabase.from('workout_programs').select('id, nom, actif, pattern_type, pattern_data, created_at, workout_sessions(id, nom, jour, exercices, ordre)').eq('athlete_id', athleteId).order('created_at', { ascending: false }),
         supabase.from('workout_logs').select('id, athlete_id, session_id, session_name, titre, date, type, started_at, finished_at, exercices_completes').eq('athlete_id', athleteId).order('date', { ascending: false }).limit(500),
       ])
-      setAthleteCardio({
+      const cardio: AthleteCardio = {
         cardio_config: athleteRes.data?.cardio_config || null,
         pas_journalier: athleteRes.data?.pas_journalier || null,
-      })
+      }
+      setAthleteCardio(cardio)
       const progs = (programsRes.data as WorkoutProgram[]) || []
       setPrograms(progs)
-      setWorkoutLogs((logsRes.data as WorkoutLog[]) || [])
+      const logs = (logsRes.data as WorkoutLog[]) || []
+      setWorkoutLogs(logs)
 
       // Build session lookup
       const sMap: Record<string, WorkoutSession & { _exs: Record<string, unknown>[]; _progName: string }> = {}
@@ -225,6 +232,9 @@ export default function TrainingPage() {
         })
       })
       setSessionMap(sMap)
+
+      // Persist to sessionStorage for instant load next time
+      setPageCache(cacheKey, { programs: progs, cardio, logs })
     } finally {
       setLoading(false)
     }
@@ -733,8 +743,13 @@ export default function TrainingPage() {
   // -- List view --
   if (loading) {
     return (
-      <div className="text-center" style={{ padding: 40 }}>
-        <i className="fa-solid fa-spinner fa-spin fa-2x" />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <Skeleton height={60} borderRadius={12} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <Skeleton height={180} borderRadius={16} />
+          <Skeleton height={180} borderRadius={16} />
+        </div>
+        <Skeleton height={120} borderRadius={12} />
       </div>
     )
   }

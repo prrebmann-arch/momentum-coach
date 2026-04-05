@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
+import { getPageCache, setPageCache } from '@/lib/utils'
 import Toggle from '@/components/ui/Toggle'
 import Modal from '@/components/ui/Modal'
 import EmptyState from '@/components/ui/EmptyState'
@@ -56,10 +57,13 @@ export default function SupplementsPage() {
   const { toast } = useToast()
   const supabase = createClient()
 
-  const [loading, setLoading] = useState(true)
+  const cacheKey = `athlete_${params.id}_supplements`
+  const cached = useMemo(() => getPageCache<{ assignments: any[]; unlocked: boolean }>(cacheKey), [cacheKey])
+
+  const [loading, setLoading] = useState(!cached)
   const [tab, setTab] = useState<SuppType>('complement')
-  const [assignments, setAssignments] = useState<any[]>([])
-  const [unlocked, setUnlocked] = useState(false)
+  const [assignments, setAssignments] = useState<any[]>(cached?.assignments ?? [])
+  const [unlocked, setUnlocked] = useState(cached?.unlocked ?? false)
   const [logs, setLogs] = useState<any[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -76,7 +80,7 @@ export default function SupplementsPage() {
   const [formConcentration, setFormConcentration] = useState('')
 
   const loadData = useCallback(async () => {
-    setLoading(true)
+    if (!assignments.length) setLoading(true)
     try {
       const rangeStart = new Date()
       rangeStart.setDate(rangeStart.getDate() - (HISTORY_DAYS - 1))
@@ -88,9 +92,13 @@ export default function SupplementsPage() {
         supabase.from('athletes').select('supplementation_unlocked').eq('id', params.id).single(),
         supabase.from('supplement_logs').select('id, athlete_id, athlete_supplement_id, taken_date, taken').eq('athlete_id', params.id).gte('taken_date', startDate).lte('taken_date', today).order('taken_date', { ascending: false }),
       ])
-      setAssignments((assigns || []).filter((a: any) => a.actif !== false))
-      setUnlocked(ath?.supplementation_unlocked || false)
+      const filteredAssigns = (assigns || []).filter((a: any) => a.actif !== false)
+      const unlockedVal = ath?.supplementation_unlocked || false
+      setAssignments(filteredAssigns)
+      setUnlocked(unlockedVal)
       setLogs(logData || [])
+
+      setPageCache(cacheKey, { assignments: filteredAssigns, unlocked: unlockedVal })
     } finally {
       setLoading(false)
     }

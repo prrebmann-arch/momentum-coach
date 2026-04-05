@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
+import { getPageCache, setPageCache } from '@/lib/utils'
 import Toggle from '@/components/ui/Toggle'
 import Skeleton from '@/components/ui/Skeleton'
 import { type MealData } from '@/components/nutrition/MealEditor'
@@ -73,9 +74,12 @@ export default function NutritionPage() {
   const { user } = useAuth()
   const { toast } = useToast()
 
-  const [loading, setLoading] = useState(true)
-  const [plans, setPlans] = useState<NutritionPlan[]>([])
-  const [diets, setDiets] = useState<DietGroup[]>([])
+  const cacheKey = `athlete_${athleteId}_nutrition`
+  const cached = useMemo(() => getPageCache<{ plans: NutritionPlan[]; diets: DietGroup[] }>(cacheKey), [cacheKey])
+
+  const [loading, setLoading] = useState(!cached)
+  const [plans, setPlans] = useState<NutritionPlan[]>(cached?.plans ?? [])
+  const [diets, setDiets] = useState<DietGroup[]>(cached?.diets ?? [])
   const [view, setView] = useState<View>('list')
 
   // Editor state
@@ -107,7 +111,7 @@ export default function NutritionPage() {
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const loadPlans = useCallback(async () => {
-    setLoading(true)
+    if (!plans.length) setLoading(true)
     try {
       const { data } = await supabase
         .from('nutrition_plans')
@@ -138,6 +142,9 @@ export default function NutritionPage() {
       })
       groups.sort((a, b) => (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0))
       setDiets(groups)
+
+      // Persist to sessionStorage for instant load next time
+      setPageCache(cacheKey, { plans: allPlans, diets: groups })
     } finally {
       setLoading(false)
     }

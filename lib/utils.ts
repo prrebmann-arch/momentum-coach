@@ -1,5 +1,28 @@
 import { MS_PER_DAY } from './constants'
 
+// ===== SESSION CACHE =====
+
+/** Read from sessionStorage cache (returns undefined if not found) */
+export function getPageCache<T>(key: string): T | undefined {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const raw = sessionStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Write to sessionStorage cache (silently ignores errors) */
+export function setPageCache<T>(key: string, data: T): void {
+  if (typeof window === 'undefined') return
+  try {
+    sessionStorage.setItem(key, JSON.stringify(data))
+  } catch {
+    // sessionStorage full — ignore
+  }
+}
+
 // ===== DATE UTILITIES =====
 
 /** Format a Date to 'YYYY-MM-DD' string */

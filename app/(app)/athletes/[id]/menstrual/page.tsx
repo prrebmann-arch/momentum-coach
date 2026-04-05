@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/contexts/ToastContext'
+import { getPageCache, setPageCache } from '@/lib/utils'
 import Toggle from '@/components/ui/Toggle'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
@@ -24,19 +25,25 @@ export default function MenstrualPage() {
   const { toast } = useToast()
   const supabase = createClient()
 
-  const [loading, setLoading] = useState(true)
-  const [enabled, setEnabled] = useState(false)
-  const [entries, setEntries] = useState<any[]>([])
+  const cacheKey = `athlete_${params.id}_menstrual`
+  const cached = useMemo(() => getPageCache<{ enabled: boolean; entries: any[] }>(cacheKey), [cacheKey])
+
+  const [loading, setLoading] = useState(!cached)
+  const [enabled, setEnabled] = useState(cached?.enabled ?? false)
+  const [entries, setEntries] = useState<any[]>(cached?.entries ?? [])
 
   const loadData = useCallback(async () => {
-    setLoading(true)
+    if (!entries.length && !cached) setLoading(true)
     try {
       const [{ data: logs }, { data: ath }] = await Promise.all([
         supabase.from('menstrual_logs').select('id, athlete_id, start_date, end_date, flow_level, symptoms, notes, created_at').eq('athlete_id', params.id).order('start_date', { ascending: false }).limit(24),
         supabase.from('athletes').select('menstrual_tracking_enabled').eq('id', params.id).single(),
       ])
-      setEnabled(ath?.menstrual_tracking_enabled || false)
-      setEntries(logs || [])
+      const enabledVal = ath?.menstrual_tracking_enabled || false
+      const entriesData = logs || []
+      setEnabled(enabledVal)
+      setEntries(entriesData)
+      setPageCache(cacheKey, { enabled: enabledVal, entries: entriesData })
     } finally {
       setLoading(false)
     }

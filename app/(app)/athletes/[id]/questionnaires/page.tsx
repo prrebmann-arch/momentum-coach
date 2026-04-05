@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
+import { getPageCache, setPageCache } from '@/lib/utils'
 import Badge from '@/components/ui/Badge'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
@@ -34,10 +35,13 @@ export default function QuestionnairesPage() {
   const { toast } = useToast()
   const supabase = createClient()
 
-  const [loading, setLoading] = useState(true)
-  const [assignments, setAssignments] = useState<any[]>([])
-  const [responsesMap, setResponsesMap] = useState<Record<string, any>>({})
-  const [templates, setTemplates] = useState<any[]>([])
+  const cacheKey = `athlete_${params.id}_questionnaires`
+  const cached = useMemo(() => getPageCache<{ assignments: any[]; responsesMap: Record<string, any>; templates: any[] }>(cacheKey), [cacheKey])
+
+  const [loading, setLoading] = useState(!cached)
+  const [assignments, setAssignments] = useState<any[]>(cached?.assignments ?? [])
+  const [responsesMap, setResponsesMap] = useState<Record<string, any>>(cached?.responsesMap ?? {})
+  const [templates, setTemplates] = useState<any[]>(cached?.templates ?? [])
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [selectedTemplate, setSelectedTemplate] = useState('')
   const [obligatoire, setObligatoire] = useState(false)
@@ -50,13 +54,20 @@ export default function QuestionnairesPage() {
   const [quickObligatoire, setQuickObligatoire] = useState(false)
 
   const loadData = useCallback(async () => {
-    setLoading(true)
+    if (!assignments.length) setLoading(true)
     try {
-      const { data: assigns } = await supabase
-        .from('questionnaire_assignments')
-        .select('*, questionnaire_templates(titre)')
-        .eq('athlete_id', params.id)
-        .order('sent_at', { ascending: false })
+      const [{ data: assigns }, { data: tpls }] = await Promise.all([
+        supabase
+          .from('questionnaire_assignments')
+          .select('*, questionnaire_templates(titre)')
+          .eq('athlete_id', params.id)
+          .order('sent_at', { ascending: false }),
+        supabase
+          .from('questionnaire_templates')
+          .select('id, titre, questions')
+          .eq('coach_id', user?.id)
+          .order('titre'),
+      ])
 
       const completedIds = (assigns || []).filter((a: any) => a.status === 'completed').map((a: any) => a.id)
       const rmap: Record<string, any> = {}
@@ -68,15 +79,13 @@ export default function QuestionnairesPage() {
         ;(responses || []).forEach((r: any) => { rmap[r.assignment_id] = r })
       }
 
-      const { data: tpls } = await supabase
-        .from('questionnaire_templates')
-        .select('id, titre, questions')
-        .eq('coach_id', user?.id)
-        .order('titre')
-
-      setAssignments(assigns || [])
+      const assignsData = assigns || []
+      const tplsData = tpls || []
+      setAssignments(assignsData)
       setResponsesMap(rmap)
-      setTemplates(tpls || [])
+      setTemplates(tplsData)
+
+      setPageCache(cacheKey, { assignments: assignsData, responsesMap: rmap, templates: tplsData })
     } finally {
       setLoading(false)
     }

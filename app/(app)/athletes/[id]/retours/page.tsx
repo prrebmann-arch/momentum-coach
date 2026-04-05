@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
+import { getPageCache, setPageCache } from '@/lib/utils'
 import Modal from '@/components/ui/Modal'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
@@ -19,8 +20,11 @@ export default function RetoursPage() {
   const { toast } = useToast()
   const supabase = createClient()
 
-  const [loading, setLoading] = useState(true)
-  const [retours, setRetours] = useState<any[]>([])
+  const cacheKey = `athlete_${params.id}_retours`
+  const cached = useMemo(() => getPageCache<any[]>(cacheKey), [cacheKey])
+
+  const [loading, setLoading] = useState(!cached)
+  const [retours, setRetours] = useState<any[]>(cached ?? [])
   const [showModal, setShowModal] = useState(false)
   const [formLoom, setFormLoom] = useState('')
   const [formTitre, setFormTitre] = useState('')
@@ -28,7 +32,7 @@ export default function RetoursPage() {
   const [saving, setSaving] = useState(false)
 
   const loadRetours = useCallback(async () => {
-    setLoading(true)
+    if (!retours.length) setLoading(true)
     try {
       const { data } = await supabase
         .from('bilan_retours')
@@ -36,7 +40,9 @@ export default function RetoursPage() {
         .eq('athlete_id', params.id)
         .order('created_at', { ascending: false })
         .limit(100)
-      setRetours(data || [])
+      const result = data || []
+      setRetours(result)
+      setPageCache(cacheKey, result)
     } finally {
       setLoading(false)
     }

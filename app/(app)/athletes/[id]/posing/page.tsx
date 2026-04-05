@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
+import { getPageCache, setPageCache } from '@/lib/utils'
 import Toggle from '@/components/ui/Toggle'
 import Modal from '@/components/ui/Modal'
 import Badge from '@/components/ui/Badge'
@@ -22,10 +23,13 @@ export default function PosingPage() {
   const { toast } = useToast()
   const supabase = createClient()
 
-  const [loading, setLoading] = useState(true)
-  const [posingEnabled, setPosingEnabled] = useState(false)
-  const [videos, setVideos] = useState<any[]>([])
-  const [retours, setRetours] = useState<any[]>([])
+  const cacheKey = `athlete_${params.id}_posing`
+  const cached = useMemo(() => getPageCache<{ enabled: boolean; videos: any[]; retours: any[] }>(cacheKey), [cacheKey])
+
+  const [loading, setLoading] = useState(!cached)
+  const [posingEnabled, setPosingEnabled] = useState(cached?.enabled ?? false)
+  const [videos, setVideos] = useState<any[]>(cached?.videos ?? [])
+  const [retours, setRetours] = useState<any[]>(cached?.retours ?? [])
   const [filter, setFilter] = useState<FilterKey>('a_traiter')
   const [viewingVideo, setViewingVideo] = useState<any>(null)
   const [showModal, setShowModal] = useState(false)
@@ -36,20 +40,26 @@ export default function PosingPage() {
   const [saving, setSaving] = useState(false)
 
   const loadData = useCallback(async () => {
-    setLoading(true)
+    if (!videos.length && !cached) setLoading(true)
     try {
       const { data: ath } = await supabase.from('athletes').select('posing_enabled').eq('id', params.id).single()
       const enabled = ath?.posing_enabled || false
       setPosingEnabled(enabled)
 
-      if (!enabled) { return }
+      if (!enabled) {
+        setPageCache(cacheKey, { enabled: false, videos: [], retours: [] })
+        return
+      }
 
       const [{ data: vids }, { data: rets }] = await Promise.all([
         supabase.from('posing_videos').select('id, athlete_id, video_url, thumbnail_url, status, commentaire, created_at').eq('athlete_id', params.id).order('created_at', { ascending: false }).limit(100),
         supabase.from('posing_retours').select('id, athlete_id, coach_id, loom_url, titre, commentaire, posing_video_id, created_at').eq('athlete_id', params.id).order('created_at', { ascending: false }).limit(100),
       ])
-      setVideos(vids || [])
-      setRetours(rets || [])
+      const vidsData = vids || []
+      const retsData = rets || []
+      setVideos(vidsData)
+      setRetours(retsData)
+      setPageCache(cacheKey, { enabled, videos: vidsData, retours: retsData })
     } finally {
       setLoading(false)
     }
