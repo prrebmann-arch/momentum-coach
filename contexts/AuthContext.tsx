@@ -144,12 +144,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const u = { id: session.user.id, email: session.user.email! }
           setUser(u)
           setAccessToken(session.access_token)
+          setLoading(false)
           try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
           await fetchCoach(session.user.id)
         } else {
           setUser(null)
           setCoach(null)
           setAccessToken(null)
+          setLoading(false)
           localStorage.removeItem(CACHE_KEY_USER)
           localStorage.removeItem(CACHE_KEY_PROFILE)
         }
@@ -183,10 +185,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(data.session?.access_token ?? null)
       try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
       const profile = await fetchCoach(data.user.id)
-      setLoading(false)
       return profile
     } finally {
       signingInRef.current = false
+      setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchCoach])
@@ -219,10 +221,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(data.session?.access_token ?? null)
       try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
       const profile = await fetchCoach(data.user.id)
-      setLoading(false)
       return profile
     } finally {
       signingInRef.current = false
+      setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchCoach])
