@@ -182,7 +182,7 @@ export default function TrainingPage() {
   const athlete = athletes.find((a) => a.id === athleteId)
 
   const cacheKey = `athlete_${athleteId}_training`
-  const cached = useMemo(() => getPageCache<{ programs: WorkoutProgram[]; cardio: AthleteCardio; logs: WorkoutLog[] }>(cacheKey), [cacheKey])
+  const [cached] = useState(() => getPageCache<{ programs: WorkoutProgram[]; cardio: AthleteCardio }>(cacheKey))
 
   const [loading, setLoading] = useState(!cached)
   const [programs, setPrograms] = useState<WorkoutProgram[]>(cached?.programs ?? [])
@@ -198,8 +198,13 @@ export default function TrainingPage() {
   const [viewProgramId, setViewProgramId] = useState<string | null>(null)
   const [viewSessionIdx, setViewSessionIdx] = useState(0)
 
+  // Template picker state
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [trainingTemplates, setTrainingTemplates] = useState<{ id: string; nom: string; category?: string | null; pattern_type?: string; pattern_data?: Record<string, unknown>; sessions_data?: Array<{ nom?: string; jour?: string; exercices?: unknown[] | string; exercises?: unknown[] | string }> }[]>([])
+  const [loadingTemplates, setLoadingTemplates] = useState(false)
+
   // History state
-  const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>(cached?.logs ?? [])
+  const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([])
   const [sessionMap, setSessionMap] = useState<Record<string, WorkoutSession & { _exs: Record<string, unknown>[]; _progName: string }>>({})
   const [histWeekOffset, setHistWeekOffset] = useState(0)
   const [histSelectedDate, setHistSelectedDate] = useState<string | null>(null)
@@ -211,7 +216,7 @@ export default function TrainingPage() {
       const [athleteRes, programsRes, logsRes] = await Promise.all([
         supabase.from('athletes').select('cardio_config, pas_journalier').eq('id', athleteId).single(),
         supabase.from('workout_programs').select('id, nom, actif, pattern_type, pattern_data, created_at, workout_sessions(id, nom, jour, exercices, ordre)').eq('athlete_id', athleteId).order('created_at', { ascending: false }),
-        supabase.from('workout_logs').select('id, athlete_id, session_id, session_name, titre, date, type, started_at, finished_at, exercices_completes').eq('athlete_id', athleteId).order('date', { ascending: false }).limit(500),
+        supabase.from('workout_logs').select('id, athlete_id, session_id, session_name, titre, date, type, started_at, finished_at, exercices_completes').eq('athlete_id', athleteId).order('date', { ascending: false }).limit(100),
       ])
       const cardio: AthleteCardio = {
         cardio_config: athleteRes.data?.cardio_config || null,
@@ -233,8 +238,8 @@ export default function TrainingPage() {
       })
       setSessionMap(sMap)
 
-      // Persist to sessionStorage for instant load next time
-      setPageCache(cacheKey, { programs: progs, cardio, logs })
+      // Persist to sessionStorage for instant load next time (exclude heavy logs)
+      setPageCache(cacheKey, { programs: progs, cardio })
     } finally {
       setLoading(false)
     }
@@ -347,6 +352,62 @@ export default function TrainingPage() {
     setViewProgramId(programId)
     setViewSessionIdx(0)
     setView('detail')
+  }, [])
+
+  // Open template picker: fetch coach's training templates
+  const openTemplatePicker = useCallback(async () => {
+    if (!user?.id) return
+    setShowTemplatePicker(true)
+    setLoadingTemplates(true)
+    try {
+      const { data } = await supabase
+        .from('training_templates')
+        .select('id, nom, category, pattern_type, pattern_data, sessions_data')
+        .eq('coach_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      setTrainingTemplates((data || []) as typeof trainingTemplates)
+    } finally {
+      setLoadingTemplates(false)
+    }
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Select a training template: pre-fill editor with its data
+  const selectTrainingTemplate = useCallback((tpl: typeof trainingTemplates[0]) => {
+    setShowTemplatePicker(false)
+    const sd = tpl.sessions_data || []
+    const sessions = sd.map((s) => {
+      let exs: Array<{ nom?: string; series?: string | number; reps?: string; exercice_id?: string | null; muscle_principal?: string; sets?: SetData[]; superset_id?: string | null }> = []
+      try {
+        const raw = s.exercices ?? s.exercises ?? []
+        exs = typeof raw === 'string' ? JSON.parse(raw) : (raw as typeof exs)
+      } catch { exs = [] }
+      return {
+        nom: s.nom || '',
+        jour: s.jour || '',
+        exercises: exs.map((ex) => ({
+          nom: String(ex.nom || ''),
+          exercice_id: ex.exercice_id ? String(ex.exercice_id) : null,
+          muscle_principal: String(ex.muscle_principal || ''),
+          sets: Array.isArray(ex.sets) && ex.sets.length > 0
+            ? ex.sets as SetData[]
+            : Array.from({ length: parseInt(String(ex.series || '4')) || 4 }, () => ({ reps: String(ex.reps || '10'), tempo: '30X1', repos: '1m30', type: 'normal' as const })),
+          superset_id: ex.superset_id ? String(ex.superset_id) : null,
+        })),
+      }
+    })
+    let pd: Record<string, unknown> = {}
+    try {
+      pd = typeof tpl.pattern_data === 'string' ? JSON.parse(tpl.pattern_data as string) : (tpl.pattern_data || {})
+    } catch { /* empty */ }
+    setEditProgramId(null)
+    setEditProgramData({
+      name: tpl.nom,
+      patternType: tpl.pattern_type || 'pattern',
+      patternData: pd,
+      sessions,
+    })
+    setView('editor')
   }, [])
 
   // -- Editor view --
@@ -768,9 +829,14 @@ export default function TrainingPage() {
           icon="fa-solid fa-dumbbell"
           message="Aucun programme d'entrainement"
           action={
-            <button className="btn btn-red" onClick={() => openEditor()}>
-              <i className="fa-solid fa-plus" /> Creer un programme
-            </button>
+            <div className="flex gap-8">
+              <button className="btn btn-outline" onClick={openTemplatePicker}>
+                <i className="fa-solid fa-copy" /> Depuis un template
+              </button>
+              <button className="btn btn-red" onClick={() => openEditor()}>
+                <i className="fa-solid fa-plus" /> Creer un programme
+              </button>
+            </div>
           }
         />
       ) : (
@@ -783,6 +849,9 @@ export default function TrainingPage() {
             <div className="flex gap-8">
               <button className="btn btn-outline btn-sm" onClick={() => { setHistWeekOffset(0); setHistSelectedDate(null); setHistPrevLogIdx(0); setView('history') }}>
                 <i className="fa-solid fa-clock-rotate-left" /> Historique
+              </button>
+              <button className="btn btn-outline btn-sm" onClick={openTemplatePicker}>
+                <i className="fa-solid fa-copy" /> Depuis un template
               </button>
               <button className="btn btn-red btn-sm" onClick={() => openEditor()}>
                 <i className="fa-solid fa-plus" /> Nouveau programme
@@ -884,6 +953,64 @@ export default function TrainingPage() {
             )
           })}
         </>
+      )}
+
+      {/* Template Picker Modal */}
+      {showTemplatePicker && (
+        <div className="modal-overlay" onClick={() => setShowTemplatePicker(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Choisir un template</h3>
+              <button className="modal-close" onClick={() => setShowTemplatePicker(false)}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div style={{ padding: 16, maxHeight: 400, overflowY: 'auto' }}>
+              {loadingTemplates ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <Skeleton height={48} borderRadius={8} />
+                  <Skeleton height={48} borderRadius={8} />
+                  <Skeleton height={48} borderRadius={8} />
+                </div>
+              ) : trainingTemplates.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
+                  <i className="fa-solid fa-folder-open" style={{ fontSize: 24, marginBottom: 8, display: 'block' }} />
+                  <p>Aucun template training</p>
+                  <p style={{ fontSize: 12, marginTop: 4 }}>Creez des templates dans la section Templates</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {trainingTemplates.map((tpl) => {
+                    const sessionCount = tpl.sessions_data?.length || 0
+                    return (
+                      <button
+                        key={tpl.id}
+                        onClick={() => selectTrainingTemplate(tpl)}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)',
+                          background: 'var(--bg2)', cursor: 'pointer', textAlign: 'left', width: '100%',
+                          transition: 'border-color 0.15s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--primary)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text)' }}>{tpl.nom}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                            {sessionCount} seance{sessionCount !== 1 ? 's' : ''}
+                            {tpl.category ? ` · ${tpl.category}` : ''}
+                          </div>
+                        </div>
+                        <i className="fa-solid fa-chevron-right" style={{ color: 'var(--text3)', fontSize: 12 }} />
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

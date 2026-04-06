@@ -96,6 +96,11 @@ export default function NutritionPage() {
   const [detailType, setDetailType] = useState<'training' | 'rest'>('training')
   const [detailDiet, setDetailDiet] = useState<{ tPlan: NutritionPlan | null; rPlan: NutritionPlan | null } | null>(null)
 
+  // Template picker state
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [nutritionTemplates, setNutritionTemplates] = useState<Array<{ id: string; nom: string; meal_type?: string; calories_objectif?: number; proteines?: number; glucides?: number; lipides?: number; meals_data?: string | unknown[]; macro_only?: boolean }>>([])
+  const [loadingTemplates, setLoadingTemplates] = useState(false)
+
   // History state
   const [nutriLogs, setNutriLogs] = useState<NutritionLog[]>([])
   const [histWeekOffset, setHistWeekOffset] = useState(0)
@@ -406,6 +411,52 @@ export default function NutritionPage() {
     setEditMeals([{ foods: [] }])
     setEditMacroOnly(false)
     setEditMacros({ calories: 0, proteines: 0, glucides: 0, lipides: 0 })
+    setView('editor')
+  }, [])
+
+  // Open template picker: fetch coach's nutrition templates
+  const openNutritionTemplatePicker = useCallback(async () => {
+    if (!user?.id) return
+    setShowTemplatePicker(true)
+    setLoadingTemplates(true)
+    try {
+      const { data } = await supabase
+        .from('nutrition_templates')
+        .select('id, nom, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, macro_only')
+        .eq('coach_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      setNutritionTemplates((data || []) as typeof nutritionTemplates)
+    } finally {
+      setLoadingTemplates(false)
+    }
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Select a nutrition template: pre-fill editor with its data
+  const selectNutritionTemplate = useCallback((tpl: typeof nutritionTemplates[0]) => {
+    setShowTemplatePicker(false)
+    let meals: MealData[] = [{ foods: [] }]
+    try {
+      const parsed = typeof tpl.meals_data === 'string' ? JSON.parse(tpl.meals_data) : (tpl.meals_data || [])
+      const m = (parsed as any[]).map((m: any) => {
+        if (m && !Array.isArray(m) && m.foods) return { foods: m.foods, pre_workout: m.pre_workout, time: m.time }
+        return { foods: Array.isArray(m) ? m : [] }
+      })
+      if (m.length) meals = m
+    } catch { /* empty */ }
+
+    setEditPlanId(null)
+    setEditPlanName(tpl.nom || '')
+    setEditMealType('training')
+    setEditMeals(meals)
+    setEditMacroOnly(tpl.macro_only || false)
+    setEditMacros({
+      calories: tpl.calories_objectif || 0,
+      proteines: tpl.proteines || 0,
+      glucides: tpl.glucides || 0,
+      lipides: tpl.lipides || 0,
+    })
+    setEditOtherTab(null)
     setView('editor')
   }, [])
 
@@ -953,6 +1004,9 @@ export default function NutritionPage() {
         <button className="btn btn-outline" onClick={() => { loadNutriLogs(); setHistWeekOffset(0); setHistSelectedDate(null); setView('history') }}>
           <i className="fa-solid fa-clock-rotate-left" /> Suivi
         </button>
+        <button className="btn btn-outline" onClick={openNutritionTemplatePicker}>
+          <i className="fa-solid fa-copy" /> Depuis un template
+        </button>
         <button className="btn btn-red" onClick={createNewDiet}>
           <i className="fa-solid fa-plus" /> Nouvelle diete
         </button>
@@ -964,7 +1018,10 @@ export default function NutritionPage() {
           <div className="empty-state">
             <i className="fa-solid fa-utensils" style={{ fontSize: 28, marginBottom: 8, display: 'block' }} />
             <p>Aucune diete</p>
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <button className="btn btn-outline" onClick={openNutritionTemplatePicker}>
+                <i className="fa-solid fa-copy" /> Depuis un template
+              </button>
               <button className="btn btn-red" onClick={createNewDiet}>
                 <i className="fa-solid fa-plus" /> Creer une diete
               </button>
@@ -1225,6 +1282,62 @@ export default function NutritionPage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Template Picker Modal */}
+      {showTemplatePicker && (
+        <div className="modal-overlay" onClick={() => setShowTemplatePicker(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Choisir un template</h3>
+              <button className="modal-close" onClick={() => setShowTemplatePicker(false)}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <div style={{ padding: 16, maxHeight: 400, overflowY: 'auto' }}>
+              {loadingTemplates ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <Skeleton height={48} borderRadius={8} />
+                  <Skeleton height={48} borderRadius={8} />
+                  <Skeleton height={48} borderRadius={8} />
+                </div>
+              ) : nutritionTemplates.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
+                  <i className="fa-solid fa-folder-open" style={{ fontSize: 24, marginBottom: 8, display: 'block' }} />
+                  <p>Aucun template nutrition</p>
+                  <p style={{ fontSize: 12, marginTop: 4 }}>Creez des templates dans la section Templates</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {nutritionTemplates.map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      onClick={() => selectNutritionTemplate(tpl)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)',
+                        background: 'var(--bg2)', cursor: 'pointer', textAlign: 'left', width: '100%',
+                        transition: 'border-color 0.15s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--primary)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 600, color: 'var(--text)' }}>{tpl.nom}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                          {tpl.calories_objectif ? `${tpl.calories_objectif} kcal` : ''}
+                          {tpl.proteines ? ` · P:${tpl.proteines} G:${tpl.glucides || 0} L:${tpl.lipides || 0}` : ''}
+                          {tpl.macro_only ? ' · Macros only' : ''}
+                        </div>
+                      </div>
+                      <i className="fa-solid fa-chevron-right" style={{ color: 'var(--text3)', fontSize: 12 }} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

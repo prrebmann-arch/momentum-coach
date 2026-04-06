@@ -197,11 +197,11 @@ export default function BilansPage() {
   const athleteUserId = athlete?.user_id
 
   const cacheKey = `athlete_${athleteId}_bilans`
-  const cached = useMemo(() => getPageCache<{ bilans: DailyReport[]; wlogs: unknown[]; progWeeks: unknown[]; nutriPlans: unknown[]; phases: unknown[] }>(cacheKey), [cacheKey])
+  const [cached] = useState(() => getPageCache<{ bilans: DailyReport[]; progWeeks: unknown[]; nutriPlans: unknown[]; phases: unknown[] }>(cacheKey))
 
   const [loading, setLoading] = useState(!cached)
   const [bilans, setBilans] = useState<DailyReport[]>((cached?.bilans as DailyReport[]) ?? [])
-  const [allWLogs, setAllWLogs] = useState<Array<{ id: string; date: string; session_id?: string | null; session_name?: string | null; titre?: string | null; type?: string | null; started_at?: string | null; finished_at?: string | null; exercices_completes?: string | unknown[] | null }>>((cached?.wlogs as any) ?? [])
+  const [allWLogs, setAllWLogs] = useState<Array<{ id: string; date: string; session_id?: string | null; session_name?: string | null; titre?: string | null; type?: string | null; started_at?: string | null; finished_at?: string | null; exercices_completes?: string | unknown[] | null }>>([])
   const [progWeeks, setProgWeeks] = useState<Array<{ week_date: string; phase?: string | null; _phaseNum?: number }>>((cached?.progWeeks as any) ?? [])
   const [nutriPlans, setNutriPlans] = useState<Array<{ id: string; valid_from?: string | null; meal_type?: string | null; nom?: string | null; calories_objectif?: number | null; proteines?: number | null; glucides?: number | null; lipides?: number | null; created_at?: string | null }>>((cached?.nutriPlans as any) ?? [])
   const [roadmapPhases, setRoadmapPhases] = useState<Array<{ phase?: string | null; name?: string | null; start_date?: string | null; end_date?: string | null }>>((cached?.phases as any) ?? [])
@@ -231,7 +231,7 @@ export default function BilansPage() {
         supabase.from('programming_weeks').select('week_date, phase').eq('athlete_id', athleteId).order('week_date'),
         supabase.from('nutrition_plans').select('id, valid_from, meal_type, nom, calories_objectif, proteines, glucides, lipides, created_at').eq('athlete_id', athleteId),
         supabase.from('roadmap_phases').select('phase, name, start_date, end_date').eq('athlete_id', athleteId).order('start_date'),
-        supabase.from('workout_logs').select('id, date, session_id, session_name, titre, type, started_at, finished_at, exercices_completes').eq('athlete_id', athleteId).order('date', { ascending: false }).limit(500),
+        supabase.from('workout_logs').select('id, date, session_id, session_name, titre, type, started_at, finished_at, exercices_completes').eq('athlete_id', athleteId).order('date', { ascending: false }).limit(100),
       ])
 
       const bilanData = (bilansRes.data || []) as DailyReport[]
@@ -245,43 +245,11 @@ export default function BilansPage() {
       const phases = (phasesRes.data || []).sort((a: { start_date?: string }, b: { start_date?: string }) => (a.start_date || '').localeCompare(b.start_date || ''))
       setRoadmapPhases(phases)
 
-      // Build photo history with signed URLs
-      const history: Record<PhotoType, PhotoEntry[]> = { front: [], side: [], back: [] }
-      const photoPromises: Promise<void>[] = []
+      // Photos are loaded on demand when user clicks (see loadPhotosForBilans)
+      setPhotoHistory({ front: [], side: [], back: [] })
 
-      bilanData.forEach((b: DailyReport) => {
-        (['front', 'side', 'back'] as PhotoType[]).forEach(pos => {
-          const raw = b[`photo_${pos}`] as string | null
-          if (!raw) return
-
-          let path = raw
-          const bucketMarker = '/athlete-photos/'
-          const idx = raw.indexOf(bucketMarker)
-          if (idx !== -1) {
-            path = raw.substring(idx + bucketMarker.length).split('?')[0]
-          }
-
-          photoPromises.push(
-            supabase.storage
-              .from('athlete-photos')
-              .createSignedUrl(path, 3600)
-              .then(({ data, error }) => {
-                if (data?.signedUrl) {
-                  history[pos].push({ date: b.date, url: data.signedUrl })
-                } else if (raw.startsWith('http')) {
-                  history[pos].push({ date: b.date, url: raw })
-                }
-              })
-          )
-        })
-      })
-
-      await Promise.all(photoPromises)
-      Object.values(history).forEach(arr => arr.sort((a, b) => a.date.localeCompare(b.date)))
-      setPhotoHistory(history)
-
-      // Persist to sessionStorage (excluding photos which have signed URLs that expire)
-      setPageCache(cacheKey, { bilans: bilanData, wlogs, progWeeks: pw, nutriPlans: np, phases })
+      // Persist to sessionStorage (excluding photos and heavy workout logs)
+      setPageCache(cacheKey, { bilans: bilanData, progWeeks: pw, nutriPlans: np, phases })
     } finally {
       setLoading(false)
     }
@@ -305,11 +273,61 @@ export default function BilansPage() {
     }
   }, [toast, loadData]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleOpenPhoto = useCallback((type: PhotoType, date: string) => {
+  const [photosLoaded, setPhotosLoaded] = useState(false)
+  const [photosLoading, setPhotosLoading] = useState(false)
+
+  const loadPhotosForBilans = useCallback(async (bilanData: DailyReport[]) => {
+    if (photosLoaded || photosLoading) return
+    setPhotosLoading(true)
+    try {
+      const history: Record<PhotoType, PhotoEntry[]> = { front: [], side: [], back: [] }
+      const photoPromises: Promise<void>[] = []
+
+      bilanData.forEach((b: DailyReport) => {
+        (['front', 'side', 'back'] as PhotoType[]).forEach(pos => {
+          const raw = b[`photo_${pos}`] as string | null
+          if (!raw) return
+
+          let path = raw
+          const bucketMarker = '/athlete-photos/'
+          const idx = raw.indexOf(bucketMarker)
+          if (idx !== -1) {
+            path = raw.substring(idx + bucketMarker.length).split('?')[0]
+          }
+
+          photoPromises.push(
+            supabase.storage
+              .from('athlete-photos')
+              .createSignedUrl(path, 3600)
+              .then(({ data }) => {
+                if (data?.signedUrl) {
+                  history[pos].push({ date: b.date, url: data.signedUrl })
+                } else if (raw.startsWith('http')) {
+                  history[pos].push({ date: b.date, url: raw })
+                }
+              })
+          )
+        })
+      })
+
+      await Promise.all(photoPromises)
+      Object.values(history).forEach(arr => arr.sort((a, b) => a.date.localeCompare(b.date)))
+      setPhotoHistory(history)
+      setPhotosLoaded(true)
+    } finally {
+      setPhotosLoading(false)
+    }
+  }, [photosLoaded, photosLoading]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleOpenPhoto = useCallback(async (type: PhotoType, date: string) => {
     setPhotoType(type)
     setPhotoDate(date)
     setPhotoOpen(true)
-  }, [])
+    // Lazy-load signed URLs on first photo click
+    if (!photosLoaded) {
+      await loadPhotosForBilans(bilans)
+    }
+  }, [photosLoaded, bilans, loadPhotosForBilans])
 
   if (!selectedAthlete || loading) {
     return (
