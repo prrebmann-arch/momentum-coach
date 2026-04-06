@@ -18,7 +18,7 @@ interface SessionData {
 }
 
 interface ProgramEditorProps {
-  athleteId: string
+  athleteId?: string
   athleteUserId?: string | null
   programId?: string | null
   initialName?: string
@@ -27,6 +27,14 @@ interface ProgramEditorProps {
   initialSessions?: SessionData[]
   onClose: () => void
   onSaved: () => void
+  /** Template mode: saves to training_templates instead of workout_programs */
+  templateMode?: boolean
+  /** Template ID when editing an existing template */
+  templateId?: string | null
+  /** Template category */
+  templateCategory?: string
+  /** Existing categories for the category dropdown */
+  existingCategories?: string[]
 }
 
 const DEFAULT_SET: SetData = { reps: '10', tempo: '30X1', repos: '1m30', type: 'normal' }
@@ -70,6 +78,10 @@ export default function ProgramEditor({
   initialSessions,
   onClose,
   onSaved,
+  templateMode = false,
+  templateId = null,
+  templateCategory: initCategory = '',
+  existingCategories: initExistingCategories = [],
 }: ProgramEditorProps) {
   const supabase = createClient()
   const { toast } = useToast()
@@ -100,7 +112,13 @@ export default function ProgramEditor({
   const [activeSession, setActiveSession] = useState(0)
   const [saving, setSaving] = useState(false)
 
-  const isEdit = !!programId
+  // Template-mode category state
+  const [category, setCategory] = useState(initCategory)
+  const [newCategory, setNewCategory] = useState('')
+  const [showNewCat, setShowNewCat] = useState(false)
+  const [categories, setCategories] = useState(initExistingCategories)
+
+  const isEdit = templateMode ? !!templateId : !!programId
 
   // -- Session management --
   const addSession = useCallback(() => {
@@ -278,6 +296,18 @@ export default function ProgramEditor({
     }))
   }, [activeSession])
 
+  // -- Category helpers (template mode) --
+  const confirmNewCategory = () => {
+    if (newCategory.trim()) {
+      if (!categories.includes(newCategory.trim())) {
+        setCategories((prev) => [...prev, newCategory.trim()])
+      }
+      setCategory(newCategory.trim())
+    }
+    setNewCategory('')
+    setShowNewCat(false)
+  }
+
   // -- Save --
   async function handleSave() {
     if (!name.trim()) {
@@ -290,81 +320,115 @@ export default function ProgramEditor({
       ? { pattern: patternValue }
       : { days: patternValue.split(',').map((d) => d.trim()).filter(Boolean) }
 
-    let pid = programId
-
     try {
-      if (pid) {
-        // Update existing
-        const { error } = await supabase
-          .from('workout_programs')
-          .update({ nom: name.trim(), pattern_type: patternType, pattern_data: patternData })
-          .eq('id', pid)
+      if (templateMode) {
+        // ── TEMPLATE MODE: save to training_templates ──
+        const sessionsData = sessions.map((s) => ({
+          nom: s.nom,
+          jour: s.jour,
+          exercices: s.exercises.map((e) => {
+            const base: Record<string, unknown> = {
+              nom: e.nom,
+              exercice_id: e.exercice_id || null,
+              muscle_principal: e.muscle_principal || '',
+            }
+            if (e.sets && Array.isArray(e.sets)) {
+              base.sets = e.sets
+            }
+            if (e.superset_id) base.superset_id = e.superset_id
+            return base
+          }),
+        }))
+
+        const tplData = {
+          nom: name.trim(),
+          category: category || null,
+          pattern_type: patternType,
+          pattern_data: patternData,
+          sessions_data: sessionsData,
+          coach_id: user?.id,
+        }
+
+        let error
+        if (templateId) {
+          ;({ error } = await supabase.from('training_templates').update(tplData).eq('id', templateId))
+        } else {
+          ;({ error } = await supabase.from('training_templates').insert(tplData))
+        }
         if (error) throw error
 
-        // Delete old sessions
-        const { error: delError } = await supabase
-          .from('workout_sessions')
-          .delete()
-          .eq('program_id', pid)
-        if (delError) throw delError
+        toast(templateId ? 'Template modifie' : 'Template cree')
       } else {
-        // Deactivate existing programs
-        await supabase
-          .from('workout_programs')
-          .update({ actif: false })
-          .eq('athlete_id', athleteId)
+        // ── ATHLETE MODE: save to workout_programs + workout_sessions ──
+        let pid = programId
 
-        // Create new
-        const { data, error } = await supabase
-          .from('workout_programs')
-          .insert({
-            nom: name.trim(),
-            athlete_id: athleteId,
-            coach_id: user?.id,
-            pattern_type: patternType,
-            pattern_data: patternData,
-            actif: true,
+        if (pid) {
+          const { error } = await supabase
+            .from('workout_programs')
+            .update({ nom: name.trim(), pattern_type: patternType, pattern_data: patternData })
+            .eq('id', pid)
+          if (error) throw error
+
+          const { error: delError } = await supabase
+            .from('workout_sessions')
+            .delete()
+            .eq('program_id', pid)
+          if (delError) throw delError
+        } else {
+          await supabase
+            .from('workout_programs')
+            .update({ actif: false })
+            .eq('athlete_id', athleteId)
+
+          const { data, error } = await supabase
+            .from('workout_programs')
+            .insert({
+              nom: name.trim(),
+              athlete_id: athleteId,
+              coach_id: user?.id,
+              pattern_type: patternType,
+              pattern_data: patternData,
+              actif: true,
+            })
+            .select()
+          if (error) throw error
+          pid = data[0].id
+        }
+
+        for (let i = 0; i < sessions.length; i++) {
+          const s = sessions[i]
+          const exs = s.exercises.map((e) => {
+            const base: Record<string, unknown> = {
+              nom: e.nom,
+              exercice_id: e.exercice_id || null,
+              muscle_principal: e.muscle_principal || '',
+            }
+            if (e.sets && Array.isArray(e.sets)) {
+              base.sets = e.sets
+            }
+            if (e.superset_id) base.superset_id = e.superset_id
+            return base
           })
-          .select()
-        if (error) throw error
-        pid = data[0].id
-      }
+          const { error } = await supabase
+            .from('workout_sessions')
+            .insert({
+              nom: s.nom,
+              jour: s.jour || null,
+              program_id: pid,
+              exercices: JSON.stringify(exs),
+              ordre: i,
+            })
+          if (error) throw error
+        }
 
-      // Insert sessions
-      for (let i = 0; i < sessions.length; i++) {
-        const s = sessions[i]
-        const exs = s.exercises.map((e) => {
-          const base: Record<string, unknown> = {
-            nom: e.nom,
-            exercice_id: e.exercice_id || null,
-            muscle_principal: e.muscle_principal || '',
-          }
-          if (e.sets && Array.isArray(e.sets)) {
-            base.sets = e.sets
-          }
-          if (e.superset_id) base.superset_id = e.superset_id
-          return base
-        })
-        const { error } = await supabase
-          .from('workout_sessions')
-          .insert({
-            nom: s.nom,
-            jour: s.jour || null,
-            program_id: pid,
-            exercices: JSON.stringify(exs),
-            ordre: i,
-          })
-        if (error) throw error
-      }
+        toast('Programme sauvegarde !')
 
-      toast('Programme sauvegarde !')
-
-      // Notify athlete when new program (DB + push)
-      if (!programId && athleteUserId) {
-        await notifyAthlete(
-          athleteUserId, 'training', 'Nouveau programme active',
-          `Votre coach a active le programme "${name.trim()}"`,
-        )
+        if (!programId && athleteUserId) {
+          await notifyAthlete(
+            athleteUserId, 'training', 'Nouveau programme active',
+            `Votre coach a active le programme "${name.trim()}"`,
+          )
+        }
       }
 
       onSaved()
@@ -396,7 +460,7 @@ export default function ProgramEditor({
     <div>
       {/* Header */}
       <div className={styles.trHeader}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, flexWrap: 'wrap' }}>
           <button className="btn btn-outline btn-sm" onClick={onClose}>
             <i className="fa-solid fa-arrow-left" />
           </button>
@@ -404,10 +468,53 @@ export default function ProgramEditor({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Nom du programme"
+            placeholder={templateMode ? 'Nom du template' : 'Nom du programme'}
             className={styles.trSessionNameInput}
             style={{ maxWidth: 350 }}
           />
+          {templateMode && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <i className="fa-solid fa-folder" style={{ color: 'var(--text3)', fontSize: 12 }} />
+              {showNewCat ? (
+                <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    placeholder="Nom..."
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') confirmNewCategory()
+                      if (e.key === 'Escape') setShowNewCat(false)
+                    }}
+                    style={{ padding: '4px 8px', background: 'var(--bg2)', border: '1px solid var(--primary)', borderRadius: 6, color: 'var(--text)', fontSize: 12, width: 130 }}
+                  />
+                  <button className="btn btn-outline btn-sm" onClick={confirmNewCategory} style={{ padding: '4px 8px' }}>
+                    <i className="fa-solid fa-check" style={{ fontSize: 10, color: 'var(--success)' }} />
+                  </button>
+                  <button className="btn btn-outline btn-sm" onClick={() => setShowNewCat(false)} style={{ padding: '4px 8px' }}>
+                    <i className="fa-solid fa-times" style={{ fontSize: 10 }} />
+                  </button>
+                </span>
+              ) : (
+                <>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    style={{ padding: '5px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 12 }}
+                  >
+                    <option value="">Sans categorie</option>
+                    {categories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <button className="btn btn-outline btn-sm" onClick={() => setShowNewCat(true)} title="Nouvelle categorie" style={{ padding: '4px 8px' }}>
+                    <i className="fa-solid fa-plus" style={{ fontSize: 10 }} />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
         <button className="btn btn-red" onClick={handleSave} disabled={saving}>
           <i className="fa-solid fa-save" /> {isEdit ? 'Enregistrer' : 'Creer'}

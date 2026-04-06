@@ -2,11 +2,9 @@
 
 import { useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import Button from '@/components/ui/Button'
 import EmptyState from '@/components/ui/EmptyState'
-import FormGroup from '@/components/ui/FormGroup'
 
 interface NutritionTemplate {
   id: string
@@ -24,9 +22,13 @@ interface NutritionTemplate {
 interface Props {
   templates: NutritionTemplate[]
   onRefresh: () => void
+  /** Edit via MealEditor — delegates to parent */
+  onEdit?: (id: string) => void
+  /** Create via MealEditor — delegates to parent */
+  onCreate?: () => void
+  /** Delete — delegates to parent */
+  onDelete?: (id: string) => void
 }
-
-type SubTab = 'diete' | 'jour' | 'repas'
 
 function mealCount(t: NutritionTemplate): number {
   try {
@@ -36,31 +38,17 @@ function mealCount(t: NutritionTemplate): number {
   return 0
 }
 
-export default function NutritionTemplatesList({ templates, onRefresh }: Props) {
+export default function NutritionTemplatesList({ templates, onRefresh, onEdit, onCreate, onDelete }: Props) {
   const supabase = createClient()
-  const { coach } = useAuth()
   const { toast } = useToast()
 
-  const [subTab, setSubTab] = useState<SubTab>('diete')
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
-  const [editing, setEditing] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
-
-  // Editor state
-  const [editName, setEditName] = useState('')
-  const [editCategory, setEditCategory] = useState('')
-  const [editCalories, setEditCalories] = useState(0)
-  const [editProteines, setEditProteines] = useState(0)
-  const [editGlucides, setEditGlucides] = useState(0)
-  const [editLipides, setEditLipides] = useState(0)
-  const [saving, setSaving] = useState(false)
 
   const filtered = useMemo(() => {
-    const byType = templates.filter((t) => (t.template_type || 'jour') === subTab)
     const q = search.toLowerCase()
-    return q ? byType.filter((t) => t.nom?.toLowerCase().includes(q)) : byType
-  }, [templates, subTab, search])
+    return q ? templates.filter((t) => t.nom?.toLowerCase().includes(q)) : templates
+  }, [templates, search])
 
   const groups = useMemo(() => {
     const g: Record<string, NutritionTemplate[]> = {}
@@ -80,78 +68,15 @@ export default function NutritionTemplatesList({ templates, onRefresh }: Props) 
     })
   }, [groups])
 
-  const existingCategories = useMemo(() => {
-    return [...new Set(templates.map((t) => t.category).filter(Boolean))] as string[]
-  }, [templates])
-
   const toggleCategory = (cat: string) => {
     setCollapsed((prev) => ({ ...prev, [cat]: !prev[cat] }))
   }
 
-  const startCreate = () => {
-    setCreating(true)
-    setEditing(null)
-    setEditName('')
-    setEditCategory('')
-    setEditCalories(0)
-    setEditProteines(0)
-    setEditGlucides(0)
-    setEditLipides(0)
-  }
-
-  const startEdit = (t: NutritionTemplate) => {
-    setEditing(t.id)
-    setCreating(false)
-    setEditName(t.nom)
-    setEditCategory(t.category || '')
-    setEditCalories(t.calories_objectif || 0)
-    setEditProteines(t.proteines || 0)
-    setEditGlucides(t.glucides || 0)
-    setEditLipides(t.lipides || 0)
-  }
-
-  const cancelEdit = () => {
-    setEditing(null)
-    setCreating(false)
-  }
-
-  const handleSave = async () => {
-    if (!editName.trim()) {
-      toast('Le nom est obligatoire', 'error')
-      return
-    }
-    if (!coach) return
-
-    setSaving(true)
-    const payload = {
-      nom: editName.trim(),
-      category: editCategory || null,
-      template_type: subTab,
-      calories_objectif: editCalories,
-      proteines: editProteines,
-      glucides: editGlucides,
-      lipides: editLipides,
-      coach_id: coach.id,
-    }
-
-    let error
-    if (editing) {
-      ;({ error } = await supabase.from('nutrition_templates').update(payload).eq('id', editing))
-    } else {
-      ;({ error } = await supabase.from('nutrition_templates').insert(payload))
-    }
-    setSaving(false)
-
-    if (error) {
-      toast('Erreur: ' + error.message, 'error')
-      return
-    }
-    toast(editing ? 'Template modifie' : 'Template cree')
-    cancelEdit()
-    onRefresh()
-  }
-
   const handleDelete = async (id: string) => {
+    if (onDelete) {
+      onDelete(id)
+      return
+    }
     if (!confirm('Supprimer ce template ?')) return
     const { error } = await supabase.from('nutrition_templates').delete().eq('id', id)
     if (error) {
@@ -162,65 +87,8 @@ export default function NutritionTemplatesList({ templates, onRefresh }: Props) 
     onRefresh()
   }
 
-  const subTabLabel = subTab === 'diete' ? 'Nouvelle diete' : subTab === 'jour' ? 'Nouveau jour' : 'Nouveau repas'
-
-  if (editing || creating) {
-    return (
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>{editing ? 'Modifier' : 'Nouveau'} template {subTab}</h2>
-          <Button variant="outline" onClick={cancelEdit}><i className="fas fa-arrow-left" /> Retour</Button>
-        </div>
-        <div className="card" style={{ padding: 20 }}>
-          <FormGroup label="Nom *">
-            <input type="text" className="form-control" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="ex: Seche 2000kcal" />
-          </FormGroup>
-          <FormGroup label="Categorie">
-            <select className="form-control" value={editCategory} onChange={(e) => setEditCategory(e.target.value)}>
-              <option value="">Sans categorie</option>
-              {existingCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </FormGroup>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12, marginTop: 12 }}>
-            <FormGroup label="Calories (kcal)">
-              <input type="number" className="form-control" value={editCalories} onChange={(e) => setEditCalories(Number(e.target.value))} />
-            </FormGroup>
-            <FormGroup label="Proteines (g)">
-              <input type="number" className="form-control" value={editProteines} onChange={(e) => setEditProteines(Number(e.target.value))} />
-            </FormGroup>
-            <FormGroup label="Glucides (g)">
-              <input type="number" className="form-control" value={editGlucides} onChange={(e) => setEditGlucides(Number(e.target.value))} />
-            </FormGroup>
-            <FormGroup label="Lipides (g)">
-              <input type="number" className="form-control" value={editLipides} onChange={(e) => setEditLipides(Number(e.target.value))} />
-            </FormGroup>
-          </div>
-          <div style={{ display: 'flex', gap: 12, marginTop: 20, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-            <Button variant="red" onClick={handleSave} loading={saving}>
-              <i className="fas fa-save" /> Sauvegarder
-            </Button>
-            <Button variant="outline" onClick={cancelEdit}>Annuler</Button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div>
-      {/* Sub-tabs */}
-      <div className="athlete-tabs" style={{ marginBottom: 16 }}>
-        <button className={`athlete-tab-btn${subTab === 'diete' ? ' active' : ''}`} onClick={() => setSubTab('diete')}>
-          <i className="fas fa-utensils" /> Diete
-        </button>
-        <button className={`athlete-tab-btn${subTab === 'jour' ? ' active' : ''}`} onClick={() => setSubTab('jour')}>
-          <i className="fas fa-calendar-day" /> Jour
-        </button>
-        <button className={`athlete-tab-btn${subTab === 'repas' ? ' active' : ''}`} onClick={() => setSubTab('repas')}>
-          <i className="fas fa-drumstick-bite" /> Repas
-        </button>
-      </div>
-
       {/* Search + create */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 200, maxWidth: 360 }}>
@@ -233,8 +101,8 @@ export default function NutritionTemplatesList({ templates, onRefresh }: Props) 
             style={{ width: '100%', padding: '8px 12px 8px 34px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 13 }}
           />
         </div>
-        <Button variant="red" onClick={startCreate}>
-          <i className="fas fa-plus" /> {subTabLabel}
+        <Button variant="red" onClick={onCreate}>
+          <i className="fas fa-plus" /> Nouveau template
         </Button>
       </div>
 
@@ -242,7 +110,8 @@ export default function NutritionTemplatesList({ templates, onRefresh }: Props) 
       {filtered.length === 0 ? (
         <EmptyState
           icon="fas fa-utensils"
-          message={search ? 'Aucun resultat' : `Aucun template ${subTab}`}
+          message={search ? 'Aucun resultat' : 'Aucun template nutrition'}
+          action={!search && onCreate ? <Button variant="red" onClick={onCreate}><i className="fas fa-plus" /> Creer un template</Button> : undefined}
         />
       ) : (
         catNames.map((cat) => {
@@ -268,16 +137,16 @@ export default function NutritionTemplatesList({ templates, onRefresh }: Props) 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 8 }}>
                   {items.map((t) => {
                     const mc = mealCount(t)
-                    const subtitle = `${t.calories_objectif || 0} kcal · P:${t.proteines || 0}g G:${t.glucides || 0}g L:${t.lipides || 0}g${subTab === 'jour' && mc ? ` · ${mc} repas` : ''}`
+                    const subtitle = `${t.calories_objectif || 0} kcal · P:${t.proteines || 0}g G:${t.glucides || 0}g L:${t.lipides || 0}g${mc ? ` · ${mc} repas` : ''}`
                     return (
-                      <div key={t.id} className="card" style={{ margin: 0 }}>
+                      <div key={t.id} className="card" style={{ margin: 0, cursor: onEdit ? 'pointer' : undefined }} onClick={() => onEdit?.(t.id)}>
                         <div className="card-header">
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="card-title" style={{ fontSize: 14 }}>{t.nom}</div>
                             <div style={{ color: 'var(--text2)', fontSize: 11, marginTop: 3 }}>{subtitle}</div>
                           </div>
-                          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                            <Button variant="outline" size="sm" onClick={() => startEdit(t)}>
+                          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                            <Button variant="outline" size="sm" onClick={() => onEdit?.(t.id)}>
                               <i className="fas fa-pen" />
                             </Button>
                             <Button variant="outline" size="sm" className="btn-danger" onClick={() => handleDelete(t.id)}>

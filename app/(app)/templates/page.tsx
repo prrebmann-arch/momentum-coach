@@ -6,7 +6,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import Tabs from '@/components/ui/Tabs'
 import Skeleton from '@/components/ui/Skeleton'
 import TrainingTemplatesList from '@/components/templates/TrainingTemplatesList'
-import TrainingTemplateEditor from '@/components/templates/TrainingTemplateEditor'
+import ProgramEditor from '@/components/training/ProgramEditor'
+import MealEditor, { type MealData } from '@/components/nutrition/MealEditor'
 import NutritionTemplatesList from '@/components/templates/NutritionTemplatesList'
 import WorkflowsList from '@/components/templates/WorkflowsList'
 import QuestionnaireTemplatesList from '@/components/templates/QuestionnaireTemplatesList'
@@ -27,9 +28,22 @@ interface TrainingTemplate {
   sessions_data?: Array<{
     nom?: string
     jour?: string
-    exercices?: Array<{ nom?: string; series?: string | number; reps?: string; exercice_id?: string | null; muscle_principal?: string }> | string
+    exercices?: Array<{ nom?: string; series?: string | number; reps?: string; exercice_id?: string | null; muscle_principal?: string; sets?: Array<Record<string, unknown>>; superset_id?: string | null }> | string
     exercises?: Array<{ nom?: string; series?: string | number; reps?: string }>
   }>
+  created_at?: string
+}
+
+interface NutritionTemplate {
+  id: string
+  nom: string
+  category?: string | null
+  template_type?: string
+  calories_objectif?: number
+  proteines?: number
+  glucides?: number
+  lipides?: number
+  meals_data?: unknown
   created_at?: string
 }
 
@@ -46,7 +60,9 @@ export default function TemplatesPage() {
   const [creatingTraining, setCreatingTraining] = useState(false)
 
   // Nutrition
-  const [nutritionTemplates, setNutritionTemplates] = useState<Array<Record<string, unknown>>>([])
+  const [nutritionTemplates, setNutritionTemplates] = useState<NutritionTemplate[]>([])
+  const [editingNutrition, setEditingNutrition] = useState<string | null>(null)
+  const [creatingNutrition, setCreatingNutrition] = useState(false)
 
   // Workflows
   const [workflows, setWorkflows] = useState<Array<Record<string, unknown>>>([])
@@ -69,11 +85,11 @@ export default function TemplatesPage() {
       } else if (activeTab === 'nutrition') {
         const { data } = await supabase
           .from('nutrition_templates')
-          .select('id, nom, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, macro_only, created_at')
+          .select('id, nom, coach_id, template_type, category, calories_objectif, proteines, glucides, lipides, meals_data, created_at')
           .eq('coach_id', coach.id)
           .order('created_at', { ascending: false })
           .limit(100)
-        setNutritionTemplates(data || [])
+        setNutritionTemplates((data || []) as NutritionTemplate[])
       } else if (activeTab === 'workflow') {
         const { data } = await supabase
           .from('onboarding_workflows')
@@ -104,9 +120,12 @@ export default function TemplatesPage() {
     setActiveTab(tab)
     setEditingTraining(null)
     setCreatingTraining(false)
+    setEditingNutrition(null)
+    setCreatingNutrition(false)
   }
 
-  const handleTrainingEdit = async (id: string) => {
+  // ── Training handlers ──
+  const handleTrainingEdit = (id: string) => {
     setEditingTraining(id)
     setCreatingTraining(false)
   }
@@ -133,20 +152,54 @@ export default function TemplatesPage() {
     setCreatingTraining(false)
   }
 
-  // Resolve template for editing
-  const editedTemplate = editingTraining
+  // ── Nutrition handlers ──
+  const handleNutritionEdit = (id: string) => {
+    setEditingNutrition(id)
+    setCreatingNutrition(false)
+  }
+
+  const handleNutritionCreate = () => {
+    setEditingNutrition(null)
+    setCreatingNutrition(true)
+  }
+
+  const handleNutritionDelete = async (id: string) => {
+    if (!confirm('Supprimer ce template ?')) return
+    await supabase.from('nutrition_templates').delete().eq('id', id)
+    loadData()
+  }
+
+  const handleNutritionSaved = () => {
+    setEditingNutrition(null)
+    setCreatingNutrition(false)
+    loadData()
+  }
+
+  const handleNutritionCancel = () => {
+    setEditingNutrition(null)
+    setCreatingNutrition(false)
+  }
+
+  // ── Resolve templates for editing ──
+  const editedTrainingTemplate = editingTraining
     ? trainingTemplates.find((t) => t.id === editingTraining)
     : null
 
-  const existingTrainingCategories = [...new Set(trainingTemplates.map((t) => t.category).filter(Boolean))] as string[]
+  const editedNutritionTemplate = editingNutrition
+    ? nutritionTemplates.find((t) => t.id === editingNutrition)
+    : null
 
+  const existingTrainingCategories = [...new Set(trainingTemplates.map((t) => t.category).filter(Boolean))] as string[]
+  const existingNutritionCategories = [...new Set(nutritionTemplates.map((t) => t.category).filter(Boolean))] as string[]
+
+  /** Parse training template sessions_data into ProgramEditor's format */
   function parseEditorSessions(tpl: TrainingTemplate) {
     const sd = tpl.sessions_data || []
     return sd.map((s) => {
-      let exs: Array<{ nom?: string; series?: string | number; reps?: string; exercice_id?: string | null; muscle_principal?: string }> = []
+      let exs: Array<Record<string, unknown>> = []
       try {
         const raw = s.exercices ?? s.exercises ?? []
-        exs = typeof raw === 'string' ? JSON.parse(raw) : raw
+        exs = typeof raw === 'string' ? JSON.parse(raw) : (raw as Array<Record<string, unknown>>)
       } catch {
         exs = []
       }
@@ -154,14 +207,111 @@ export default function TemplatesPage() {
         nom: s.nom || '',
         jour: s.jour || '',
         exercises: exs.map((ex) => ({
-          nom: ex.nom || '',
-          exercice_id: ex.exercice_id || null,
-          series: String(ex.series || '4'),
-          reps: String(ex.reps || '10'),
-          muscle_principal: ex.muscle_principal || '',
+          nom: (ex.nom as string) || '',
+          exercice_id: (ex.exercice_id as string) || null,
+          muscle_principal: (ex.muscle_principal as string) || '',
+          sets: (ex.sets as Array<Record<string, string>>) || undefined,
+          // Legacy fields kept so normalizeExSets in ProgramEditor can convert them
+          series: ex.series != null ? String(ex.series) : undefined,
+          reps: ex.reps != null ? String(ex.reps) : undefined,
+          superset_id: (ex.superset_id as string) || null,
         })),
       }
     })
+  }
+
+  /** Parse nutrition template meals_data into MealEditor's format */
+  function parseNutritionMeals(tpl: NutritionTemplate): MealData[] {
+    try {
+      const raw = typeof tpl.meals_data === 'string' ? JSON.parse(tpl.meals_data) : (tpl.meals_data || [])
+      if (!Array.isArray(raw) || raw.length === 0) return [{ foods: [] }]
+      return raw.map((meal: unknown) => {
+        if (Array.isArray(meal)) {
+          // Legacy format: array of food items directly
+          return {
+            foods: meal.map((f: Record<string, unknown>) => ({
+              aliment: (f.aliment as string) || '',
+              qte: (f.qte as number) || 100,
+              kcal: (f.kcal as number) || 0,
+              p: (f.p as number) || 0,
+              g: (f.g as number) || 0,
+              l: (f.l as number) || 0,
+            })),
+          }
+        }
+        const m = meal as Record<string, unknown>
+        return {
+          foods: ((m.foods as Array<Record<string, unknown>>) || []).map((f) => ({
+            aliment: (f.aliment as string) || '',
+            qte: (f.qte as number) || 100,
+            kcal: (f.kcal as number) || 0,
+            p: (f.p as number) || 0,
+            g: (f.g as number) || 0,
+            l: (f.l as number) || 0,
+          })),
+          pre_workout: m.pre_workout as boolean | undefined,
+          time: m.time as string | undefined,
+        }
+      })
+    } catch {
+      return [{ foods: [] }]
+    }
+  }
+
+  // ── Training editor view (ProgramEditor in template mode) ──
+  if (activeTab === 'training' && (editingTraining || creatingTraining)) {
+    const tpl = editedTrainingTemplate
+    let patternData = {}
+    try {
+      patternData = tpl?.pattern_data
+        ? (typeof tpl.pattern_data === 'string' ? JSON.parse(tpl.pattern_data as unknown as string) : tpl.pattern_data)
+        : {}
+    } catch { /* ignore */ }
+
+    return (
+      <div>
+        <h1 className="page-title">Templates</h1>
+        <ProgramEditor
+          templateMode
+          templateId={tpl?.id || null}
+          templateCategory={tpl?.category || ''}
+          existingCategories={existingTrainingCategories}
+          initialName={tpl?.nom || ''}
+          initialPatternType={tpl?.pattern_type || 'pattern'}
+          initialPatternData={patternData}
+          initialSessions={tpl ? (parseEditorSessions(tpl) as never) : undefined}
+          onClose={handleTrainingCancel}
+          onSaved={handleTrainingSaved}
+        />
+      </div>
+    )
+  }
+
+  // ── Nutrition editor view (MealEditor in template mode) ──
+  if (activeTab === 'nutrition' && (editingNutrition || creatingNutrition)) {
+    const tpl = editedNutritionTemplate
+    const meals = tpl ? parseNutritionMeals(tpl) : [{ foods: [] }]
+    const hasMeals = meals.some((m) => m.foods.length > 0)
+
+    return (
+      <div>
+        <h1 className="page-title">Templates</h1>
+        <MealEditor
+          templateMode
+          templateId={tpl?.id || null}
+          templateCategory={tpl?.category || ''}
+          existingCategories={existingNutritionCategories}
+          planId={null}
+          planName={tpl?.nom || ''}
+          mealType="training"
+          initialMeals={meals}
+          macroOnly={!hasMeals && !!(tpl?.calories_objectif)}
+          initialMacros={tpl ? { calories: tpl.calories_objectif || 0, proteines: tpl.proteines || 0, glucides: tpl.glucides || 0, lipides: tpl.lipides || 0 } : undefined}
+          onSaved={handleNutritionSaved}
+          onBack={handleNutritionCancel}
+        />
+      </div>
+    )
   }
 
   return (
@@ -179,40 +329,21 @@ export default function TemplatesPage() {
         ) : (
           <>
             {activeTab === 'training' && (
-              <>
-                {editingTraining && editedTemplate ? (
-                  <TrainingTemplateEditor
-                    templateId={editedTemplate.id}
-                    initialName={editedTemplate.nom}
-                    initialCategory={editedTemplate.category || ''}
-                    initialPatternType={editedTemplate.pattern_type}
-                    initialPatternData={editedTemplate.pattern_data as { pattern?: string; days?: string[] }}
-                    initialSessions={parseEditorSessions(editedTemplate)}
-                    existingCategories={existingTrainingCategories}
-                    onSave={handleTrainingSaved}
-                    onCancel={handleTrainingCancel}
-                  />
-                ) : creatingTraining ? (
-                  <TrainingTemplateEditor
-                    existingCategories={existingTrainingCategories}
-                    onSave={handleTrainingSaved}
-                    onCancel={handleTrainingCancel}
-                  />
-                ) : (
-                  <TrainingTemplatesList
-                    templates={trainingTemplates}
-                    onEdit={handleTrainingEdit}
-                    onCreate={handleTrainingCreate}
-                    onDelete={handleTrainingDelete}
-                  />
-                )}
-              </>
+              <TrainingTemplatesList
+                templates={trainingTemplates}
+                onEdit={handleTrainingEdit}
+                onCreate={handleTrainingCreate}
+                onDelete={handleTrainingDelete}
+              />
             )}
 
             {activeTab === 'nutrition' && (
               <NutritionTemplatesList
                 templates={nutritionTemplates as never[]}
                 onRefresh={loadData}
+                onEdit={handleNutritionEdit}
+                onCreate={handleNutritionCreate}
+                onDelete={handleNutritionDelete}
               />
             )}
 

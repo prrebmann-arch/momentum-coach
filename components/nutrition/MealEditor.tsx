@@ -27,7 +27,7 @@ export interface MealData {
 }
 
 interface MealEditorProps {
-  athleteId: string
+  athleteId?: string
   /** Plan ID when editing existing, null for new */
   planId: string | null
   /** Initial plan name */
@@ -46,6 +46,14 @@ interface MealEditorProps {
   onSaved: () => void
   /** Called on back */
   onBack: () => void
+  /** Template mode: saves to nutrition_templates instead of nutrition_plans */
+  templateMode?: boolean
+  /** Template ID when editing existing template */
+  templateId?: string | null
+  /** Template category */
+  templateCategory?: string
+  /** Existing template categories */
+  existingCategories?: string[]
 }
 
 /** Local aliment DB cache */
@@ -82,6 +90,7 @@ function calcMealTotals(foods: FoodItem[]): { kcal: number; p: number; g: number
 export default function MealEditor({
   athleteId, planId, planName: initName, mealType: initMealType,
   initialMeals, macroOnly: initMacroOnly, initialMacros, initialOtherTab, onSaved, onBack,
+  templateMode = false, templateId = null, templateCategory: initCategory = '', existingCategories: initExistingCategories = [],
 }: MealEditorProps) {
   const supabase = createClient()
   const { user } = useAuth()
@@ -96,6 +105,12 @@ export default function MealEditor({
   const [saving, setSaving] = useState(false)
   const [clipboardMeal, setClipboardMeal] = useState<MealData | null>(null)
   const [foodRefreshKey, setFoodRefreshKey] = useState(0)
+
+  // Template-mode category state
+  const [tplCategory, setTplCategory] = useState(initCategory)
+  const [tplNewCategory, setTplNewCategory] = useState('')
+  const [showTplNewCat, setShowTplNewCat] = useState(false)
+  const [tplCategories, setTplCategories] = useState(initExistingCategories)
 
   // Paired plan: store meals for the other tab so we can save both on submit
   // Pre-load from initialOtherTab if provided
@@ -205,6 +220,18 @@ export default function MealEditor({
     setMeals((prev) => prev.map((m, i) => i === idx ? { ...m, pre_workout: !m.pre_workout } : m))
   }
 
+  // Template-mode category helpers
+  const confirmTplNewCategory = () => {
+    if (tplNewCategory.trim()) {
+      if (!tplCategories.includes(tplNewCategory.trim())) {
+        setTplCategories((prev) => [...prev, tplNewCategory.trim()])
+      }
+      setTplCategory(tplNewCategory.trim())
+    }
+    setTplNewCategory('')
+    setShowTplNewCat(false)
+  }
+
   // Save plan
   async function handleSave() {
     if (!planName.trim()) { toast('Le nom est obligatoire', 'error'); return }
@@ -226,108 +253,184 @@ export default function MealEditor({
       calories: totals.kcal, proteines: Math.round(totals.p), glucides: Math.round(totals.g), lipides: Math.round(totals.l),
     }
 
-    const today = new Date().toISOString().split('T')[0]
-
-    // Deactivate only plans of the current meal type (preserve the other type's plan)
-    await supabase.from('nutrition_plans').update({ actif: false }).eq('athlete_id', athleteId).eq('meal_type', mealType)
-
-    const payload = {
-      nom: planName.trim(),
-      meal_type: mealType,
-      meals_data: JSON.stringify(mealsData),
-      calories_objectif: finalTotals.calories,
-      proteines: finalTotals.proteines,
-      glucides: finalTotals.glucides,
-      lipides: finalTotals.lipides,
-      valid_from: today,
-      actif: true,
-      athlete_id: athleteId,
-      coach_id: user.id,
-      macro_only: isMacroOnly || false,
-    }
-
-    const { error } = await supabase.from('nutrition_plans').insert(payload)
-    if (error) { toast('Erreur: ' + error.message, 'error'); setSaving(false); return }
-
-    // Save paired plan (other tab) if coach edited it during this session
-    const otherType = mealType === 'training' ? 'rest' : 'training'
-    const otherTemp = tempMeals[otherType]
-    if (otherTemp?.meals?.length) {
-      const hasFood = otherTemp.meals.some((m) => m.foods.length > 0)
-      if (hasFood) {
-        // Deactivate existing plans for the other type before inserting updated version
-        await supabase.from('nutrition_plans').update({ actif: false }).eq('athlete_id', athleteId).eq('meal_type', otherType)
-
-        const otherMealsData = otherTemp.meals.map((m) => {
-          const foods = m.foods.map((f) => {
-            const macros = calcFoodMacros(f)
-            return { aliment: f.aliment, qte: f.qte, ...macros, allow_conversion: f.allow_conversion || false }
-          })
-          const obj: any = { foods }
-          if (m.pre_workout) obj.pre_workout = true
-          if (m.time) obj.time = m.time
-          return obj
-        })
-        const otherTotals = otherMealsData.reduce(
-          (acc: { kcal: number; p: number; g: number; l: number }, m: any) => {
-            (m.foods || []).forEach((f: any) => { acc.kcal += f.kcal || 0; acc.p += f.p || 0; acc.g += f.g || 0; acc.l += f.l || 0 })
-            return acc
-          },
-          { kcal: 0, p: 0, g: 0, l: 0 },
-        )
-        await supabase.from('nutrition_plans').insert({
+    try {
+      if (templateMode) {
+        // ── TEMPLATE MODE: save to nutrition_templates ──
+        const tplPayload = {
           nom: planName.trim(),
-          meal_type: otherType,
-          meals_data: JSON.stringify(otherMealsData),
-          calories_objectif: Math.round(otherTotals.kcal),
-          proteines: Math.round(otherTotals.p),
-          glucides: Math.round(otherTotals.g),
-          lipides: Math.round(otherTotals.l),
+          category: tplCategory || null,
+          calories_objectif: finalTotals.calories,
+          proteines: finalTotals.proteines,
+          glucides: finalTotals.glucides,
+          lipides: finalTotals.lipides,
+          meals_data: JSON.stringify(mealsData),
+          coach_id: user.id,
+        }
+
+        let error
+        if (templateId) {
+          ;({ error } = await supabase.from('nutrition_templates').update(tplPayload).eq('id', templateId))
+        } else {
+          ;({ error } = await supabase.from('nutrition_templates').insert(tplPayload))
+        }
+        if (error) { toast('Erreur: ' + error.message, 'error'); setSaving(false); return }
+
+        toast(templateId ? 'Template modifie' : 'Template cree', 'success')
+      } else {
+        // ── ATHLETE MODE: save to nutrition_plans ──
+        const today = new Date().toISOString().split('T')[0]
+
+        await supabase.from('nutrition_plans').update({ actif: false }).eq('athlete_id', athleteId).eq('meal_type', mealType)
+
+        const payload = {
+          nom: planName.trim(),
+          meal_type: mealType,
+          meals_data: JSON.stringify(mealsData),
+          calories_objectif: finalTotals.calories,
+          proteines: finalTotals.proteines,
+          glucides: finalTotals.glucides,
+          lipides: finalTotals.lipides,
           valid_from: today,
           actif: true,
           athlete_id: athleteId,
           coach_id: user.id,
-          macro_only: false,
-        })
+          macro_only: isMacroOnly || false,
+        }
+
+        const { error } = await supabase.from('nutrition_plans').insert(payload)
+        if (error) { toast('Erreur: ' + error.message, 'error'); setSaving(false); return }
+
+        // Save paired plan (other tab) if coach edited it during this session
+        const otherType = mealType === 'training' ? 'rest' : 'training'
+        const otherTemp = tempMeals[otherType]
+        if (otherTemp?.meals?.length) {
+          const hasFood = otherTemp.meals.some((m) => m.foods.length > 0)
+          if (hasFood) {
+            await supabase.from('nutrition_plans').update({ actif: false }).eq('athlete_id', athleteId).eq('meal_type', otherType)
+
+            const otherMealsData = otherTemp.meals.map((m) => {
+              const foods = m.foods.map((f) => {
+                const macros = calcFoodMacros(f)
+                return { aliment: f.aliment, qte: f.qte, ...macros, allow_conversion: f.allow_conversion || false }
+              })
+              const obj: any = { foods }
+              if (m.pre_workout) obj.pre_workout = true
+              if (m.time) obj.time = m.time
+              return obj
+            })
+            const otherTotals = otherMealsData.reduce(
+              (acc: { kcal: number; p: number; g: number; l: number }, m: any) => {
+                (m.foods || []).forEach((f: any) => { acc.kcal += f.kcal || 0; acc.p += f.p || 0; acc.g += f.g || 0; acc.l += f.l || 0 })
+                return acc
+              },
+              { kcal: 0, p: 0, g: 0, l: 0 },
+            )
+            await supabase.from('nutrition_plans').insert({
+              nom: planName.trim(),
+              meal_type: otherType,
+              meals_data: JSON.stringify(otherMealsData),
+              calories_objectif: Math.round(otherTotals.kcal),
+              proteines: Math.round(otherTotals.p),
+              glucides: Math.round(otherTotals.g),
+              lipides: Math.round(otherTotals.l),
+              valid_from: today,
+              actif: true,
+              athlete_id: athleteId,
+              coach_id: user.id,
+              macro_only: false,
+            })
+          }
+        }
+
+        // Notify athlete (DB + push)
+        const { data: athlete } = await supabase.from('athletes').select('user_id').eq('id', athleteId!).single()
+        if (athlete?.user_id) {
+          await notifyAthlete(
+            athlete.user_id, 'nutrition', 'Plan nutrition mis a jour',
+            `Votre coach a ${planId ? 'modifie' : 'cree'} votre plan nutritionnel "${planName.trim()}"`,
+          )
+        }
+
+        toast('Diete sauvegardee !', 'success')
       }
-    }
 
-    // Notify athlete (DB + push)
-    const { data: athlete } = await supabase.from('athletes').select('user_id').eq('id', athleteId).single()
-    if (athlete?.user_id) {
-      await notifyAthlete(
-        athlete.user_id, 'nutrition', 'Plan nutrition mis a jour',
-        `Votre coach a ${planId ? 'modifie' : 'cree'} votre plan nutritionnel "${planName.trim()}"`,
-      )
+      setSaving(false)
+      onSaved()
+    } catch (err) {
+      toast('Erreur lors de la sauvegarde', 'error')
+      setSaving(false)
     }
-
-    toast('Diete sauvegardee !', 'success')
-    setSaving(false)
-    onSaved()
   }
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       {/* Header */}
       <div className={styles.editorHead}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div className="card-title" style={{ margin: 0 }}>
-            {planId ? `Modifier — ${planName}` : `Nouveau plan`}
+            {templateMode
+              ? (templateId ? `Modifier template` : `Nouveau template`)
+              : (planId ? `Modifier — ${planName}` : `Nouveau plan`)}
           </div>
-          <div style={{ display: 'flex', gap: 4, marginLeft: 12 }}>
-            <button
-              className={`athlete-tab-btn ${mealType === 'training' ? 'active' : ''}`}
-              onClick={() => switchMealType('training')}
-            >
-              <i className="fa-solid fa-dumbbell" /> Jour ON
-            </button>
-            <button
-              className={`athlete-tab-btn ${mealType === 'rest' ? 'active' : ''}`}
-              onClick={() => switchMealType('rest')}
-            >
-              <i className="fa-solid fa-bed" /> Jour OFF
-            </button>
-          </div>
+          {!templateMode && (
+            <div style={{ display: 'flex', gap: 4, marginLeft: 12 }}>
+              <button
+                className={`athlete-tab-btn ${mealType === 'training' ? 'active' : ''}`}
+                onClick={() => switchMealType('training')}
+              >
+                <i className="fa-solid fa-dumbbell" /> Jour ON
+              </button>
+              <button
+                className={`athlete-tab-btn ${mealType === 'rest' ? 'active' : ''}`}
+                onClick={() => switchMealType('rest')}
+              >
+                <i className="fa-solid fa-bed" /> Jour OFF
+              </button>
+            </div>
+          )}
+          {templateMode && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 12 }}>
+              <i className="fa-solid fa-folder" style={{ color: 'var(--text3)', fontSize: 12 }} />
+              {showTplNewCat ? (
+                <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={tplNewCategory}
+                    onChange={(e) => setTplNewCategory(e.target.value)}
+                    placeholder="Nom..."
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') confirmTplNewCategory()
+                      if (e.key === 'Escape') setShowTplNewCat(false)
+                    }}
+                    style={{ padding: '4px 8px', background: 'var(--bg2)', border: '1px solid var(--primary)', borderRadius: 6, color: 'var(--text)', fontSize: 12, width: 130 }}
+                  />
+                  <button className="btn btn-outline btn-sm" onClick={confirmTplNewCategory} style={{ padding: '4px 8px' }}>
+                    <i className="fa-solid fa-check" style={{ fontSize: 10, color: 'var(--success)' }} />
+                  </button>
+                  <button className="btn btn-outline btn-sm" onClick={() => setShowTplNewCat(false)} style={{ padding: '4px 8px' }}>
+                    <i className="fa-solid fa-times" style={{ fontSize: 10 }} />
+                  </button>
+                </span>
+              ) : (
+                <>
+                  <select
+                    value={tplCategory}
+                    onChange={(e) => setTplCategory(e.target.value)}
+                    style={{ padding: '5px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 12 }}
+                  >
+                    <option value="">Sans categorie</option>
+                    {tplCategories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <button className="btn btn-outline btn-sm" onClick={() => setShowTplNewCat(true)} title="Nouvelle categorie" style={{ padding: '4px 8px' }}>
+                    <i className="fa-solid fa-plus" style={{ fontSize: 10 }} />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-outline" onClick={onBack}>

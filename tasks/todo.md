@@ -1,4 +1,15 @@
-# Prochaine session — Priorités
+# Prochaine session — Priorites
+
+## COACH — Templates unifies (2026-04-03)
+- [x] Training templates: ProgramEditor avec templateMode=true (ExerciseLibrary, sets, supersets, dropsets)
+- [x] Nutrition templates: MealEditor avec templateMode=true (FoodSearch, repas, macros)
+- [x] ProgramEditor: ajout props templateMode, templateId, templateCategory, existingCategories
+- [x] MealEditor: ajout props templateMode, templateId, templateCategory, existingCategories
+- [x] NutritionTemplatesList: supprime editeur inline, delegue a MealEditor via onEdit/onCreate/onDelete
+- [x] templates/page.tsx: utilise ProgramEditor et MealEditor au lieu de TrainingTemplateEditor et editeur inline
+- [x] Build passe (0 erreurs dans les fichiers modifies, 51 routes)
+
+---
 
 ## ATHLETE — Bugs critiques
 - [ ] Workout tracking : auto-save quand on quitte/revient en arrière sans cliquer Enregistrer
