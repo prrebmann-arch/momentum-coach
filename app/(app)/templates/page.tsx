@@ -49,7 +49,7 @@ interface NutritionTemplate {
 
 export default function TemplatesPage() {
   const supabase = createClient()
-  const { coach } = useAuth()
+  const { user, coach } = useAuth()
 
   const [activeTab, setActiveTab] = useState('training')
   const [loading, setLoading] = useState(true)
@@ -72,14 +72,14 @@ export default function TemplatesPage() {
   const [questionnaireTemplates, setQuestionnaireTemplates] = useState<Array<Record<string, unknown>>>([])
 
   const loadData = useCallback(async () => {
-    if (!coach) return
+    if (!user) return
     setLoading(true)
     try {
       if (activeTab === 'training') {
         const { data } = await supabase
           .from('training_templates')
           .select('id, nom, category, pattern_type, pattern_data, sessions_data, created_at')
-          .eq('coach_id', coach.id)
+          .eq('coach_id', user.id)
           .order('created_at', { ascending: false })
           .limit(100)
         setTrainingTemplates((data || []) as TrainingTemplate[])
@@ -87,7 +87,7 @@ export default function TemplatesPage() {
         const { data } = await supabase
           .from('nutrition_templates')
           .select('id, nom, coach_id, template_type, category, calories_objectif, proteines, glucides, lipides, meals_data, created_at')
-          .eq('coach_id', coach.id)
+          .eq('coach_id', user.id)
           .order('created_at', { ascending: false })
           .limit(100)
         setNutritionTemplates((data || []) as NutritionTemplate[])
@@ -95,7 +95,7 @@ export default function TemplatesPage() {
         const { data } = await supabase
           .from('onboarding_workflows')
           .select('id, nom, coach_id, steps, created_at')
-          .eq('coach_id', coach.id)
+          .eq('coach_id', user.id)
           .order('created_at', { ascending: false })
           .limit(100)
         setWorkflows(data || [])
@@ -103,7 +103,7 @@ export default function TemplatesPage() {
         const { data } = await supabase
           .from('questionnaire_templates')
           .select('id, titre, coach_id, questions, created_at')
-          .eq('coach_id', coach.id)
+          .eq('coach_id', user.id)
           .order('created_at', { ascending: false })
           .limit(100)
         setQuestionnaireTemplates(data || [])
@@ -111,7 +111,7 @@ export default function TemplatesPage() {
     } finally {
       setLoading(false)
     }
-  }, [coach, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadData()
