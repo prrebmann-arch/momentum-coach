@@ -27,7 +27,57 @@ interface OffAliment {
   lipides: number
 }
 
-type Source = 'local' | 'off' | 'both'
+type Source = 'momentum' | 'off' | 'ciqual' | 'perso'
+
+// Ciqual local database (same as ATHLETE)
+const CIQUAL_DB: { nom: string; calories: number; proteines: number; glucides: number; lipides: number }[] = [
+  { nom: 'Agneau, épaule, cuit', calories: 2.36, proteines: 0.26, glucides: 0, lipides: 0.15 },
+  { nom: 'Agneau, gigot, rôti', calories: 2.06, proteines: 0.28, glucides: 0, lipides: 0.105 },
+  { nom: 'Bœuf, steak haché 5%, cuit', calories: 1.46, proteines: 0.26, glucides: 0, lipides: 0.05 },
+  { nom: 'Bœuf, steak haché 15%, cuit', calories: 2.18, proteines: 0.25, glucides: 0, lipides: 0.135 },
+  { nom: 'Bœuf, faux-filet, grillé', calories: 1.86, proteines: 0.27, glucides: 0, lipides: 0.087 },
+  { nom: 'Poulet, blanc, cuit', calories: 1.21, proteines: 0.262, glucides: 0, lipides: 0.018 },
+  { nom: 'Poulet, cuisse, cuit', calories: 1.77, proteines: 0.24, glucides: 0, lipides: 0.092 },
+  { nom: 'Dinde, escalope, cuite', calories: 1.15, proteines: 0.26, glucides: 0, lipides: 0.013 },
+  { nom: 'Porc, filet, rôti', calories: 1.59, proteines: 0.285, glucides: 0, lipides: 0.05 },
+  { nom: 'Porc, jambon cuit', calories: 1.15, proteines: 0.21, glucides: 0.005, lipides: 0.03 },
+  { nom: 'Saumon, cuit', calories: 2.06, proteines: 0.22, glucides: 0, lipides: 0.13 },
+  { nom: 'Thon, cuit', calories: 1.44, proteines: 0.3, glucides: 0, lipides: 0.02 },
+  { nom: 'Cabillaud, cuit', calories: 0.82, proteines: 0.19, glucides: 0, lipides: 0.007 },
+  { nom: 'Crevettes, cuites', calories: 0.99, proteines: 0.21, glucides: 0, lipides: 0.012 },
+  { nom: 'Œuf entier, cuit', calories: 1.55, proteines: 0.127, glucides: 0.011, lipides: 0.108 },
+  { nom: 'Riz blanc, cuit', calories: 1.3, proteines: 0.027, glucides: 0.284, lipides: 0.003 },
+  { nom: 'Pâtes, cuites', calories: 1.31, proteines: 0.05, glucides: 0.253, lipides: 0.019 },
+  { nom: 'Pommes de terre, cuites', calories: 0.8, proteines: 0.02, glucides: 0.171, lipides: 0.001 },
+  { nom: 'Patate douce, cuite', calories: 0.86, proteines: 0.016, glucides: 0.201, lipides: 0.001 },
+  { nom: 'Flocons d\'avoine', calories: 3.79, proteines: 0.135, glucides: 0.586, lipides: 0.075 },
+  { nom: 'Pain complet', calories: 2.47, proteines: 0.09, glucides: 0.413, lipides: 0.034 },
+  { nom: 'Quinoa, cuit', calories: 1.2, proteines: 0.044, glucides: 0.214, lipides: 0.019 },
+  { nom: 'Lentilles, cuites', calories: 1.16, proteines: 0.09, glucides: 0.201, lipides: 0.004 },
+  { nom: 'Brocoli, cuit', calories: 0.35, proteines: 0.024, glucides: 0.072, lipides: 0.004 },
+  { nom: 'Épinards, cuits', calories: 0.23, proteines: 0.029, glucides: 0.036, lipides: 0.003 },
+  { nom: 'Avocat', calories: 1.69, proteines: 0.02, glucides: 0.085, lipides: 0.147 },
+  { nom: 'Banane', calories: 0.89, proteines: 0.011, glucides: 0.228, lipides: 0.003 },
+  { nom: 'Pomme', calories: 0.52, proteines: 0.003, glucides: 0.138, lipides: 0.002 },
+  { nom: 'Fromage blanc 0%', calories: 0.46, proteines: 0.075, glucides: 0.039, lipides: 0.001 },
+  { nom: 'Yaourt nature', calories: 0.61, proteines: 0.035, glucides: 0.047, lipides: 0.033 },
+  { nom: 'Lait demi-écrémé', calories: 0.46, proteines: 0.032, glucides: 0.048, lipides: 0.015 },
+  { nom: 'Beurre de cacahuète', calories: 5.88, proteines: 0.252, glucides: 0.2, lipides: 0.502 },
+  { nom: 'Amandes', calories: 5.78, proteines: 0.212, glucides: 0.217, lipides: 0.494 },
+  { nom: 'Huile d\'olive', calories: 8.84, proteines: 0, glucides: 0, lipides: 1 },
+  { nom: 'Miel', calories: 3.04, proteines: 0.003, glucides: 0.824, lipides: 0 },
+  { nom: 'Chocolat noir 70%', calories: 5.46, proteines: 0.079, glucides: 0.337, lipides: 0.41 },
+]
+
+function searchCiqual(q: string): { nom: string; calories: number; proteines: number; glucides: number; lipides: number }[] {
+  if (!q || q.length < 2) return []
+  const normalized = q.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const words = normalized.split(/\s+/).filter(Boolean)
+  return CIQUAL_DB.filter((item) => {
+    const name = item.nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    return words.every((w) => name.includes(w))
+  })
+}
 
 export default function AlimentsPage() {
   const supabase = createClient()
@@ -37,7 +87,7 @@ export default function AlimentsPage() {
   const [aliments, setAliments] = useState<Aliment[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
-  const [source, setSource] = useState<Source>('local')
+  const [source, setSource] = useState<Source>('momentum')
 
   // OFF search
   const [offResults, setOffResults] = useState<OffAliment[]>([])
@@ -207,13 +257,13 @@ export default function AlimentsPage() {
             />
           </div>
           <div className={styles.sourceToggle}>
-            {(['local', 'off', 'both'] as Source[]).map((s) => (
+            {(['momentum', 'off', 'ciqual', 'perso'] as Source[]).map((s) => (
               <button
                 key={s}
                 className={`${styles.srcBtn} ${source === s ? styles.srcBtnActive : ''}`}
                 onClick={() => setSource(s)}
               >
-                {s === 'local' ? 'Momentum' : s === 'off' ? 'Open Food Facts' : 'Les deux'}
+                {s === 'momentum' ? 'Momentum' : s === 'off' ? 'Open Food' : s === 'ciqual' ? 'Ciqual' : 'Mes aliments'}
               </button>
             ))}
           </div>
@@ -225,14 +275,14 @@ export default function AlimentsPage() {
 
       {/* List */}
       <div className={styles.list}>
-        {/* Local results */}
-        {(source === 'local' || source === 'both') && (
+        {/* Momentum / Mes aliments results */}
+        {(source === 'momentum' || source === 'perso') && (
           <>
             {loading ? (
               <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>
                 <i className="fa-solid fa-spinner fa-spin" />
               </div>
-            ) : filteredLocal.length === 0 && source === 'local' ? (
+            ) : filteredLocal.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>
                 <i className="fa-solid fa-apple-whole" style={{ fontSize: 28, marginBottom: 8, display: 'block' }} />
                 Aucun aliment
@@ -262,13 +312,42 @@ export default function AlimentsPage() {
           </>
         )}
 
-        {/* OFF divider */}
-        {source === 'both' && offResults.length > 0 && (
-          <div className={styles.offDivider}>-- Open Food Facts --</div>
+        {/* Ciqual results */}
+        {source === 'ciqual' && (
+          <>
+            {query.length < 2 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)', fontSize: 12 }}>
+                Tapez au moins 2 caracteres pour rechercher dans Ciqual
+              </div>
+            ) : (() => {
+              const results = searchCiqual(query)
+              return results.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>
+                  Aucun resultat Ciqual pour &quot;{query}&quot;
+                </div>
+              ) : (
+                results.map((a, i) => (
+                  <div key={`ciq-${i}`} className={styles.alimentCard}>
+                    <div className={styles.alimentRow}>
+                      <div className={styles.alimentInfo}>
+                        <div className={styles.alimentName}>
+                          {a.nom}
+                          <span style={{ fontSize: 9, marginLeft: 6, padding: '1px 5px', borderRadius: 4, background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}>CIQUAL</span>
+                        </div>
+                        <div className={styles.alimentMacros}>
+                          {Math.round(a.calories * 100)} kcal/100g | P{(a.proteines * 100).toFixed(1)}g | G{(a.glucides * 100).toFixed(1)}g | L{(a.lipides * 100).toFixed(1)}g
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )
+            })()}
+          </>
         )}
 
         {/* OFF results */}
-        {(source === 'off' || source === 'both') && (
+        {source === 'off' && (
           <>
             {offLoading && (
               <div style={{ textAlign: 'center', padding: 20, color: 'var(--text3)', fontSize: 12 }}>
