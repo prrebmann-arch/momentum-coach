@@ -272,7 +272,25 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
         }
       }
 
-      const msg = `Bienvenue dans l'app de coaching ! \n\nVoici vos identifiants:\n\nEmail: ${trimEmail}\nMot de passe: ${tempPassword}\n\nConnectez-vous pour voir vos seances!`
+      // Generate payment link for paid athletes
+      let paymentLink = ''
+      if (paymentType !== 'free' && insertedAthlete) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          const resp = await fetch('/api/stripe?action=create-checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+            body: JSON.stringify({ athleteId: insertedAthlete.id, coachId }),
+          })
+          const result = await resp.json()
+          if (result.url) paymentLink = result.url
+        } catch { /* checkout link generation failed — continue without it */ }
+      }
+
+      let msg = `Bienvenue dans l'app de coaching ! \n\nVoici vos identifiants:\n\nEmail: ${trimEmail}\nMot de passe: ${tempPassword}\n\nConnectez-vous pour voir vos seances!`
+      if (paymentLink) {
+        msg += `\n\nLien de paiement :\n${paymentLink}`
+      }
       toast('Athlete ajoute avec succes !', 'success')
       resetForm()
       onClose()
