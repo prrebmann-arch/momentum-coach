@@ -437,12 +437,31 @@ export default function NutritionPage() {
     setShowTemplatePicker(false)
     let meals: MealData[] = [{ foods: [] }]
     try {
-      const parsed = typeof tpl.meals_data === 'string' ? JSON.parse(tpl.meals_data) : (tpl.meals_data || [])
-      const m = (parsed as any[]).map((m: any) => {
-        if (m && !Array.isArray(m) && m.foods) return { foods: m.foods, pre_workout: m.pre_workout, time: m.time }
-        return { foods: Array.isArray(m) ? m : [] }
-      })
-      if (m.length) meals = m
+      let raw = tpl.meals_data
+      // Double-encoded JSON string
+      if (typeof raw === 'string') raw = JSON.parse(raw)
+      if (typeof raw === 'string') raw = JSON.parse(raw)
+      const parsed = raw as any[]
+      if (!Array.isArray(parsed)) throw new Error('not array')
+
+      // Handle structured diete format { training: { meals }, rest: { meals } }
+      if (parsed.length === 0 && typeof raw === 'object' && !Array.isArray(raw) && (raw as any).training) {
+        const structured = raw as { training?: { meals?: any[] }; rest?: { meals?: any[] } }
+        const tMeals = structured.training?.meals || []
+        meals = tMeals.map((m: any) => {
+          if (m && !Array.isArray(m) && m.foods) return { foods: m.foods, pre_workout: m.pre_workout, time: m.time }
+          if (Array.isArray(m)) return { foods: m }
+          return { foods: [] }
+        })
+      } else {
+        // Flat format: [[foods], [foods]] or [{ foods: [...] }, ...]
+        const m = parsed.map((item: any) => {
+          if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, time: item.time }
+          if (Array.isArray(item)) return { foods: item }
+          return { foods: [] }
+        })
+        if (m.length) meals = m
+      }
     } catch { /* empty */ }
 
     setEditPlanId(null)
