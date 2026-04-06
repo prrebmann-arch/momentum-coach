@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -65,7 +65,7 @@ export default function InfosPage() {
   const supabase = createClient()
 
   const cacheKey = `athlete_${params.id}_infos`
-  const cached = useMemo(() => getPageCache<{ athlete: any; phase: any; plan: any; payments: any[]; cancels: any[] }>(cacheKey), [cacheKey])
+  const [cached] = useState(() => getPageCache<{ athlete: any; phase: any; plan: any; payments: any[]; cancels: any[] }>(cacheKey))
 
   const [loading, setLoading] = useState(!cached)
   const [athlete, setAthlete] = useState<any>(cached?.athlete ?? null)

@@ -20,7 +20,7 @@ export default function AthleteVideosPage() {
   const supabase = createClient()
 
   const cacheKey = `athlete_${athleteId}_videos`
-  const cached = useMemo(() => getPageCache<VideoItem[]>(cacheKey), [cacheKey])
+  const [cached] = useState(() => getPageCache<VideoItem[]>(cacheKey))
 
   const [videos, setVideos] = useState<VideoItem[]>(cached ?? [])
   const [loading, setLoading] = useState(!cached)

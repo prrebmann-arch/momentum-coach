@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -58,7 +58,7 @@ export default function SupplementsPage() {
   const supabase = createClient()
 
   const cacheKey = `athlete_${params.id}_supplements`
-  const cached = useMemo(() => getPageCache<{ assignments: any[]; unlocked: boolean }>(cacheKey), [cacheKey])
+  const [cached] = useState(() => getPageCache<{ assignments: any[]; unlocked: boolean }>(cacheKey))
 
   const [loading, setLoading] = useState(!cached)
   const [tab, setTab] = useState<SuppType>('complement')

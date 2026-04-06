@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAthleteContext } from '@/contexts/AthleteContext'
@@ -21,7 +21,7 @@ export default function ApercuPage() {
   const { selectedAthlete } = useAthleteContext()
 
   const cacheKey = `athlete_${params.id}_apercu`
-  const cached = useMemo(() => getPageCache<{ athlete: any; reports: any[]; phase: any; prog: any; nutrition: any[]; tracking: any[] }>(cacheKey), [cacheKey])
+  const [cached] = useState(() => getPageCache<{ athlete: any; reports: any[]; phase: any; prog: any; nutrition: any[]; tracking: any[] }>(cacheKey))
 
   const [loading, setLoading] = useState(!cached)
   const [athlete, setAthlete] = useState<any>(cached?.athlete ?? null)

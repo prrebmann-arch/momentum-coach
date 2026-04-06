@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -21,7 +21,7 @@ export default function RetoursPage() {
   const supabase = createClient()
 
   const cacheKey = `athlete_${params.id}_retours`
-  const cached = useMemo(() => getPageCache<any[]>(cacheKey), [cacheKey])
+  const [cached] = useState(() => getPageCache<any[]>(cacheKey))
 
   const [loading, setLoading] = useState(!cached)
   const [retours, setRetours] = useState<any[]>(cached ?? [])

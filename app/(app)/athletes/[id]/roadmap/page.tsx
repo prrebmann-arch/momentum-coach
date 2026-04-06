@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -46,7 +46,7 @@ export default function RoadmapPage() {
   const { selectedAthlete } = useAthleteContext()
 
   const cacheKey = `athlete_${athleteId}_roadmap`
-  const cached = useMemo(() => getPageCache<{ phases: RoadmapPhase[]; programs: ProgramRef[]; nutritions: NutritionRef[]; reports: DailyReport[] }>(cacheKey), [cacheKey])
+  const [cached] = useState(() => getPageCache<{ phases: RoadmapPhase[]; programs: ProgramRef[]; nutritions: NutritionRef[]; reports: DailyReport[] }>(cacheKey))
 
   const [phases, setPhases] = useState<RoadmapPhase[]>(cached?.phases ?? [])
   const [programs, setPrograms] = useState<ProgramRef[]>(cached?.programs ?? [])

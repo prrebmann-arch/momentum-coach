@@ -70,6 +70,12 @@
 
 [2026-04-03] | Early return in loadData without setLoading(false) leaves loading=true forever | Bilans page had `if (!selectedAthlete?.user_id) return` before `setLoading(true)`, but `loading` was initialized as `true`. The guard prevented data from loading AND prevented the loading state from being reset. Fix: combine loading and null checks so the UI shows skeleton until data is ready.
 
+[2026-04-03] | useMemo(() => getPageCache()) blocks render with JSON.parse | useMemo runs during render — if the cached data is large (e.g. 500 workout logs with exercices_completes), JSON.parse blocks the main thread. Use useState(() => getPageCache()) instead — the lazy initializer only runs once at mount, not on re-renders.
+
+[2026-04-03] | Storing heavy data in sessionStorage causes slow page loads | sessionStorage has a ~5MB limit and JSON.parse/stringify on large arrays (workout logs with nested exercises, photo URLs) blocks the main thread. Only cache lightweight reference data (programs, plans, phases). Always reload heavy/expiring data (logs, signed URLs) from the server.
+
+[2026-04-03] | Loading 600 signed URLs at mount kills page load time | 200 bilans x 3 photos = 600 createSignedUrl requests. Load photos lazily on user interaction (e.g. when they click a photo button), not at page mount. This alone saves ~10-20 seconds of load time.
+
 [2026-04-03] | Sequential queries avoidable via context data | Apercu page fetched athlete from DB just to get user_id, then ran 5 parallel queries. Since AthleteContext already has all athletes loaded, use `selectedAthlete.user_id` from context to skip the sequential fetch and run everything in parallel.
 
 [2026-04-03] | SessionStorage cache pattern for instant tab loads | For each athlete tab page: (1) read cache at mount via useMemo (getPageCache), (2) initialize state from cache, (3) set loading=false if cache exists, (4) fetch fresh data in background, (5) write to cache after fetch. Cache key format: `athlete_{id}_{page}`. This makes tab switching feel instant while keeping data fresh.

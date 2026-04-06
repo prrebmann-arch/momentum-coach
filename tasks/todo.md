@@ -17,6 +17,14 @@
 - [x] /athletes/[id]/apercu — uses context athlete user_id to skip sequential query (all 5 queries parallel)
 - [ ] Further INP reduction: consider debounce on input handlers in BusinessDashboard FieldRow
 
+## COACH — Critical Perf Fixes (2026-04-03)
+- [x] Fix 1: workout_logs .limit(500) -> .limit(100) in training + bilans pages
+- [x] Fix 2: Lazy-load signed URLs photos — no longer fetched at mount, loaded on first photo click
+- [x] Fix 3: Exclude heavy data from sessionStorage cache (logs in training, wlogs in bilans)
+- [x] Fix 4: useMemo(() => getPageCache()) -> useState(() => getPageCache()) in all 12 athlete tab pages
+- [x] Fix 5: 200 bilans x 3 photos = 600 createSignedUrl requests eliminated at mount (covered by Fix 2)
+- [x] Build passes (0 errors in modified files)
+
 ## COACH — SessionStorage cache + instant tab switching (2026-04-03)
 - [x] lib/utils.ts — added getPageCache/setPageCache helpers
 - [x] training — sessionStorage cache (programs, cardio, logs) + skeleton loading

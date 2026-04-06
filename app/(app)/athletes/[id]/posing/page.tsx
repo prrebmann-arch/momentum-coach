@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -24,7 +24,7 @@ export default function PosingPage() {
   const supabase = createClient()
 
   const cacheKey = `athlete_${params.id}_posing`
-  const cached = useMemo(() => getPageCache<{ enabled: boolean; videos: any[]; retours: any[] }>(cacheKey), [cacheKey])
+  const [cached] = useState(() => getPageCache<{ enabled: boolean; videos: any[]; retours: any[] }>(cacheKey))
 
   const [loading, setLoading] = useState(!cached)
   const [posingEnabled, setPosingEnabled] = useState(cached?.enabled ?? false)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/contexts/ToastContext'
@@ -26,7 +26,7 @@ export default function MenstrualPage() {
   const supabase = createClient()
 
   const cacheKey = `athlete_${params.id}_menstrual`
-  const cached = useMemo(() => getPageCache<{ enabled: boolean; entries: any[] }>(cacheKey), [cacheKey])
+  const [cached] = useState(() => getPageCache<{ enabled: boolean; entries: any[] }>(cacheKey))
 
   const [loading, setLoading] = useState(!cached)
   const [enabled, setEnabled] = useState(cached?.enabled ?? false)

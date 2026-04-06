@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
@@ -75,7 +75,7 @@ export default function NutritionPage() {
   const { toast } = useToast()
 
   const cacheKey = `athlete_${athleteId}_nutrition`
-  const cached = useMemo(() => getPageCache<{ plans: NutritionPlan[]; diets: DietGroup[] }>(cacheKey), [cacheKey])
+  const [cached] = useState(() => getPageCache<{ plans: NutritionPlan[]; diets: DietGroup[] }>(cacheKey))
 
   const [loading, setLoading] = useState(!cached)
   const [plans, setPlans] = useState<NutritionPlan[]>(cached?.plans ?? [])
