@@ -464,6 +464,7 @@ export default function NutritionPage() {
       }
     } catch { /* empty */ }
 
+    console.log('[NutritionTemplate] Imported meals:', JSON.stringify(meals).slice(0, 500))
     setEditPlanId(null)
     setEditPlanName(tpl.nom || '')
     setEditMealType('training')
