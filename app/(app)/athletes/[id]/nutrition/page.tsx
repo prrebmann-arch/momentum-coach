@@ -464,6 +464,7 @@ export default function NutritionPage() {
       }
     } catch { /* empty */ }
 
+    console.log('[NutritionTemplate] raw meals_data type:', typeof tpl.meals_data, '| value:', JSON.stringify(tpl.meals_data)?.slice(0, 300))
     console.log('[NutritionTemplate] Imported meals:', JSON.stringify(meals).slice(0, 500))
     setEditPlanId(null)
     setEditPlanName(tpl.nom || '')
