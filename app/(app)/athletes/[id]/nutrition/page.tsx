@@ -1287,7 +1287,7 @@ export default function NutritionPage() {
 
       {/* Template Picker Modal */}
       {showTemplatePicker && (
-        <div className="modal-overlay" onClick={() => setShowTemplatePicker(false)}>
+        <div className="modal-overlay open" onClick={() => setShowTemplatePicker(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <div className="modal-header">
               <h3 className="modal-title">Choisir un template</h3>
