@@ -433,39 +433,36 @@ export default function NutritionPage() {
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Select a nutrition template: pre-fill editor with its data
+  function parseMealsFromTemplate(mealsData: unknown): MealData[] {
+    let raw = mealsData
+    if (typeof raw === 'string') raw = JSON.parse(raw)
+    if (typeof raw === 'string') raw = JSON.parse(raw)
+
+    // Helper: convert any meal-like item to MealData
+    const toMeal = (item: any): MealData => {
+      if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, time: item.time }
+      if (Array.isArray(item)) return { foods: item }
+      return { foods: [] }
+    }
+
+    // Format 1: { training: { meals: [...] }, rest: { meals: [...] } }
+    if (raw && typeof raw === 'object' && !Array.isArray(raw) && (raw as any).training) {
+      const t = (raw as any).training
+      const tMeals = t.meals || (Array.isArray(t) ? t : [])
+      return (tMeals as any[]).map(toMeal)
+    }
+
+    // Format 2: [[foods], [foods]] or [{ foods }, { foods }]
+    if (Array.isArray(raw) && raw.length > 0) {
+      return (raw as any[]).map(toMeal)
+    }
+
+    return [{ foods: [] }]
+  }
+
   const selectNutritionTemplate = useCallback((tpl: typeof nutritionTemplates[0]) => {
     setShowTemplatePicker(false)
-    let meals: MealData[] = [{ foods: [] }]
-    try {
-      let raw = tpl.meals_data
-      // Double-encoded JSON string
-      if (typeof raw === 'string') raw = JSON.parse(raw)
-      if (typeof raw === 'string') raw = JSON.parse(raw)
-      const parsed = raw as any[]
-      if (!Array.isArray(parsed)) throw new Error('not array')
-
-      // Handle structured diete format { training: { meals }, rest: { meals } }
-      if (parsed.length === 0 && typeof raw === 'object' && !Array.isArray(raw) && (raw as any).training) {
-        const structured = raw as { training?: { meals?: any[] }; rest?: { meals?: any[] } }
-        const tMeals = structured.training?.meals || []
-        meals = tMeals.map((m: any) => {
-          if (m && !Array.isArray(m) && m.foods) return { foods: m.foods, pre_workout: m.pre_workout, time: m.time }
-          if (Array.isArray(m)) return { foods: m }
-          return { foods: [] }
-        })
-      } else {
-        // Flat format: [[foods], [foods]] or [{ foods: [...] }, ...]
-        const m = parsed.map((item: any) => {
-          if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, time: item.time }
-          if (Array.isArray(item)) return { foods: item }
-          return { foods: [] }
-        })
-        if (m.length) meals = m
-      }
-    } catch { /* empty */ }
-
-    console.log('[NutritionTemplate] raw meals_data type:', typeof tpl.meals_data, '| value:', JSON.stringify(tpl.meals_data)?.slice(0, 300))
-    console.log('[NutritionTemplate] Imported meals:', JSON.stringify(meals).slice(0, 500))
+    const meals = parseMealsFromTemplate(tpl.meals_data)
     setEditPlanId(null)
     setEditPlanName(tpl.nom || '')
     setEditMealType('training')
