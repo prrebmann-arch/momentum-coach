@@ -280,7 +280,7 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
           const resp = await fetch('/api/stripe?action=create-checkout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-            body: JSON.stringify({ athleteId: insertedAthlete.id, coachId }),
+            body: JSON.stringify({ athleteId: insertedAthlete.id, coachId, athleteEmail: trimEmail, athleteName: `${prenom} ${nom}`.trim() }),
           })
           const result = await resp.json()
           console.log('[AddAthlete] Checkout result:', result)
