@@ -68,6 +68,8 @@
 
 [2026-04-03] | useEffect with empty [] deps ignores useCallback changes | Training page had `useEffect(() => { loadData() }, [])` which never re-ran when `loadData` changed (e.g., when athleteId changed). Always use `[loadData]` as dependency when loadData is a useCallback.
 
+[2026-04-03] | setSaving(true) without try/finally in saveNewSupplement left button spinning forever on error | Always wrap async save functions with setSaving(true) in try/finally to guarantee setSaving(false) runs even on unexpected errors. Also log errors to console for debugging.
+
 [2026-04-03] | Early return in loadData without setLoading(false) leaves loading=true forever | Bilans page had `if (!selectedAthlete?.user_id) return` before `setLoading(true)`, but `loading` was initialized as `true`. The guard prevented data from loading AND prevented the loading state from being reset. Fix: combine loading and null checks so the UI shows skeleton until data is ready.
 
 [2026-04-03] | Storing structured template variants in JSON column avoids DB migration | When DB columns can't be easily added (no psql access), store structured data variants (e.g. diete with training/rest, jour, repas) inside a JSON column with a discriminator field (template_type). Parse the shape at read time based on the type. Keeps the schema flat and avoids migration friction.

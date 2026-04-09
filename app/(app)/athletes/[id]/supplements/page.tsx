@@ -30,6 +30,19 @@ const FREQ_OPTIONS = [
 
 const UNITE_OPTIONS = ['mg', 'g', 'ml', 'caps', 'gelules', 'cuillere', 'UI']
 
+const MOMENT_OPTIONS = [
+  'Petit-dejeuner',
+  'Matin',
+  'Midi',
+  'Apres-midi',
+  'Pre-training',
+  'Post-training',
+  'Soir',
+  'Coucher',
+  'Au repas',
+  'A jeun',
+]
+
 function getIntervalDays(freq: string): number {
   const map: Record<string, number> = {
     '1x/jour': 1, '2x/jour': 0.5, '3x/jour': 0.333,
@@ -79,6 +92,7 @@ export default function SupplementsPage() {
   const [formLien, setFormLien] = useState('')
   const [formNotes, setFormNotes] = useState('')
   const [formConcentration, setFormConcentration] = useState('')
+  const [formMomentCustom, setFormMomentCustom] = useState(false)
 
   const loadData = useCallback(async () => {
     if (!assignments.length) setLoading(true)
@@ -121,46 +135,53 @@ export default function SupplementsPage() {
     if (!formDosage.trim()) { toast('Dosage obligatoire', 'error'); return }
     setSaving(true)
 
-    // Create supplement
-    const { data: supp, error: e1 } = await supabase.from('supplements').insert({
-      coach_id: user?.id,
-      type: tab,
-      nom: formNom.trim(),
-      marque: formMarque.trim() || null,
-      lien_achat: formLien.trim() || null,
-    }).select().single()
-    if (e1 || !supp) { toast('Erreur creation supplement', 'error'); setSaving(false); return }
+    try {
+      // Create supplement
+      const { data: supp, error: e1 } = await supabase.from('supplements').insert({
+        coach_id: user?.id,
+        type: tab,
+        nom: formNom.trim(),
+        marque: formMarque.trim() || null,
+        lien_achat: formLien.trim() || null,
+      }).select().single()
+      if (e1 || !supp) { toast('Erreur creation supplement', 'error'); return }
 
-    const intervalMap: Record<string, number> = {
-      '1x/jour': 1, '2x/jour': 1, '3x/jour': 1,
-      'tous les 2 jours': 2, 'tous les 3 jours': 3,
-      '2x/semaine': 3.5, '3x/semaine': 2.333, '1x/semaine': 7, 'au besoin': 0,
+      const intervalMap: Record<string, number> = {
+        '1x/jour': 1, '2x/jour': 1, '3x/jour': 1,
+        'tous les 2 jours': 2, 'tous les 3 jours': 3,
+        '2x/semaine': 3.5, '3x/semaine': 2.333, '1x/semaine': 7, 'au besoin': 0,
+      }
+
+      const { error: e2 } = await supabase.from('athlete_supplements').insert({
+        athlete_id: params.id,
+        supplement_id: supp.id,
+        dosage: formDosage.trim(),
+        unite: formUnite,
+        frequence: formFreq,
+        intervalle_jours: intervalMap[formFreq] || 1,
+        moment_prise: formMoment.trim() || null,
+        concentration_mg_ml: parseFloat(formConcentration) || null,
+        notes: formNotes.trim() || null,
+        actif: true,
+      })
+      if (e2) { toast('Erreur assignation', 'error'); return }
+
+      toast('Supplement ajoute', 'success')
+      setShowAddModal(false)
+      resetForm()
+      loadData()
+    } catch (err) {
+      console.error('saveNewSupplement error:', err)
+      toast('Erreur inattendue', 'error')
+    } finally {
+      setSaving(false)
     }
-
-    const { error: e2 } = await supabase.from('athlete_supplements').insert({
-      athlete_id: params.id,
-      supplement_id: supp.id,
-      dosage: formDosage.trim(),
-      unite: formUnite,
-      frequence: formFreq,
-      intervalle_jours: intervalMap[formFreq] || 1,
-      moment_prise: formMoment.trim() || null,
-      concentration_mg_ml: parseFloat(formConcentration) || null,
-      notes: formNotes.trim() || null,
-      actif: true,
-    })
-    setSaving(false)
-    if (e2) { toast('Erreur assignation', 'error'); return }
-
-    toast('Supplement ajoute', 'success')
-    setShowAddModal(false)
-    resetForm()
-    loadData()
   }
 
   function resetForm() {
     setFormNom(''); setFormMarque(''); setFormDosage(''); setFormUnite('mg')
     setFormFreq('1x/jour'); setFormMoment(''); setFormLien(''); setFormNotes(''); setFormConcentration('')
+    setFormMomentCustom(false)
   }
 
   function openEditModal(a: any) {
@@ -171,7 +192,10 @@ export default function SupplementsPage() {
     setFormDosage(a.dosage || '')
     setFormUnite(a.unite || 'mg')
     setFormFreq(a.frequence || '1x/jour')
-    setFormMoment(a.moment_prise || '')
+    const moment = a.moment_prise || ''
+    const isCustom = moment !== '' && !MOMENT_OPTIONS.includes(moment)
+    setFormMoment(moment)
+    setFormMomentCustom(isCustom)
     setFormLien(s.lien_achat || '')
     setFormNotes(a.notes || '')
     setFormConcentration(a.concentration_mg_ml ? String(a.concentration_mg_ml) : '')
@@ -183,48 +207,55 @@ export default function SupplementsPage() {
     if (!formDosage.trim()) { toast('Dosage obligatoire', 'error'); return }
     setSaving(true)
 
-    const intervalMap: Record<string, number> = {
-      '1x/jour': 1, '2x/jour': 1, '3x/jour': 1,
-      'tous les 2 jours': 2, 'tous les 3 jours': 3,
-      '2x/semaine': 3.5, '3x/semaine': 2.333, '1x/semaine': 7, 'au besoin': 0,
+    try {
+      const intervalMap: Record<string, number> = {
+        '1x/jour': 1, '2x/jour': 1, '3x/jour': 1,
+        'tous les 2 jours': 2, 'tous les 3 jours': 3,
+        '2x/semaine': 3.5, '3x/semaine': 2.333, '1x/semaine': 7, 'au besoin': 0,
+      }
+
+      // Get old values for history
+      const oldAssignment = assignments.find((a: any) => a.id === editingId)
+
+      // Update assignment
+      const { error } = await supabase.from('athlete_supplements').update({
+        dosage: formDosage.trim(),
+        unite: formUnite,
+        frequence: formFreq,
+        intervalle_jours: intervalMap[formFreq] || 1,
+        moment_prise: formMoment.trim() || null,
+        concentration_mg_ml: parseFloat(formConcentration) || null,
+        notes: formNotes.trim() || null,
+      }).eq('id', editingId)
+
+      if (error) { toast('Erreur modification', 'error'); return }
+
+      // Log dosage change in history
+      if (oldAssignment && (oldAssignment.dosage !== formDosage.trim() || oldAssignment.unite !== formUnite || oldAssignment.frequence !== formFreq)) {
+        const { error: histErr } = await supabase.from('supplement_dosage_history').insert({
+          athlete_supplement_id: editingId,
+          ancien_dosage: oldAssignment.dosage,
+          nouveau_dosage: formDosage.trim(),
+          ancienne_unite: oldAssignment.unite,
+          nouvelle_unite: formUnite,
+          ancienne_frequence: oldAssignment.frequence,
+          nouvelle_frequence: formFreq,
+          changed_by: user?.id,
+        })
+        if (histErr) console.warn('supplement_dosage_history insert failed:', histErr.message)
+      }
+
+      toast('Supplement modifie', 'success')
+      setShowAddModal(false)
+      setEditingId(null)
+      resetForm()
+      loadData()
+    } catch (err) {
+      console.error('saveEditSupplement error:', err)
+      toast('Erreur inattendue', 'error')
+    } finally {
+      setSaving(false)
     }
-
-    // Get old values for history
-    const oldAssignment = assignments.find((a: any) => a.id === editingId)
-
-    // Update assignment
-    const { error } = await supabase.from('athlete_supplements').update({
-      dosage: formDosage.trim(),
-      unite: formUnite,
-      frequence: formFreq,
-      intervalle_jours: intervalMap[formFreq] || 1,
-      moment_prise: formMoment.trim() || null,
-      concentration_mg_ml: parseFloat(formConcentration) || null,
-      notes: formNotes.trim() || null,
-    }).eq('id', editingId)
-
-    if (error) { toast('Erreur modification', 'error'); setSaving(false); return }
-
-    // Log dosage change in history
-    if (oldAssignment && (oldAssignment.dosage !== formDosage.trim() || oldAssignment.unite !== formUnite || oldAssignment.frequence !== formFreq)) {
-      await supabase.from('supplement_dosage_history').insert({
-        athlete_supplement_id: editingId,
-        ancien_dosage: oldAssignment.dosage,
-        nouveau_dosage: formDosage.trim(),
-        ancienne_unite: oldAssignment.unite,
-        nouvelle_unite: formUnite,
-        ancienne_frequence: oldAssignment.frequence,
-        nouvelle_frequence: formFreq,
-        changed_by: user?.id,
-      }).catch(() => { /* table might not exist yet */ })
-    }
-
-    setSaving(false)
-    toast('Supplement modifie', 'success')
-    setShowAddModal(false)
-    setEditingId(null)
-    resetForm()
-    loadData()
   }
 
   async function removeAssignment(id: string) {
@@ -517,16 +548,60 @@ export default function SupplementsPage() {
           <select className="form-control" value={formFreq} onChange={(e) => setFormFreq(e.target.value)}>
             {FREQ_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
           </select>
+          {/* Weekly dose preview */}
+          {(() => {
+            const interval = getIntervalDays(formFreq)
+            if (!interval || formFreq === 'au besoin') return null
+            const inj = 7 / interval
+            const dose = parseFloat((formDosage || '').replace(',', '.')) || 0
+            if (!dose) return null
+            const concMgMl = parseFloat(formConcentration) || 0
+            let weeklyText: string
+            if (concMgMl && formUnite === 'ml') {
+              weeklyText = `${(dose * concMgMl * inj).toFixed(0)} mg/semaine`
+            } else {
+              weeklyText = `${(dose * inj).toFixed(1)} ${formUnite}/semaine`
+            }
+            return (
+              <div style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600, padding: '4px 0' }}>
+                <i className="fas fa-calculator" style={{ marginRight: 4 }} />
+                {formDosage}{formUnite} x {inj.toFixed(1)}/sem = {weeklyText}
+              </div>
+            )
+          })()}
           {tab === 'supplementation' && (
             <input type="number" className="form-control" placeholder="Concentration (mg/ml)" value={formConcentration} onChange={(e) => setFormConcentration(e.target.value)} step="any" />
           )}
-          <input type="text" className="form-control" placeholder="Moment de prise (ex: matin)" value={formMoment} onChange={(e) => setFormMoment(e.target.value)} />
+          {/* Moment de prise dropdown */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select
+              className="form-control"
+              value={formMomentCustom ? '__custom__' : formMoment}
+              onChange={(e) => {
+                if (e.target.value === '__custom__') {
+                  setFormMomentCustom(true)
+                  setFormMoment('')
+                } else {
+                  setFormMomentCustom(false)
+                  setFormMoment(e.target.value)
+                }
+              }}
+              style={{ flex: 1 }}
+            >
+              <option value="">-- Quand prendre --</option>
+              {MOMENT_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+              <option value="__custom__">Autre...</option>
+            </select>
+            {formMomentCustom && (
+              <input type="text" className="form-control" placeholder="Preciser..." value={formMoment} onChange={(e) => setFormMoment(e.target.value)} style={{ flex: 1 }} />
+            )}
+          </div>
           <input type="url" className="form-control" placeholder="Lien d'achat (optionnel)" value={formLien} onChange={(e) => setFormLien(e.target.value)} />
           <textarea className="form-control" placeholder="Notes" rows={2} value={formNotes} onChange={(e) => setFormNotes(e.target.value)} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
             <button className="btn btn-outline" onClick={() => setShowAddModal(false)}>Annuler</button>
             <button className="btn btn-red" onClick={editingId ? saveEditSupplement : saveNewSupplement} disabled={saving}>
-              {saving ? <i className="fas fa-spinner fa-spin" /> : <><i className="fas fa-plus" style={{ marginRight: 4 }} />Ajouter</>}
+              {saving ? <i className="fas fa-spinner fa-spin" /> : editingId ? <><i className="fas fa-check" style={{ marginRight: 4 }} />Modifier</> : <><i className="fas fa-plus" style={{ marginRight: 4 }} />Ajouter</>}
             </button>
           </div>
         </div>

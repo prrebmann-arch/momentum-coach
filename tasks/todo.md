@@ -24,6 +24,15 @@
 
 ---
 
+## COACH — Supplements page fixes (2026-04-03)
+- [x] calcWeekly: ajout apercu dose hebdo en temps reel dans le modal (se met a jour quand on change frequence/dosage/unite)
+- [x] saveNewSupplement: wrap try/catch/finally — setSaving(false) garanti, erreurs loguees en console
+- [x] saveEditSupplement: wrap try/catch/finally — meme fix
+- [x] moment_prise: remplace input texte par dropdown (10 options predefinies + "Autre" avec input custom)
+- [x] Bouton modal: affiche "Modifier" en mode edition au lieu de "Ajouter"
+- [x] Fix pre-existant: .catch() sur PostgrestFilterBuilder remplace par check .error (TS2551)
+- [x] TypeScript check passes (0 errors)
+
 ## ATHLETE — Bugs critiques
 - [ ] Workout tracking : auto-save quand on quitte/revient en arrière sans cliquer Enregistrer
 - [ ] Workout tracking : valider 1 série ne doit PAS supprimer les autres séries
