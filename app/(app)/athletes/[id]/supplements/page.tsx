@@ -30,18 +30,100 @@ const FREQ_OPTIONS = [
 
 const UNITE_OPTIONS = ['mg', 'g', 'ml', 'caps', 'gelules', 'cuillere', 'UI']
 
-const MOMENT_OPTIONS = [
-  'Petit-dejeuner',
-  'Matin',
-  'Midi',
-  'Apres-midi',
-  'Pre-training',
-  'Post-training',
-  'Soir',
-  'Coucher',
-  'Au repas',
-  'A jeun',
+// Legacy moment options (kept for backward compatibility display)
+const LEGACY_MOMENT_OPTIONS = [
+  'Petit-dejeuner', 'Matin', 'Midi', 'Apres-midi',
+  'Pre-training', 'Post-training', 'Soir', 'Coucher', 'Au repas', 'A jeun',
 ]
+
+// New structured moment categories
+const MOMENT_CATEGORIES = [
+  { key: 'a_jeun', label: 'A jeun', icon: 'fas fa-sun' },
+  { key: 'repas', label: 'Repas', icon: 'fas fa-utensils' },
+  { key: 'training', label: 'Training', icon: 'fas fa-dumbbell' },
+  { key: 'coucher', label: 'Coucher', icon: 'fas fa-moon' },
+] as const
+
+const TRAINING_TIMINGS = [
+  { value: 'pre_training', label: 'Pre-training' },
+  { value: 'intra_training', label: 'Intra-training' },
+  { value: 'post_training', label: 'Post-training' },
+] as const
+
+const MEAL_TIMINGS = [
+  { value: 'avant', label: 'Avant' },
+  { value: 'pendant', label: 'Pendant' },
+  { value: 'apres', label: 'Apres' },
+] as const
+
+/** Format a structured moment_prise value for display */
+function formatMomentPrise(val: string): string {
+  if (!val) return ''
+  // New structured values
+  if (val === 'a_jeun') return 'A jeun'
+  if (val === 'coucher') return 'Coucher'
+  if (val === 'pre_training') return 'Pre-training'
+  if (val === 'intra_training') return 'Intra-training'
+  if (val === 'post_training') return 'Post-training'
+  // Meal patterns: R1_avant, R2_pendant, R3_apres
+  const mealMatch = val.match(/^R(\d+)_(avant|pendant|apres)$/)
+  if (mealMatch) {
+    const timingLabels: Record<string, string> = { avant: 'Avant', pendant: 'Pendant', apres: 'Apres' }
+    return `${timingLabels[mealMatch[2]]} Repas ${mealMatch[1]}`
+  }
+  // Legacy values: return as-is
+  return val
+}
+
+/** Parse a moment_prise value into its group key for sectioning */
+function getMomentGroup(val: string): string {
+  if (!val) return 'autre'
+  if (val === 'a_jeun') return 'a_jeun'
+  if (val === 'coucher') return 'coucher'
+  if (val === 'pre_training' || val === 'intra_training' || val === 'post_training') return 'training'
+  const mealMatch = val.match(/^R(\d+)_/)
+  if (mealMatch) return `repas_${mealMatch[1]}`
+  // Legacy values
+  return 'autre'
+}
+
+/** Get sort order for a moment group */
+function getMomentSortOrder(group: string): number {
+  if (group === 'a_jeun') return 0
+  if (group.startsWith('repas_')) return 10 + parseInt(group.split('_')[1])
+  if (group === 'training') return 100
+  if (group === 'coucher') return 200
+  return 300 // 'autre' / legacy
+}
+
+/** Get sub-sort for individual moments within a group */
+function getMomentSubSort(val: string): number {
+  if (val.endsWith('_avant')) return 0
+  if (val.endsWith('_pendant')) return 1
+  if (val.endsWith('_apres')) return 2
+  if (val === 'pre_training') return 0
+  if (val === 'intra_training') return 1
+  if (val === 'post_training') return 2
+  return 5
+}
+
+/** Get display label for a group */
+function getGroupLabel(group: string): string {
+  if (group === 'a_jeun') return 'A jeun'
+  if (group.startsWith('repas_')) return `Repas ${group.split('_')[1]}`
+  if (group === 'training') return 'Training'
+  if (group === 'coucher') return 'Coucher'
+  return 'Autre'
+}
+
+/** Get icon for a group */
+function getGroupIcon(group: string): string {
+  if (group === 'a_jeun') return 'fas fa-sun'
+  if (group.startsWith('repas_')) return 'fas fa-utensils'
+  if (group === 'training') return 'fas fa-dumbbell'
+  if (group === 'coucher') return 'fas fa-moon'
+  return 'fas fa-clock'
+}
 
 function getIntervalDays(freq: string): number {
   const map: Record<string, number> = {
@@ -93,6 +175,10 @@ export default function SupplementsPage() {
   const [formNotes, setFormNotes] = useState('')
   const [formConcentration, setFormConcentration] = useState('')
   const [formMomentCustom, setFormMomentCustom] = useState(false)
+  const [formMomentCategory, setFormMomentCategory] = useState('')
+  const [formMomentMealNum, setFormMomentMealNum] = useState('')
+  const [formMomentTiming, setFormMomentTiming] = useState('')
+  const [mealCount, setMealCount] = useState(5) // default 5 meals if no diet found
 
   const loadData = useCallback(async () => {
     if (!assignments.length) setLoading(true)
@@ -102,11 +188,23 @@ export default function SupplementsPage() {
       const startDate = rangeStart.toISOString().slice(0, 10)
       const today = new Date().toISOString().slice(0, 10)
 
-      const [{ data: assigns }, { data: ath }, { data: logData }] = await Promise.all([
+      const [{ data: assigns }, { data: ath }, { data: logData }, { data: nutritionPlans }] = await Promise.all([
         supabase.from('athlete_supplements').select('*, supplements(*)').eq('athlete_id', params.id),
         supabase.from('athletes').select('supplementation_unlocked').eq('id', params.id).single(),
         supabase.from('supplement_logs').select('id, athlete_id, athlete_supplement_id, taken_date, taken').eq('athlete_id', params.id).gte('taken_date', startDate).lte('taken_date', today).order('taken_date', { ascending: false }),
+        supabase.from('nutrition_plans').select('id, meals_data, meal_type, actif').eq('athlete_id', params.id).eq('actif', true),
       ])
+
+      // Determine meal count from active training diet
+      let detectedMealCount = 5
+      if (nutritionPlans && nutritionPlans.length > 0) {
+        const trainingPlan = nutritionPlans.find((p: any) => p.meal_type === 'training' || p.meal_type === 'entrainement') || nutritionPlans[0]
+        try {
+          const meals = typeof trainingPlan.meals_data === 'string' ? JSON.parse(trainingPlan.meals_data) : (trainingPlan.meals_data || [])
+          if (Array.isArray(meals) && meals.length > 0) detectedMealCount = meals.length
+        } catch { /* keep default */ }
+      }
+      setMealCount(detectedMealCount)
       const filteredAssigns = (assigns || []).filter((a: any) => a.actif !== false)
       const unlockedVal = ath?.supplementation_unlocked || false
       setAssignments(filteredAssigns)
@@ -181,7 +279,7 @@ export default function SupplementsPage() {
   function resetForm() {
     setFormNom(''); setFormMarque(''); setFormDosage(''); setFormUnite('mg')
     setFormFreq('1x/jour'); setFormMoment(''); setFormLien(''); setFormNotes(''); setFormConcentration('')
-    setFormMomentCustom(false)
+    setFormMomentCustom(false); setFormMomentCategory(''); setFormMomentMealNum(''); setFormMomentTiming('')
   }
 
   function openEditModal(a: any) {
@@ -193,9 +291,30 @@ export default function SupplementsPage() {
     setFormUnite(a.unite || 'mg')
     setFormFreq(a.frequence || '1x/jour')
     const moment = a.moment_prise || ''
-    const isCustom = moment !== '' && !MOMENT_OPTIONS.includes(moment)
     setFormMoment(moment)
-    setFormMomentCustom(isCustom)
+    // Parse existing moment into category/timing for the new picker
+    if (moment === 'a_jeun') {
+      setFormMomentCategory('a_jeun'); setFormMomentMealNum(''); setFormMomentTiming('')
+    } else if (moment === 'coucher') {
+      setFormMomentCategory('coucher'); setFormMomentMealNum(''); setFormMomentTiming('')
+    } else if (moment === 'pre_training' || moment === 'intra_training' || moment === 'post_training') {
+      setFormMomentCategory('training'); setFormMomentMealNum(''); setFormMomentTiming(moment)
+    } else {
+      const mealMatch = moment.match(/^R(\d+)_(avant|pendant|apres)$/)
+      if (mealMatch) {
+        setFormMomentCategory('repas'); setFormMomentMealNum(mealMatch[1]); setFormMomentTiming(mealMatch[2])
+      } else if (moment && LEGACY_MOMENT_OPTIONS.includes(moment)) {
+        // Legacy value: show as custom
+        setFormMomentCategory(''); setFormMomentMealNum(''); setFormMomentTiming('')
+        setFormMomentCustom(true)
+      } else if (moment) {
+        setFormMomentCategory(''); setFormMomentMealNum(''); setFormMomentTiming('')
+        setFormMomentCustom(true)
+      } else {
+        setFormMomentCategory(''); setFormMomentMealNum(''); setFormMomentTiming('')
+        setFormMomentCustom(false)
+      }
+    }
     setFormLien(s.lien_achat || '')
     setFormNotes(a.notes || '')
     setFormConcentration(a.concentration_mg_ml ? String(a.concentration_mg_ml) : '')
@@ -423,116 +542,159 @@ export default function SupplementsPage() {
         </button>
       </div>
 
-      {/* Cards */}
+      {/* Cards grouped by moment */}
       {assigned.length === 0 ? (
         <EmptyState icon="fas fa-pills" message={`Aucun ${tab === 'complement' ? 'complement' : 'supplement'} assigne`} />
-      ) : (
-        <div className={styles.suppGrid}>
-          {assigned.map((a: any) => {
-            const s = a.supplements || {}
-            const weekly = calcWeekly(a)
-            const history = getAssignmentHistory(a)
-            const todayStatus = history.days[history.days.length - 1]?.status
-            return (
-              <div key={a.id} className={styles.suppCard}>
-                <div className={styles.suppCardHeader}>
-                  <div>
-                    <div className={styles.suppCardName}>{s.nom}</div>
-                    {s.marque && <div className={styles.suppCardBrand}>{s.marque}</div>}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                    {s.lien_achat && (
-                      <a href={s.lien_achat} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm" style={{ fontSize: 10 }}>
-                        <i className="fas fa-shopping-cart" /> Acheter
-                      </a>
-                    )}
-                    {/* Delay / on-track badge (supplementation only) */}
-                    {tab === 'supplementation' && !history.isOnDemand && (
-                      history.delayDays > 0 ? (
-                        <span className={styles.suppBadgeLate}>
-                          <i className="fas fa-exclamation-triangle" style={{ marginRight: 3 }} />
-                          En retard de {history.delayDays}j
-                        </span>
-                      ) : (
-                        <span className={styles.suppBadgeOk}>
-                          <i className="fas fa-check" style={{ marginRight: 3 }} />A jour
-                        </span>
-                      )
-                    )}
-                  </div>
+      ) : (() => {
+        // Group assignments by moment
+        const groups: Record<string, any[]> = {}
+        for (const a of assigned) {
+          const group = getMomentGroup(a.moment_prise || '')
+          if (!groups[group]) groups[group] = []
+          groups[group].push(a)
+        }
+        // Sort groups
+        const sortedGroupKeys = Object.keys(groups).sort((a, b) => getMomentSortOrder(a) - getMomentSortOrder(b))
+        // Sort items within each group by sub-sort
+        for (const key of sortedGroupKeys) {
+          groups[key].sort((a: any, b: any) => getMomentSubSort(a.moment_prise || '') - getMomentSubSort(b.moment_prise || ''))
+        }
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {sortedGroupKeys.map((groupKey) => (
+              <div key={groupKey}>
+                {/* Group header */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
+                  padding: '6px 12px', background: 'var(--bg2)', borderRadius: 8,
+                  border: '1px solid var(--border-subtle)',
+                }}>
+                  <i className={getGroupIcon(groupKey)} style={{ color: 'var(--primary)', fontSize: 13 }} />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{getGroupLabel(groupKey)}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 'auto' }}>{groups[groupKey].length} supplement{groups[groupKey].length > 1 ? 's' : ''}</span>
                 </div>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{a.dosage}</span>
-                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>{a.unite}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text3)' }}>
-                    <span><i className="fas fa-redo" style={{ marginRight: 3 }} />{a.frequence}</span>
-                    {a.moment_prise && <span><i className="fas fa-clock" style={{ marginRight: 3 }} />{a.moment_prise}</span>}
-                  </div>
-                  {weekly && (
-                    <div style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, marginTop: 6 }}>
-                      <i className="fas fa-calculator" style={{ marginRight: 4 }} />{weekly}
-                    </div>
-                  )}
-                  {a.notes && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>{a.notes}</div>}
-                </div>
+                {/* Cards */}
+                <div className={styles.suppGrid}>
+                  {groups[groupKey].map((a: any) => {
+                    const s = a.supplements || {}
+                    const weekly = calcWeekly(a)
+                    const history = getAssignmentHistory(a)
+                    const todayStatus = history.days[history.days.length - 1]?.status
+                    return (
+                      <div key={a.id} className={styles.suppCard}>
+                        <div className={styles.suppCardHeader}>
+                          <div>
+                            <div className={styles.suppCardName}>{s.nom}</div>
+                            {s.marque && <div className={styles.suppCardBrand}>{s.marque}</div>}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                            {s.lien_achat && (
+                              <a href={s.lien_achat} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm" style={{ fontSize: 10 }}>
+                                <i className="fas fa-shopping-cart" /> Acheter
+                              </a>
+                            )}
+                            {tab === 'supplementation' && !history.isOnDemand && (
+                              history.delayDays > 0 ? (
+                                <span className={styles.suppBadgeLate}>
+                                  <i className="fas fa-exclamation-triangle" style={{ marginRight: 3 }} />
+                                  En retard de {history.delayDays}j
+                                </span>
+                              ) : (
+                                <span className={styles.suppBadgeOk}>
+                                  <i className="fas fa-check" style={{ marginRight: 3 }} />A jour
+                                </span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                        {/* Moment badge (sub-timing within group) */}
+                        {a.moment_prise && (
+                          <div style={{ marginBottom: 6 }}>
+                            <span style={{
+                              fontSize: 10, fontWeight: 600, color: 'var(--primary)',
+                              background: 'rgba(var(--primary-rgb, 220,38,38), 0.08)',
+                              padding: '2px 8px', borderRadius: 4,
+                            }}>
+                              {formatMomentPrise(a.moment_prise)}
+                            </span>
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
+                            <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{a.dosage}</span>
+                            <span style={{ fontSize: 12, color: 'var(--text3)' }}>{a.unite}</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text3)' }}>
+                            <span><i className="fas fa-redo" style={{ marginRight: 3 }} />{a.frequence}</span>
+                          </div>
+                          {weekly && (
+                            <div style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, marginTop: 6 }}>
+                              <i className="fas fa-calculator" style={{ marginRight: 4 }} />{weekly}
+                            </div>
+                          )}
+                          {a.notes && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>{a.notes}</div>}
+                        </div>
 
-                {/* 14-day history grid (supplementation only) */}
-                {tab === 'supplementation' && <div className={styles.suppHistorySection}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)' }}>Historique 14 jours</span>
-                    {!history.isOnDemand && history.missedCount > 0 && (
-                      <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--danger)' }}>
-                        {history.missedCount} manquee{history.missedCount > 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                  <div className={styles.suppHistoryGrid}>
-                    {history.days.map((d, i) => {
-                      let bg: string
-                      let title: string
-                      switch (d.status) {
-                        case 'taken': bg = 'var(--success)'; title = 'Pris'; break
-                        case 'missed': bg = 'var(--danger)'; title = 'Manque'; break
-                        case 'not_due': bg = 'var(--bg4)'; title = 'Pas prevu'; break
-                        case 'today_taken': bg = 'var(--success)'; title = 'Pris aujourd\'hui'; break
-                        case 'today_pending': bg = 'var(--info, #3b82f6)'; title = 'En attente'; break
-                      }
-                      return (
-                        <div key={i} className={styles.suppHistoryCell} title={`${d.date} — ${title}`} style={{ background: bg }} />
-                      )
-                    })}
-                  </div>
-                  <div className={styles.suppHistoryLegend}>
-                    <span><span className={styles.suppDot} style={{ background: 'var(--success)' }} /> Pris</span>
-                    <span><span className={styles.suppDot} style={{ background: 'var(--danger)' }} /> Manque</span>
-                    <span><span className={styles.suppDot} style={{ background: 'var(--bg4)' }} /> Pas prevu</span>
-                    <span><span className={styles.suppDot} style={{ background: 'var(--info, #3b82f6)' }} /> Aujourd&apos;hui</span>
-                  </div>
-                </div>}
+                        {/* 14-day history grid (supplementation only) */}
+                        {tab === 'supplementation' && <div className={styles.suppHistorySection}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text3)' }}>Historique 14 jours</span>
+                            {!history.isOnDemand && history.missedCount > 0 && (
+                              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--danger)' }}>
+                                {history.missedCount} manquee{history.missedCount > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
+                          <div className={styles.suppHistoryGrid}>
+                            {history.days.map((d, i) => {
+                              let bg: string
+                              let title: string
+                              switch (d.status) {
+                                case 'taken': bg = 'var(--success)'; title = 'Pris'; break
+                                case 'missed': bg = 'var(--danger)'; title = 'Manque'; break
+                                case 'not_due': bg = 'var(--bg4)'; title = 'Pas prevu'; break
+                                case 'today_taken': bg = 'var(--success)'; title = 'Pris aujourd\'hui'; break
+                                case 'today_pending': bg = 'var(--info, #3b82f6)'; title = 'En attente'; break
+                              }
+                              return (
+                                <div key={i} className={styles.suppHistoryCell} title={`${d.date} — ${title}`} style={{ background: bg }} />
+                              )
+                            })}
+                          </div>
+                          <div className={styles.suppHistoryLegend}>
+                            <span><span className={styles.suppDot} style={{ background: 'var(--success)' }} /> Pris</span>
+                            <span><span className={styles.suppDot} style={{ background: 'var(--danger)' }} /> Manque</span>
+                            <span><span className={styles.suppDot} style={{ background: 'var(--bg4)' }} /> Pas prevu</span>
+                            <span><span className={styles.suppDot} style={{ background: 'var(--info, #3b82f6)' }} /> Aujourd&apos;hui</span>
+                          </div>
+                        </div>}
 
-                {/* Today status */}
-                {tab === 'supplementation' && (
-                  <div style={{ fontSize: 10, fontWeight: 600, color: todayStatus === 'today_taken' ? 'var(--success)' : 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
-                    <i className={todayStatus === 'today_taken' ? 'fas fa-check-circle' : 'far fa-circle'} />
-                    {todayStatus === 'today_taken' ? 'Pris aujourd\'hui' : 'Pas encore pris'}
-                  </div>
-                )}
+                        {/* Today status */}
+                        {tab === 'supplementation' && (
+                          <div style={{ fontSize: 10, fontWeight: 600, color: todayStatus === 'today_taken' ? 'var(--success)' : 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
+                            <i className={todayStatus === 'today_taken' ? 'fas fa-check-circle' : 'far fa-circle'} />
+                            {todayStatus === 'today_taken' ? 'Pris aujourd\'hui' : 'Pas encore pris'}
+                          </div>
+                        )}
 
-                <div className={styles.suppCardFooter}>
-                  <button className="btn btn-outline btn-sm" onClick={() => openEditModal(a)}>
-                    <i className="fas fa-pen" /> Modifier
-                  </button>
-                  <button className="btn btn-outline btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeAssignment(a.id)}>
-                    <i className="fas fa-trash" />
-                  </button>
+                        <div className={styles.suppCardFooter}>
+                          <button className="btn btn-outline btn-sm" onClick={() => openEditModal(a)}>
+                            <i className="fas fa-pen" /> Modifier
+                          </button>
+                          <button className="btn btn-outline btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeAssignment(a.id)}>
+                            <i className="fas fa-trash" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
-            )
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Add supplement modal */}
       <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingId(null); resetForm() }} title={editingId ? 'Modifier le supplement' : `Ajouter un ${tab === 'complement' ? 'complement' : 'supplement'}`}>
@@ -572,28 +734,111 @@ export default function SupplementsPage() {
           {tab === 'supplementation' && (
             <input type="number" className="form-control" placeholder="Concentration (mg/ml)" value={formConcentration} onChange={(e) => setFormConcentration(e.target.value)} step="any" />
           )}
-          {/* Moment de prise dropdown */}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <select
-              className="form-control"
-              value={formMomentCustom ? '__custom__' : formMoment}
-              onChange={(e) => {
-                if (e.target.value === '__custom__') {
-                  setFormMomentCustom(true)
+          {/* Moment de prise - structured picker */}
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 4, display: 'block' }}>Moment de prise</label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+              {MOMENT_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  className={formMomentCategory === cat.key ? 'btn btn-red btn-sm' : 'btn btn-outline btn-sm'}
+                  style={{ fontSize: 11 }}
+                  onClick={() => {
+                    setFormMomentCustom(false)
+                    if (cat.key === 'a_jeun') {
+                      setFormMomentCategory('a_jeun'); setFormMomentMealNum(''); setFormMomentTiming('')
+                      setFormMoment('a_jeun')
+                    } else if (cat.key === 'coucher') {
+                      setFormMomentCategory('coucher'); setFormMomentMealNum(''); setFormMomentTiming('')
+                      setFormMoment('coucher')
+                    } else if (cat.key === 'training') {
+                      setFormMomentCategory('training'); setFormMomentMealNum(''); setFormMomentTiming('')
+                      setFormMoment('')
+                    } else if (cat.key === 'repas') {
+                      setFormMomentCategory('repas'); setFormMomentMealNum(''); setFormMomentTiming('')
+                      setFormMoment('')
+                    }
+                  }}
+                >
+                  <i className={cat.icon} style={{ marginRight: 4 }} />{cat.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                className={formMomentCustom ? 'btn btn-red btn-sm' : 'btn btn-outline btn-sm'}
+                style={{ fontSize: 11 }}
+                onClick={() => {
+                  setFormMomentCustom(true); setFormMomentCategory(''); setFormMomentMealNum(''); setFormMomentTiming('')
                   setFormMoment('')
-                } else {
-                  setFormMomentCustom(false)
-                  setFormMoment(e.target.value)
-                }
-              }}
-              style={{ flex: 1 }}
-            >
-              <option value="">-- Quand prendre --</option>
-              {MOMENT_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
-              <option value="__custom__">Autre...</option>
-            </select>
+                }}
+              >
+                <i className="fas fa-pen" style={{ marginRight: 4 }} />Autre
+              </button>
+            </div>
+
+            {/* Step 2: Training timing */}
+            {formMomentCategory === 'training' && (
+              <div style={{ display: 'flex', gap: 6 }}>
+                {TRAINING_TIMINGS.map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    className={formMoment === t.value ? 'btn btn-red btn-sm' : 'btn btn-outline btn-sm'}
+                    style={{ fontSize: 11, flex: 1 }}
+                    onClick={() => { setFormMomentTiming(t.value); setFormMoment(t.value) }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Step 2: Meal selection + timing */}
+            {formMomentCategory === 'repas' && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select
+                  className="form-control"
+                  value={formMomentMealNum}
+                  onChange={(e) => {
+                    setFormMomentMealNum(e.target.value)
+                    if (e.target.value && formMomentTiming) {
+                      setFormMoment(`R${e.target.value}_${formMomentTiming}`)
+                    } else {
+                      setFormMoment('')
+                    }
+                  }}
+                  style={{ flex: 1 }}
+                >
+                  <option value="">-- Repas --</option>
+                  {Array.from({ length: mealCount }, (_, i) => (
+                    <option key={i + 1} value={String(i + 1)}>Repas {i + 1}</option>
+                  ))}
+                </select>
+                <select
+                  className="form-control"
+                  value={formMomentTiming}
+                  onChange={(e) => {
+                    setFormMomentTiming(e.target.value)
+                    if (formMomentMealNum && e.target.value) {
+                      setFormMoment(`R${formMomentMealNum}_${e.target.value}`)
+                    } else {
+                      setFormMoment('')
+                    }
+                  }}
+                  style={{ flex: 1 }}
+                >
+                  <option value="">-- Timing --</option>
+                  {MEAL_TIMINGS.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Custom / legacy input */}
             {formMomentCustom && (
-              <input type="text" className="form-control" placeholder="Preciser..." value={formMoment} onChange={(e) => setFormMoment(e.target.value)} style={{ flex: 1 }} />
+              <input type="text" className="form-control" placeholder="Ex: Apres-midi, Matin..." value={formMoment} onChange={(e) => setFormMoment(e.target.value)} />
             )}
           </div>
           <input type="url" className="form-control" placeholder="Lien d'achat (optionnel)" value={formLien} onChange={(e) => setFormLien(e.target.value)} />
