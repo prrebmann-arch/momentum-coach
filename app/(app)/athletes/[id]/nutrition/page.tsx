@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAthleteContext } from '@/contexts/AthleteContext'
 import { useToast } from '@/contexts/ToastContext'
 import { getPageCache, setPageCache } from '@/lib/utils'
 import Toggle from '@/components/ui/Toggle'
@@ -40,7 +41,7 @@ interface NutritionPlan {
   proteines: number
   glucides: number
   lipides: number
-  meals_data: string | any[]
+  meals_data?: string | any[]
   actif: boolean
   valid_from?: string
   created_at?: string
@@ -72,6 +73,7 @@ export default function NutritionPage() {
   const athleteId = params.id
   const supabase = createClient()
   const { user } = useAuth()
+  const { athletes } = useAthleteContext()
   const { toast } = useToast()
 
   const cacheKey = `athlete_${athleteId}_nutrition`
@@ -118,9 +120,11 @@ export default function NutritionPage() {
   const loadPlans = useCallback(async () => {
     if (!plans.length) setLoading(true)
     try {
+      // Exclude meals_data from list query — heavy JSON column not needed for list view.
+      // Detail/editor views fetch full plan data on demand.
       const { data } = await supabase
         .from('nutrition_plans')
-        .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, created_at, macro_only, meal_times')
+        .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, actif, valid_from, created_at, macro_only, meal_times')
         .eq('athlete_id', athleteId)
         .order('created_at', { ascending: false })
         .limit(50)
@@ -177,22 +181,24 @@ export default function NutritionPage() {
 
   // Load nutrition logs for history
   const loadNutriLogs = useCallback(async () => {
-    const thirtyDaysAgo = new Date()
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 90)
-    const fromDate = thirtyDaysAgo.toISOString().split('T')[0]
+    const ninetyDaysAgo = new Date()
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+    const fromDate = ninetyDaysAgo.toISOString().split('T')[0]
 
-    // Fetch athlete user_id
-    const { data: ath } = await supabase.from('athletes').select('id, user_id').eq('id', athleteId).single()
-    if (!ath) return
+    // Use AthleteContext to get user_id — avoids a sequential DB query
+    const athlete = athletes.find(a => a.id === athleteId)
+    const userId = athlete?.user_id
 
     // Try both id and user_id as the athlete app may use either
     const [{ data: logsByUser }, { data: logsByAthlete }] = await Promise.all([
-      supabase.from('nutrition_logs').select('id, athlete_id, date, plan_id, meals_log').eq('athlete_id', ath.user_id).gte('date', fromDate).order('date', { ascending: false }).limit(60),
-      supabase.from('nutrition_logs').select('id, athlete_id, date, plan_id, meals_log').eq('athlete_id', ath.id).gte('date', fromDate).order('date', { ascending: false }).limit(60),
+      userId
+        ? supabase.from('nutrition_logs').select('id, athlete_id, date, plan_id, meals_log').eq('athlete_id', userId).gte('date', fromDate).order('date', { ascending: false }).limit(60)
+        : Promise.resolve({ data: [] as NutritionLog[] }),
+      supabase.from('nutrition_logs').select('id, athlete_id, date, plan_id, meals_log').eq('athlete_id', athleteId).gte('date', fromDate).order('date', { ascending: false }).limit(60),
     ])
     const logs = ((logsByUser?.length ? logsByUser : logsByAthlete) || []) as NutritionLog[]
     setNutriLogs(logs)
-  }, [athleteId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [athleteId, athletes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── ACCEPT CHANGES LOGIC ──
 
@@ -531,13 +537,22 @@ export default function NutritionPage() {
     setView('editor')
   }, [supabase, toast])
 
-  // Open detail view
-  const viewDiet = useCallback((tPlan: NutritionPlan | null, rPlan: NutritionPlan | null) => {
-    setDetailDiet({ tPlan, rPlan })
-    setDetailPlan(tPlan || rPlan)
-    setDetailType(tPlan ? 'training' : 'rest')
+  // Open detail view — fetch full plan data (meals_data) on demand
+  const viewDiet = useCallback(async (tPlan: NutritionPlan | null, rPlan: NutritionPlan | null) => {
+    const idsToLoad = [tPlan?.id, rPlan?.id].filter(Boolean) as string[]
+    if (!idsToLoad.length) return
+    const { data: fullPlans } = await supabase
+      .from('nutrition_plans')
+      .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, created_at, macro_only, meal_times')
+      .in('id', idsToLoad)
+    const loaded = (fullPlans || []) as NutritionPlan[]
+    const fullT = loaded.find(p => p.meal_type === 'training' || p.meal_type === 'entrainement') || null
+    const fullR = loaded.find(p => p.meal_type === 'rest' || p.meal_type === 'repos') || null
+    setDetailDiet({ tPlan: fullT, rPlan: fullR })
+    setDetailPlan(fullT || fullR)
+    setDetailType(fullT ? 'training' : 'rest')
     setView('detail')
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Toggle active
   const toggleActive = useCallback(async (isActive: boolean, tId: string | null, rId: string | null) => {

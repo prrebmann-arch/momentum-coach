@@ -70,6 +70,10 @@
 
 [2026-04-03] | setSaving(true) without try/finally in saveNewSupplement left button spinning forever on error | Always wrap async save functions with setSaving(true) in try/finally to guarantee setSaving(false) runs even on unexpected errors. Also log errors to console for debugging.
 
+[2026-04-03] | router.push after signIn races with React state flush — layout mounts before user state is committed | When navigating via router.push immediately after setting auth state, the destination layout may mount with stale context (user=null). Fix: defer redirect logic by one render cycle (useEffect + settled state) so React has time to flush pending state updates. Also show skeleton instead of returning null during transition.
+
+[2026-04-03] | Heavy JSON columns (meals_data) kill list view performance | Don't fetch large JSON columns in list queries. Only fetch them on demand when the user opens a detail/editor view. This can reduce query payload from hundreds of KB to a few KB.
+
 [2026-04-03] | Early return in loadData without setLoading(false) leaves loading=true forever | Bilans page had `if (!selectedAthlete?.user_id) return` before `setLoading(true)`, but `loading` was initialized as `true`. The guard prevented data from loading AND prevented the loading state from being reset. Fix: combine loading and null checks so the UI shows skeleton until data is ready.
 
 [2026-04-03] | Storing structured template variants in JSON column avoids DB migration | When DB columns can't be easily added (no psql access), store structured data variants (e.g. diete with training/rest, jour, repas) inside a JSON column with a discriminator field (template_type). Parse the shape at read time based on the type. Keeps the schema flat and avoids migration friction.

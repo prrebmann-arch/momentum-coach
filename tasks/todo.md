@@ -39,7 +39,8 @@
 - [ ] Supplements : vérifier calcul isDueDate "tous les 2 jours"
 
 ## COACH — Bugs
-- [ ] Login "Chargement" première connexion — vérifier après déploiement
+- [x] Login "Chargement" premiere connexion — fix: layout attend 1 render cycle (settled) avant redirect, skeleton au lieu de return null
+- [x] Nutrition page lente (15s) — fix: meals_data exclue de loadPlans, viewDiet fetch on-demand, loadNutriLogs sans query sequentielle
 - [ ] Video : tester navigation séances + dates comparatives
 
 ## COACH — Optimisation perf INP

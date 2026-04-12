@@ -12,6 +12,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const checkedRef = useRef(false)
   const [timedOut, setTimedOut] = useState(false)
+  // Allow auth state one render cycle to settle before redirecting.
+  // Prevents a race where router.push mounts this layout before React
+  // has flushed the user state set during signIn.
+  const [settled, setSettled] = useState(false)
+  useEffect(() => { setSettled(true) }, [])
 
   // Check if returning from external redirect (Stripe, etc.)
   const isReturning = typeof window !== 'undefined' && (
@@ -29,13 +34,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Redirect to login only after auth has definitively resolved with no user
   useEffect(() => {
+    if (!settled) return // wait one render cycle for auth state to propagate
     const shouldRedirect = !loading || timedOut
     if (!shouldRedirect) return
     if (!user && !isReturning && !checkedRef.current) {
       checkedRef.current = true
       router.replace('/login')
     }
-  }, [user, loading, timedOut, router, isReturning])
+  }, [user, loading, timedOut, router, isReturning, settled])
 
   // Safari unloads pages when switching apps — force reload on return if stuck
   useEffect(() => {
@@ -92,7 +98,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   )
-  if (!user && !loading && !isReturning) return null
+  // No user after auth resolved — redirect is pending, show skeleton instead of blank
+  if (!user && !loading && !isReturning) return (
+    <div className={styles.appLayout}>
+      <div className={styles.sidebarSkeleton}>
+        <div className={styles.skelBrandRow}>
+          <div className="skeleton" style={{ width: 28, height: 28, borderRadius: 8 }} />
+          <div className="skeleton" style={{ width: 90, height: 14, borderRadius: 6 }} />
+        </div>
+      </div>
+      <div className={styles.mainContentSkeleton} />
+    </div>
+  )
 
   return (
     <AthleteProvider>
