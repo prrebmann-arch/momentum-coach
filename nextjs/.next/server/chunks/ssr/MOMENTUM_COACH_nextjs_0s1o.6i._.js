@@ -1,3 +1,0 @@
-module.exports=[51454,a=>{"use strict";var b=a.i(55724);a.s(["default",0,function({width:a,height:c,borderRadius:d}){return(0,b.jsx)("div",{className:"skeleton",style:{width:a??"100%",height:c??16,borderRadius:d}})}])},79727,a=>{"use strict";var b=a.i(55724),c=a.i(51454);a.s(["default",0,function(){return(0,b.jsxs)("div",{children:[(0,b.jsx)(c.default,{height:40,borderRadius:8}),(0,b.jsx)("div",{style:{display:"flex",flexDirection:"column",gap:10,marginTop:16},children:[1,2,3,4,5].map(a=>(0,b.jsx)(c.default,{height:50,borderRadius:8},a))})]})}])},74794,a=>{a.n(a.i(79727))}];
-
-//# sourceMappingURL=MOMENTUM_COACH_nextjs_0s1o.6i._.js.map

@@ -1,3 +1,0 @@
-module.exports=[30941,(a,b,c)=>{}];
-
-//# sourceMappingURL=03yn__next-internal_server_app_%28app%29_athletes_%5Bid%5D_training_page_actions_10tstb6.js.map
