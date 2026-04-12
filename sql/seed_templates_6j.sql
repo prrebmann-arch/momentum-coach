@@ -136,7 +136,7 @@ BEGIN
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}
           ]},
-          {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [
+          {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}
@@ -235,7 +235,7 @@ BEGIN
       ]},
       {"nom": "Bras", "jour": "Vendredi", "exercices": [
         {"nom": "Curl incliné haltères", "muscle_principal": "Biceps", "superset_id": "A1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
-        {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
+        {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Curl pupitre poulie", "muscle_principal": "Biceps", "superset_id": "B1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Extension overhead poulie (corde)", "muscle_principal": "Triceps", "superset_id": "B2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]}
       ]},
@@ -290,7 +290,7 @@ BEGIN
       ]},
       {"nom": "Bras", "jour": "Vendredi", "exercices": [
         {"nom": "Curl incliné haltères", "muscle_principal": "Biceps", "superset_id": "A1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
-        {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
+        {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Curl pupitre poulie", "muscle_principal": "Biceps", "superset_id": "B1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Extension overhead poulie (corde)", "muscle_principal": "Triceps", "superset_id": "B2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]}
       ]},
@@ -345,7 +345,7 @@ BEGIN
         {"nom": "Rowing unilatéral poulie (rappel dos)", "muscle_principal": "Dos", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]},
         {"nom": "Tirage vertical prise neutre (rappel dos)", "muscle_principal": "Dos", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]},
         {"nom": "Curl incliné haltères", "muscle_principal": "Biceps", "superset_id": "A1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
-        {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
+        {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Curl pupitre poulie", "muscle_principal": "Biceps", "superset_id": "B1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Extension triceps haltères allongé", "muscle_principal": "Triceps", "superset_id": "B2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]}
       ]},
@@ -376,7 +376,7 @@ BEGIN
         {"nom": "Pec Deck (ou poulie vis-à-vis)", "muscle_principal": "Pectoraux", "sets": [{"type": "normal", "reps": "10-15", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-15", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-15", "tempo": "30X1", "repos": "1m30"}]},
         {"nom": "Développé incliné Smith", "muscle_principal": "Pectoraux", "sets": [{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"}]},
         {"nom": "Dips (ou développé décliné machine)", "muscle_principal": "Pectoraux", "sets": [{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"}]},
-        {"nom": "Pushdown corde longue (rappel triceps)", "muscle_principal": "Triceps", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]},
+        {"nom": "Extensions triceps double corde (rappel triceps)", "muscle_principal": "Triceps", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]},
         {"nom": "Extension triceps haltères allongé (rappel triceps)", "muscle_principal": "Triceps", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]}
       ]},
       {"nom": "Dos + Biceps", "jour": "Mardi", "exercices": [
@@ -400,7 +400,7 @@ BEGIN
       ]},
       {"nom": "Bras (séance principale)", "jour": "Vendredi", "exercices": [
         {"nom": "Curl incliné haltères", "muscle_principal": "Biceps", "superset_id": "A1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
-        {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
+        {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Curl pupitre poulie", "muscle_principal": "Biceps", "superset_id": "B1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Extension overhead poulie (corde)", "muscle_principal": "Triceps", "superset_id": "B2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Curl marteau haltères", "muscle_principal": "Biceps", "superset_id": "C1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
@@ -433,7 +433,7 @@ BEGIN
         {"nom": "Pec Deck (ou poulie vis-à-vis)", "muscle_principal": "Pectoraux", "sets": [{"type": "normal", "reps": "10-15", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-15", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-15", "tempo": "30X1", "repos": "1m30"}]},
         {"nom": "Développé incliné Smith", "muscle_principal": "Pectoraux", "sets": [{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"}]},
         {"nom": "Dips (ou développé décliné machine)", "muscle_principal": "Pectoraux", "sets": [{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"}]},
-        {"nom": "Pushdown corde longue (rappel triceps)", "muscle_principal": "Triceps", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]},
+        {"nom": "Extensions triceps double corde (rappel triceps)", "muscle_principal": "Triceps", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]},
         {"nom": "Extension triceps haltères allongé (rappel triceps)", "muscle_principal": "Triceps", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]}
       ]},
       {"nom": "Dos + Biceps", "jour": "Mardi", "exercices": [
@@ -458,7 +458,7 @@ BEGIN
       ]},
       {"nom": "Bras (séance principale)", "jour": "Vendredi", "exercices": [
         {"nom": "Curl incliné haltères", "muscle_principal": "Biceps", "superset_id": "A1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
-        {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
+        {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Curl pupitre poulie", "muscle_principal": "Biceps", "superset_id": "B1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Extension overhead poulie (corde)", "muscle_principal": "Triceps", "superset_id": "B2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Curl marteau haltères", "muscle_principal": "Biceps", "superset_id": "C1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
@@ -491,7 +491,7 @@ BEGIN
         {"nom": "Pec Deck (ou poulie vis-à-vis)", "muscle_principal": "Pectoraux", "sets": [{"type": "normal", "reps": "10-15", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-15", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-15", "tempo": "30X1", "repos": "1m30"}]},
         {"nom": "Développé incliné Smith", "muscle_principal": "Pectoraux", "sets": [{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"}]},
         {"nom": "Dips (ou développé décliné machine)", "muscle_principal": "Pectoraux", "sets": [{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"},{"type": "normal", "reps": "8-12", "tempo": "30X1", "repos": "2m"}]},
-        {"nom": "Pushdown corde longue (rappel triceps)", "muscle_principal": "Triceps", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]},
+        {"nom": "Extensions triceps double corde (rappel triceps)", "muscle_principal": "Triceps", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]},
         {"nom": "Extension triceps haltères allongé (rappel triceps)", "muscle_principal": "Triceps", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]}
       ]},
       {"nom": "Dos + Biceps", "jour": "Mardi", "exercices": [
@@ -517,7 +517,7 @@ BEGIN
         {"nom": "Rowing unilatéral poulie (rappel dos)", "muscle_principal": "Dos", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]},
         {"nom": "Tirage vertical prise neutre (rappel dos)", "muscle_principal": "Dos", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}]},
         {"nom": "Curl incliné haltères", "muscle_principal": "Biceps", "superset_id": "A1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
-        {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
+        {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Curl pupitre poulie", "muscle_principal": "Biceps", "superset_id": "B1", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]},
         {"nom": "Extension triceps haltères allongé", "muscle_principal": "Triceps", "superset_id": "B2", "sets": [{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},{"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}]}
       ]},

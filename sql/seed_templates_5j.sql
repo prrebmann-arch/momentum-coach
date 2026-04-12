@@ -55,7 +55,7 @@ BEGIN
             {"type": "normal", "reps": "10-15", "tempo": "20X1", "repos": "1m"},
             {"type": "normal", "reps": "10-15", "tempo": "20X1", "repos": "1m"}
           ]},
-          {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "sets": [
+          {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "sets": [
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"}
@@ -146,7 +146,7 @@ BEGIN
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}
           ]},
-          {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [
+          {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}
@@ -323,7 +323,7 @@ BEGIN
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}
           ]},
-          {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [
+          {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}
@@ -495,7 +495,7 @@ BEGIN
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}
           ]},
-          {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [
+          {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}
@@ -660,7 +660,7 @@ BEGIN
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}
           ]},
-          {"nom": "Pushdown corde longue", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [
+          {"nom": "Extensions triceps double corde", "muscle_principal": "Triceps", "superset_id": "A2", "sets": [
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"},
             {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m"}

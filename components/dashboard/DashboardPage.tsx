@@ -78,27 +78,49 @@ function getTimeAgo(date: Date): string {
 
 async function fetchDashboardData(userId: string, athletes: Athlete[]): Promise<DashboardData> {
   const supabase = createClient()
-  const athleteUserIds = athletes.map(a => a.user_id).filter(Boolean) as string[]
-  const athleteIds = athletes.map(a => a.id)
 
-  const [
-    { data: allReports },
-    { data: allPrograms },
-    { data: pendingVideos },
-    { data: settingsRows },
-  ] = await Promise.all([
-    athleteUserIds.length
-      ? supabase.from('daily_reports').select('user_id, date, weight, sessions_executed, session_performance, energy, sleep_quality, adherence, steps').in('user_id', athleteUserIds).order('date', { ascending: false }).limit(100)
-      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-    supabase.from('workout_programs').select('id, nom, athlete_id, actif').eq('coach_id', userId),
-    athleteIds.length
-      ? supabase.from('execution_videos').select('id, athlete_id, exercise_name, created_at').in('athlete_id', athleteIds).eq('status', 'a_traiter').order('created_at', { ascending: false }).limit(50)
-      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-    supabase.from('coach_settings').select('coach_id, max_videos_per_day').eq('coach_id', userId).limit(1),
-  ])
+  // Try RPC first (single query instead of 4) — falls back to individual queries if RPC doesn't exist
+  let allReports: Record<string, unknown>[] = []
+  let allPrograms: Record<string, unknown>[] = []
+  let pendingVideos: Record<string, unknown>[] = []
+  let settings: Record<string, unknown> | null = null
 
-  // Coach settings
-  let settings = settingsRows?.[0] || null
+  const { data: rpcResult, error: rpcError } = await supabase.rpc('coach_dashboard_data', { p_coach_id: userId })
+
+  if (!rpcError && rpcResult) {
+    const d = rpcResult as { reports: Record<string, unknown>[]; programs: Record<string, unknown>[]; pending_videos: Record<string, unknown>[]; settings: Record<string, unknown> }
+    allReports = d.reports || []
+    allPrograms = d.programs || []
+    pendingVideos = d.pending_videos || []
+    settings = d.settings && Object.keys(d.settings).length > 0 ? d.settings : null
+  } else {
+    // Fallback to individual queries
+    const athleteUserIds = athletes.map(a => a.user_id).filter(Boolean) as string[]
+    const athleteIds = athletes.map(a => a.id)
+
+    const [
+      { data: r },
+      { data: p },
+      { data: v },
+      { data: s },
+    ] = await Promise.all([
+      athleteUserIds.length
+        ? supabase.from('daily_reports').select('user_id, date, weight, sessions_executed, session_performance, energy, sleep_quality, adherence, steps').in('user_id', athleteUserIds).order('date', { ascending: false }).limit(100)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      supabase.from('workout_programs').select('id, nom, athlete_id, actif').eq('coach_id', userId),
+      athleteIds.length
+        ? supabase.from('execution_videos').select('id, athlete_id, exercise_name, created_at').in('athlete_id', athleteIds).eq('status', 'a_traiter').order('created_at', { ascending: false }).limit(50)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      supabase.from('coach_settings').select('coach_id, max_videos_per_day').eq('coach_id', userId).limit(1),
+    ])
+
+    allReports = (r || []) as Record<string, unknown>[]
+    allPrograms = (p || []) as Record<string, unknown>[]
+    pendingVideos = (v || []) as Record<string, unknown>[]
+    settings = s?.[0] || null
+  }
+
+  // Coach settings fallback
   if (!settings) {
     const { data: created } = await supabase
       .from('coach_settings')

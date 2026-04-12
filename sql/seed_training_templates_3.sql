@@ -61,7 +61,7 @@ BEGIN
             ]
           },
           {
-            "nom": "Pushdown corde longue",
+            "nom": "Extensions triceps double corde",
             "muscle_principal": "Triceps",
             "sets": [
               {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},
@@ -234,7 +234,7 @@ BEGIN
             ]
           },
           {
-            "nom": "Pushdown corde",
+            "nom": "Extensions triceps double corde",
             "muscle_principal": "Triceps",
             "superset_id": "A2",
             "sets": [
@@ -374,7 +374,7 @@ BEGIN
             ]
           },
           {
-            "nom": "Pushdown corde longue",
+            "nom": "Extensions triceps double corde",
             "muscle_principal": "Triceps",
             "sets": [
               {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},
@@ -518,7 +518,7 @@ BEGIN
             ]
           },
           {
-            "nom": "Pushdown corde",
+            "nom": "Extensions triceps double corde",
             "muscle_principal": "Triceps",
             "superset_id": "A2",
             "sets": [
@@ -644,7 +644,7 @@ BEGIN
             ]
           },
           {
-            "nom": "Pushdown corde longue",
+            "nom": "Extensions triceps double corde",
             "muscle_principal": "Triceps",
             "sets": [
               {"type": "normal", "reps": "10-12", "tempo": "30X1", "repos": "1m30"},
@@ -775,7 +775,7 @@ BEGIN
             ]
           },
           {
-            "nom": "Pushdown corde",
+            "nom": "Extensions triceps double corde",
             "muscle_principal": "Triceps",
             "superset_id": "A2",
             "sets": [
@@ -1061,7 +1061,7 @@ BEGIN
             ]
           },
           {
-            "nom": "Pushdown corde",
+            "nom": "Extensions triceps double corde",
             "muscle_principal": "Triceps",
             "superset_id": "A2",
             "sets": [
