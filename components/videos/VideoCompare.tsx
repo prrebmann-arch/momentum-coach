@@ -118,6 +118,7 @@ export default function VideoCompare({ video, compVideos, compIdx, showCompare =
       .select('id, nom, actif, workout_sessions(*)')
       .eq('athlete_id', video.athlete_id)
       .order('actif', { ascending: false })
+      .limit(20)
 
     const allSessions: any[] = []
     ;(allProgs || []).forEach((p: any) => {

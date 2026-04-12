@@ -61,12 +61,14 @@ export default function QuestionnairesPage() {
           .from('questionnaire_assignments')
           .select('*, questionnaire_templates(titre)')
           .eq('athlete_id', params.id)
-          .order('sent_at', { ascending: false }),
+          .order('sent_at', { ascending: false })
+          .limit(100),
         supabase
           .from('questionnaire_templates')
           .select('id, titre, questions')
           .eq('coach_id', user?.id)
-          .order('titre'),
+          .order('titre')
+          .limit(100),
       ])
 
       const completedIds = (assigns || []).filter((a: any) => a.status === 'completed').map((a: any) => a.id)

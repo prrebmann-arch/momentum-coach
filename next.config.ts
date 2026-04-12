@@ -1,6 +1,15 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  experimental: {
+    optimizePackageImports: [
+      '@supabase/supabase-js',
+      '@stripe/stripe-js',
+      '@stripe/react-stripe-js',
+      'chart.js',
+      'react-chartjs-2',
+    ],
+  },
   typescript: {
     // Pre-existing Supabase type errors (ungenerated DB types → 'never' on insert/update)
     // Does NOT skip compilation — only skips the type-check step during build

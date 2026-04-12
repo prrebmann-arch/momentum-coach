@@ -104,6 +104,7 @@ export default function AlimentsPage() {
       .select('id, nom, calories, proteines, glucides, lipides, coach_id')
       .or(`coach_id.eq.${user?.id},coach_id.is.null`)
       .order('nom', { ascending: true })
+      .limit(1000)
     if (error) { toast('Erreur chargement aliments', 'error'); return }
     setAliments((data || []) as Aliment[])
     setLoading(false)

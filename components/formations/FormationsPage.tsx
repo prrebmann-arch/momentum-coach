@@ -89,8 +89,8 @@ export default function FormationsPage() {
     setLoading(true)
     try {
       const [fRes, mRes] = await Promise.all([
-        supabase.from('formations').select('id, coach_id, title, description, visibility, video_count, created_at').eq('coach_id', user.id).order('created_at', { ascending: false }),
-        supabase.from('formation_members').select('formation_id, athlete_id'),
+        supabase.from('formations').select('id, coach_id, title, description, visibility, video_count, created_at').eq('coach_id', user.id).order('created_at', { ascending: false }).limit(100),
+        supabase.from('formation_members').select('formation_id, athlete_id').limit(500),
       ])
       setFormations(fRes.data || [])
       const counts: Record<string, number> = {}
@@ -121,9 +121,9 @@ export default function FormationsPage() {
     if (!user) return
     const [fRes, vRes, mRes, progRes] = await Promise.all([
       supabase.from('formations').select('id, coach_id, title, description, visibility, video_count, created_at').eq('id', formationId).single(),
-      supabase.from('formation_videos').select('id, formation_id, title, video_url, position, created_at').eq('formation_id', formationId).order('position'),
-      supabase.from('formation_members').select('athlete_id, athletes(id, prenom, nom, email, user_id)').eq('formation_id', formationId),
-      supabase.from('formation_video_progress').select('user_id, video_id, watched'),
+      supabase.from('formation_videos').select('id, formation_id, title, video_url, position, created_at').eq('formation_id', formationId).order('position').limit(100),
+      supabase.from('formation_members').select('athlete_id, athletes(id, prenom, nom, email, user_id)').eq('formation_id', formationId).limit(200),
+      supabase.from('formation_video_progress').select('user_id, video_id, watched').limit(1000),
     ])
 
     if (fRes.error) { toast('Erreur chargement', 'error'); return }
@@ -266,6 +266,7 @@ export default function FormationsPage() {
       .from('formation_members')
       .select('athlete_id')
       .eq('formation_id', currentFormation.id)
+      .limit(200)
 
     setEditVisibility(currentFormation.visibility)
     setEditSelectedAthletes(new Set((members || []).map((m: { athlete_id: string }) => m.athlete_id)))

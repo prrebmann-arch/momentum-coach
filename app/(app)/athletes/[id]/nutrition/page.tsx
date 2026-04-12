@@ -123,6 +123,7 @@ export default function NutritionPage() {
         .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, created_at, macro_only, meal_times')
         .eq('athlete_id', athleteId)
         .order('created_at', { ascending: false })
+        .limit(50)
 
       const allPlans = (data || []) as NutritionPlan[]
       setPlans(allPlans)
@@ -186,8 +187,8 @@ export default function NutritionPage() {
 
     // Try both id and user_id as the athlete app may use either
     const [{ data: logsByUser }, { data: logsByAthlete }] = await Promise.all([
-      supabase.from('nutrition_logs').select('id, athlete_id, date, plan_id, meals_log').eq('athlete_id', ath.user_id).gte('date', fromDate).order('date', { ascending: false }),
-      supabase.from('nutrition_logs').select('id, athlete_id, date, plan_id, meals_log').eq('athlete_id', ath.id).gte('date', fromDate).order('date', { ascending: false }),
+      supabase.from('nutrition_logs').select('id, athlete_id, date, plan_id, meals_log').eq('athlete_id', ath.user_id).gte('date', fromDate).order('date', { ascending: false }).limit(200),
+      supabase.from('nutrition_logs').select('id, athlete_id, date, plan_id, meals_log').eq('athlete_id', ath.id).gte('date', fromDate).order('date', { ascending: false }).limit(200),
     ])
     const logs = ((logsByUser?.length ? logsByUser : logsByAthlete) || []) as NutritionLog[]
     setNutriLogs(logs)

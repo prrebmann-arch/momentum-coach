@@ -32,6 +32,7 @@ export default function ExerciseLibrary({ onAdd }: ExerciseLibraryProps) {
         .from('exercices')
         .select('id, nom, muscle_principal, categorie, default_tempo, default_reps')
         .order('nom')
+        .limit(500)
       setExercises(data || [])
       setLoaded(true)
     }

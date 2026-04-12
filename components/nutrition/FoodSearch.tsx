@@ -48,6 +48,7 @@ export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
       .from('aliments_db')
       .select('id, nom, calories, proteines, glucides, lipides, coach_id')
       .order('nom', { ascending: true })
+      .limit(1000)
     setLocalAliments((data || []).map((a: any) => ({ ...a, source: 'local' as const })))
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 

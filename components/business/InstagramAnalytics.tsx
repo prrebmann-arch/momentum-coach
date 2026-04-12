@@ -208,11 +208,11 @@ export default function InstagramAnalytics() {
     try {
       const [acctRes, reelsRes, pillarsRes, snapshotsRes, goalsRes, storiesRes] = await Promise.all([
         supabase.from('ig_accounts').select('id, user_id, ig_user_id, ig_username, access_token, page_id, page_access_token, is_connected').eq('user_id', user.id).single(),
-        supabase.from('ig_reels').select('id, user_id, ig_media_id, caption, published_at, views, likes, comments, shares, saves, reach, pillar').eq('user_id', user.id).order('published_at', { ascending: false }),
-        supabase.from('ig_content_pillars').select('id, user_id, name, color').eq('user_id', user.id).order('name'),
-        supabase.from('ig_snapshots').select('id, user_id, snapshot_date, followers, total_views, total_reach, new_followers').eq('user_id', user.id).order('snapshot_date', { ascending: true }),
-        supabase.from('ig_goals').select('id, user_id, metric, target_value, quarter').eq('user_id', user.id),
-        supabase.from('ig_stories').select('id, user_id, ig_story_id, published_at, impressions, replies, reach, story_type').eq('user_id', user.id).order('published_at', { ascending: false }),
+        supabase.from('ig_reels').select('id, user_id, ig_media_id, caption, published_at, views, likes, comments, shares, saves, reach, pillar').eq('user_id', user.id).order('published_at', { ascending: false }).limit(200),
+        supabase.from('ig_content_pillars').select('id, user_id, name, color').eq('user_id', user.id).order('name').limit(50),
+        supabase.from('ig_snapshots').select('id, user_id, snapshot_date, followers, total_views, total_reach, new_followers').eq('user_id', user.id).order('snapshot_date', { ascending: true }).limit(365),
+        supabase.from('ig_goals').select('id, user_id, metric, target_value, quarter').eq('user_id', user.id).limit(20),
+        supabase.from('ig_stories').select('id, user_id, ig_story_id, published_at, impressions, replies, reach, story_type').eq('user_id', user.id).order('published_at', { ascending: false }).limit(200),
       ])
       const acct = acctRes.data as IgAccount | null
       setAccount(acct)

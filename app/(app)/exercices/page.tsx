@@ -96,6 +96,7 @@ export default function ExercicesPage() {
         .select('id, nom, muscle_principal, muscle_secondaire, categorie, description, youtube_url, default_tempo, default_reps, coach_id, created_at')
         .or(`coach_id.eq.${user.id},coach_id.is.null`)
         .order('nom')
+        .limit(500)
       setExercices(data || [])
     } finally {
       setLoading(false)

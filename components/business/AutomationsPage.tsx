@@ -69,6 +69,7 @@ export default function AutomationsPage() {
         .select('*, automation_messages(*)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
+        .limit(50)
       setAutomations((data || []) as Automation[])
     } finally {
       setLoading(false)
