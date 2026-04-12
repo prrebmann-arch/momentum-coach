@@ -114,10 +114,26 @@
 
 ## Pagination/limits added
 - [x] DashboardPage: already had limits (500 reports, 50 videos)
-- [x] Bilans: daily_reports .limit(200), workout_logs .limit(500)
+- [x] Bilans: daily_reports .limit(200), workout_logs .limit(500), programming_weeks .limit(200), nutrition_plans .limit(50), roadmap_phases .limit(50)
 - [x] Retours: bilan_retours .limit(100)
 - [x] Posing: posing_videos .limit(100), posing_retours .limit(100)
 - [x] Templates: all 4 tabs .limit(100)
+- [x] Aliments: aliments_db .limit(1000)
+- [x] Exercices: exercices .limit(500)
+- [x] Nutrition: nutrition_plans .limit(50), nutrition_logs .limit(200)
+- [x] Questionnaires: assignments .limit(100), templates .limit(100)
+- [x] Roadmap: daily_reports .limit(500), workout_programs .limit(50), nutrition_plans .limit(50)
+- [x] Supplements: supplement_logs .limit(500), nutrition_plans .limit(10)
+- [x] BusinessDashboard: daily_entries .limit(500), biz_clients .limit(200), stripe_customers .limit(200), plans .limit(200), athletes .limit(200)
+- [x] ContentPlanner: ig_drafts .limit(200), hashtag_groups .limit(50), caption_templates .limit(50), ig_reels .limit(200)
+- [x] InstagramAnalytics: ig_reels .limit(200), pillars .limit(50), snapshots .limit(365), goals .limit(20), stories .limit(200)
+- [x] LeadsPipeline: leads .limit(200)
+- [x] AutomationsPage: automations .limit(50)
+- [x] FormationsPage: formations .limit(100), members .limit(500), videos .limit(100), progress .limit(1000)
+- [x] FoodSearch: aliments_db .limit(1000)
+- [x] MealEditor: aliments_db .limit(1000)
+- [x] ExerciseLibrary: exercices .limit(500)
+- [x] VideoCompare: workout_programs .limit(20)
 
 ## Parallel queries (Promise.all)
 - [x] DashboardPage: already uses Promise.all for 4 queries
@@ -134,6 +150,12 @@
 ## Build
 - [x] TypeScript check passes (0 errors)
 - [x] Build passes (51 routes)
+
+## Safe Optimizations (2026-04-03)
+- [x] next.config.ts: added experimental.optimizePackageImports (supabase, stripe, chart.js)
+- [x] loading.tsx skeletons: templates, videos, exercices, aliments, bilans, formations, profile, business
+- [x] Remaining .limit() added to all Supabase SELECT queries without limits (25+ queries)
+- [x] Build passes
 
 ---
 

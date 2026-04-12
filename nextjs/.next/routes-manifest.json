@@ -1,0 +1,415 @@
+{
+  "version": 3,
+  "pages404": true,
+  "appType": "app",
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "priority": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains; preload"
+        }
+      ],
+      "regex": "^(?:/(.*))(?:/)?$"
+    }
+  ],
+  "onMatchHeaders": [],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": []
+  },
+  "dynamicRoutes": [
+    {
+      "page": "/athletes/[id]",
+      "regex": "^/athletes/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/apercu",
+      "regex": "^/athletes/([^/]+?)/apercu(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/apercu(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/bilans",
+      "regex": "^/athletes/([^/]+?)/bilans(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/bilans(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/infos",
+      "regex": "^/athletes/([^/]+?)/infos(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/infos(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/menstrual",
+      "regex": "^/athletes/([^/]+?)/menstrual(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/menstrual(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/nutrition",
+      "regex": "^/athletes/([^/]+?)/nutrition(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/nutrition(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/posing",
+      "regex": "^/athletes/([^/]+?)/posing(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/posing(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/questionnaires",
+      "regex": "^/athletes/([^/]+?)/questionnaires(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/questionnaires(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/retours",
+      "regex": "^/athletes/([^/]+?)/retours(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/retours(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/roadmap",
+      "regex": "^/athletes/([^/]+?)/roadmap(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/roadmap(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/supplements",
+      "regex": "^/athletes/([^/]+?)/supplements(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/supplements(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/training",
+      "regex": "^/athletes/([^/]+?)/training(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/training(?:/)?$"
+    },
+    {
+      "page": "/athletes/[id]/videos",
+      "regex": "^/athletes/([^/]+?)/videos(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/athletes/(?<nxtPid>[^/]+?)/videos(?:/)?$"
+    }
+  ],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_global-error",
+      "regex": "^/_global\\-error(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_global\\-error(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/admin",
+      "regex": "^/admin(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin(?:/)?$"
+    },
+    {
+      "page": "/admin/athletes",
+      "regex": "^/admin/athletes(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/athletes(?:/)?$"
+    },
+    {
+      "page": "/admin/coaches",
+      "regex": "^/admin/coaches(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/coaches(?:/)?$"
+    },
+    {
+      "page": "/admin/metrics",
+      "regex": "^/admin/metrics(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/metrics(?:/)?$"
+    },
+    {
+      "page": "/admin/payments",
+      "regex": "^/admin/payments(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/payments(?:/)?$"
+    },
+    {
+      "page": "/aliments",
+      "regex": "^/aliments(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/aliments(?:/)?$"
+    },
+    {
+      "page": "/api/facebook/page-auth",
+      "regex": "^/api/facebook/page\\-auth(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/facebook/page\\-auth(?:/)?$"
+    },
+    {
+      "page": "/api/instagram/auth",
+      "regex": "^/api/instagram/auth(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/instagram/auth(?:/)?$"
+    },
+    {
+      "page": "/api/instagram/messages",
+      "regex": "^/api/instagram/messages(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/instagram/messages(?:/)?$"
+    },
+    {
+      "page": "/api/instagram/publish",
+      "regex": "^/api/instagram/publish(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/instagram/publish(?:/)?$"
+    },
+    {
+      "page": "/api/instagram/sync-profile",
+      "regex": "^/api/instagram/sync\\-profile(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/instagram/sync\\-profile(?:/)?$"
+    },
+    {
+      "page": "/api/instagram/sync-reels",
+      "regex": "^/api/instagram/sync\\-reels(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/instagram/sync\\-reels(?:/)?$"
+    },
+    {
+      "page": "/api/instagram/sync-stories",
+      "regex": "^/api/instagram/sync\\-stories(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/instagram/sync\\-stories(?:/)?$"
+    },
+    {
+      "page": "/api/instagram/webhook",
+      "regex": "^/api/instagram/webhook(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/instagram/webhook(?:/)?$"
+    },
+    {
+      "page": "/api/push",
+      "regex": "^/api/push(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/push(?:/)?$"
+    },
+    {
+      "page": "/api/stripe",
+      "regex": "^/api/stripe(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/stripe(?:/)?$"
+    },
+    {
+      "page": "/api/stripe/cron",
+      "regex": "^/api/stripe/cron(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/stripe/cron(?:/)?$"
+    },
+    {
+      "page": "/api/stripe/webhook",
+      "regex": "^/api/stripe/webhook(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/stripe/webhook(?:/)?$"
+    },
+    {
+      "page": "/athletes",
+      "regex": "^/athletes(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/athletes(?:/)?$"
+    },
+    {
+      "page": "/bilans",
+      "regex": "^/bilans(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/bilans(?:/)?$"
+    },
+    {
+      "page": "/business",
+      "regex": "^/business(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/business(?:/)?$"
+    },
+    {
+      "page": "/business/automations",
+      "regex": "^/business/automations(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/business/automations(?:/)?$"
+    },
+    {
+      "page": "/business/content",
+      "regex": "^/business/content(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/business/content(?:/)?$"
+    },
+    {
+      "page": "/business/instagram",
+      "regex": "^/business/instagram(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/business/instagram(?:/)?$"
+    },
+    {
+      "page": "/business/leads",
+      "regex": "^/business/leads(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/business/leads(?:/)?$"
+    },
+    {
+      "page": "/business/messages",
+      "regex": "^/business/messages(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/business/messages(?:/)?$"
+    },
+    {
+      "page": "/dashboard",
+      "regex": "^/dashboard(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard(?:/)?$"
+    },
+    {
+      "page": "/exercices",
+      "regex": "^/exercices(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/exercices(?:/)?$"
+    },
+    {
+      "page": "/favicon.ico",
+      "regex": "^/favicon\\.ico(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/favicon\\.ico(?:/)?$"
+    },
+    {
+      "page": "/formations",
+      "regex": "^/formations(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/formations(?:/)?$"
+    },
+    {
+      "page": "/login",
+      "regex": "^/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login(?:/)?$"
+    },
+    {
+      "page": "/privacy",
+      "regex": "^/privacy(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/privacy(?:/)?$"
+    },
+    {
+      "page": "/profile",
+      "regex": "^/profile(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/profile(?:/)?$"
+    },
+    {
+      "page": "/setup-payment",
+      "regex": "^/setup\\-payment(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/setup\\-payment(?:/)?$"
+    },
+    {
+      "page": "/templates",
+      "regex": "^/templates(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/templates(?:/)?$"
+    },
+    {
+      "page": "/videos",
+      "regex": "^/videos(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/videos(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments",
+    "clientParamParsing": false,
+    "dynamicRSCPrerender": false
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}

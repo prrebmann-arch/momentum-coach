@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "functions": {
+    "/api/instagram/messages": {
+      "maxDuration": 60
+    },
+    "/api/stripe/cron": {
+      "maxDuration": 120
+    },
+    "/api/stripe/webhook": {}
+  }
+}
