@@ -958,61 +958,171 @@ export default function TrainingPage() {
 
       {/* Template Picker Modal */}
       {showTemplatePicker && (
-        <div className="modal-overlay open" onClick={() => setShowTemplatePicker(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
-            <div className="modal-header">
-              <h3 className="modal-title">Choisir un template</h3>
-              <button className="modal-close" onClick={() => setShowTemplatePicker(false)}>
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-            <div style={{ padding: 16, maxHeight: 400, overflowY: 'auto' }}>
-              {loadingTemplates ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <Skeleton height={48} borderRadius={8} />
-                  <Skeleton height={48} borderRadius={8} />
-                  <Skeleton height={48} borderRadius={8} />
-                </div>
-              ) : trainingTemplates.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
-                  <i className="fa-solid fa-folder-open" style={{ fontSize: 24, marginBottom: 8, display: 'block' }} />
-                  <p>Aucun template training</p>
-                  <p style={{ fontSize: 12, marginTop: 4 }}>Creez des templates dans la section Templates</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {trainingTemplates.map((tpl) => {
-                    const sessionCount = tpl.sessions_data?.length || 0
-                    return (
-                      <button
-                        key={tpl.id}
-                        onClick={() => selectTrainingTemplate(tpl)}
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)',
-                          background: 'var(--bg2)', cursor: 'pointer', textAlign: 'left', width: '100%',
-                          transition: 'border-color 0.15s',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--primary)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
-                      >
-                        <div>
-                          <div style={{ fontWeight: 600, color: 'var(--text)' }}>{tpl.nom}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-                            {sessionCount} seance{sessionCount !== 1 ? 's' : ''}
-                            {tpl.category ? ` · ${tpl.category}` : ''}
-                          </div>
-                        </div>
-                        <i className="fa-solid fa-chevron-right" style={{ color: 'var(--text3)', fontSize: 12 }} />
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+        <TemplatePicker
+          templates={trainingTemplates}
+          loading={loadingTemplates}
+          onSelect={selectTrainingTemplate}
+          onClose={() => setShowTemplatePicker(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function TemplatePicker({
+  templates,
+  loading,
+  onSelect,
+  onClose,
+}: {
+  templates: { id: string; nom: string; category?: string | null; pattern_type?: string; pattern_data?: Record<string, unknown>; sessions_data?: Array<{ nom?: string; jour?: string; exercices?: unknown[] | string; exercises?: unknown[] | string }> }[]
+  loading: boolean
+  onSelect: (tpl: typeof templates[0]) => void
+  onClose: () => void
+}) {
+  const [search, setSearch] = useState('')
+
+  const filtered = search
+    ? templates.filter((t) => t.nom.toLowerCase().includes(search.toLowerCase()) || (t.category || '').toLowerCase().includes(search.toLowerCase()))
+    : templates
+
+  const groups: Record<string, typeof templates> = {}
+  filtered.forEach((t) => {
+    const cat = t.category || 'Sans catégorie'
+    if (!groups[cat]) groups[cat] = []
+    groups[cat].push(t)
+  })
+  const catNames = Object.keys(groups).sort((a, b) => {
+    if (a === 'Sans catégorie') return 1
+    if (b === 'Sans catégorie') return -1
+    return a.localeCompare(b)
+  })
+
+  return (
+    <div className="modal-overlay open" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal-header">
+          <h3 className="modal-title">Choisir un template</h3>
+          <button className="modal-close" onClick={onClose}>
+            <i className="fa-solid fa-xmark" />
+          </button>
+        </div>
+
+        {/* Search bar */}
+        <div style={{ padding: '12px 16px 0' }}>
+          <div style={{ position: 'relative' }}>
+            <i className="fas fa-search" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', fontSize: 12 }} />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher par nom ou catégorie..."
+              autoFocus
+              style={{
+                width: '100%', padding: '10px 14px 10px 36px',
+                background: 'var(--bg3)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+                fontSize: 13, outline: 'none',
+                transition: 'border-color 0.15s',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--primary)')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+            />
           </div>
         </div>
-      )}
+
+        {/* Template list */}
+        <div style={{ padding: 16, overflowY: 'auto', flex: 1 }}>
+          {loading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Skeleton height={48} borderRadius={8} />
+              <Skeleton height={48} borderRadius={8} />
+              <Skeleton height={48} borderRadius={8} />
+            </div>
+          ) : templates.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
+              <i className="fa-solid fa-folder-open" style={{ fontSize: 24, marginBottom: 8, display: 'block' }} />
+              <p>Aucun template training</p>
+              <p style={{ fontSize: 12, marginTop: 4 }}>Créez des templates dans la section Templates</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
+              <i className="fa-solid fa-search" style={{ fontSize: 20, marginBottom: 8, display: 'block' }} />
+              <p style={{ fontSize: 13 }}>Aucun résultat pour &quot;{search}&quot;</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {catNames.map((cat) => (
+                <div key={cat}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    marginBottom: 8, padding: '0 2px',
+                  }}>
+                    <i className="fas fa-folder-open" style={{ color: 'var(--primary)', fontSize: 12 }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', letterSpacing: '0.02em', textTransform: 'uppercase' }}>{cat}</span>
+                    <span style={{ fontSize: 10, color: 'var(--text3)', background: 'var(--bg3)', padding: '1px 7px', borderRadius: 10, fontWeight: 600 }}>{groups[cat].length}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {groups[cat].map((tpl) => {
+                      const sessionCount = tpl.sessions_data?.length || 0
+                      const sessionNames = (tpl.sessions_data || []).map((s) => s.nom || 'Séance').slice(0, 4)
+                      return (
+                        <button
+                          key={tpl.id}
+                          onClick={() => onSelect(tpl)}
+                          style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)',
+                            background: 'var(--bg2)', cursor: 'pointer', textAlign: 'left', width: '100%',
+                            transition: 'all 0.15s', gap: 12,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--primary-border)'
+                            e.currentTarget.style.background = 'var(--bg-card-hover)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = 'var(--border)'
+                            e.currentTarget.style.background = 'var(--bg2)'
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>{tpl.nom}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 11, color: 'var(--text3)' }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <i className="fas fa-calendar-day" style={{ fontSize: 9, color: 'var(--primary)', opacity: 0.7 }} />
+                                {sessionCount} séance{sessionCount !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            {sessionNames.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 6 }}>
+                                {sessionNames.map((name, i) => (
+                                  <span key={i} style={{
+                                    padding: '1px 7px', background: 'var(--primary-bg)',
+                                    border: '1px solid var(--primary-border)', borderRadius: 4,
+                                    fontSize: 10, color: 'var(--text2)', fontWeight: 500,
+                                  }}>
+                                    {name}
+                                  </span>
+                                ))}
+                                {(tpl.sessions_data || []).length > 4 && (
+                                  <span style={{ fontSize: 10, color: 'var(--text3)', padding: '1px 4px' }}>
+                                    +{(tpl.sessions_data || []).length - 4}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <i className="fa-solid fa-chevron-right" style={{ color: 'var(--text3)', fontSize: 11, flexShrink: 0 }} />
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
