@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { getPageCache, setPageCache } from '@/lib/utils'
+import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import Toggle from '@/components/ui/Toggle'
 import Modal from '@/components/ui/Modal'
 import Badge from '@/components/ui/Badge'
@@ -68,6 +69,8 @@ export default function PosingPage() {
   useEffect(() => {
     if (params.id) loadData()
   }, [params.id, loadData])
+
+  useRefetchOnResume(loadData, loading)
 
   async function togglePosing(on: boolean) {
     const { error } = await supabase.from('athletes').update({ posing_enabled: on }).eq('id', params.id)

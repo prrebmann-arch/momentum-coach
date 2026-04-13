@@ -59,10 +59,12 @@ export default function RoadmapPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [modalData, setModalData] = useState<PhaseFormData | null>(null)
 
+  const athleteUserId = selectedAthlete?.user_id ?? null
+
   const loadData = useCallback(async () => {
     if (!phases.length) setLoading(true)
     try {
-      const userId = selectedAthlete?.user_id
+      const userId = athleteUserId
 
       const [phasesRes, progsRes, nutritionsRes, reportsRes] = await Promise.all([
         supabase
@@ -92,7 +94,7 @@ export default function RoadmapPage() {
     } finally {
       setLoading(false)
     }
-  }, [athleteId, selectedAthlete?.user_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [athleteId, athleteUserId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadData()

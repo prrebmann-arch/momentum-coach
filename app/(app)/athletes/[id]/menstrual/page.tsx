@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/contexts/ToastContext'
 import { getPageCache, setPageCache } from '@/lib/utils'
+import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import Toggle from '@/components/ui/Toggle'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
@@ -52,6 +53,8 @@ export default function MenstrualPage() {
   useEffect(() => {
     if (params.id) loadData()
   }, [params.id, loadData])
+
+  useRefetchOnResume(loadData, loading)
 
   async function toggleTracking(on: boolean) {
     const { error } = await supabase.from('athletes').update({ menstrual_tracking_enabled: on }).eq('id', params.id)

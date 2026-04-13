@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getPageCache, setPageCache } from '@/lib/utils'
+import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import { MAX_VIDEOS_LOAD } from '@/lib/constants'
 import VideosGrid, { type VideoItem } from '@/components/videos/VideosGrid'
 import dynamic from 'next/dynamic'
@@ -66,6 +67,8 @@ export default function AthleteVideosPage() {
   useEffect(() => {
     loadVideos()
   }, [loadVideos])
+
+  useRefetchOnResume(loadVideos, loading)
 
   const filtered = useMemo(() => {
     if (filter === 'all') return videos

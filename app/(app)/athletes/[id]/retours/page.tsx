@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
 import { getPageCache, setPageCache } from '@/lib/utils'
+import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import Modal from '@/components/ui/Modal'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
@@ -51,6 +52,8 @@ export default function RetoursPage() {
   useEffect(() => {
     if (params.id) loadRetours()
   }, [params.id, loadRetours])
+
+  useRefetchOnResume(loadRetours, loading)
 
   async function submitRetour() {
     if (!formLoom.trim()) { toast("L'URL Loom est obligatoire", 'error'); return }

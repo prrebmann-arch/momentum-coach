@@ -31,13 +31,12 @@ export default function VideosPage() {
     if (!user) return
     // Use athletes from context (already loaded) — skip extra DB query
     const athleteIds = contextAthletes.map((a) => a.id)
-    if (!athleteIds.length) {
-      setVideos([])
-      setLoading(false)
-      return
-    }
     if (!videos.length) setLoading(true)
     try {
+      if (!athleteIds.length) {
+        setVideos([])
+        return
+      }
       const { data: vids } = await supabase
         .from('execution_videos')
         .select('id, athlete_id, exercise_name, serie_number, date, status, video_url, thumbnail_url, session_name, session_id, coach_feedback_url, coach_notes, coach_audio_url, created_at')
