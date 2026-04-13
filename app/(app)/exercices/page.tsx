@@ -435,22 +435,20 @@ export default function ExercicesPage() {
             />
           </FormGroup>
           <FormGroup label="Muscle principal" htmlFor="ex-muscle">
-            <input
+            <MuscleSelect
               id="ex-muscle"
-              type="text"
-              className="input"
               value={form.muscle_principal}
-              onChange={(e) => handleFormChange('muscle_principal', e.target.value)}
+              onChange={(v) => handleFormChange('muscle_principal', v)}
+              muscles={allMuscles}
               placeholder="Ex: Pectoraux"
             />
           </FormGroup>
           <FormGroup label="Muscle secondaire" htmlFor="ex-muscle2">
-            <input
+            <MuscleSelect
               id="ex-muscle2"
-              type="text"
-              className="input"
               value={form.muscle_secondaire}
-              onChange={(e) => handleFormChange('muscle_secondaire', e.target.value)}
+              onChange={(v) => handleFormChange('muscle_secondaire', v)}
+              muscles={allMuscles}
               placeholder="Ex: Triceps"
             />
           </FormGroup>
@@ -552,6 +550,133 @@ export default function ExercicesPage() {
           )
         })()}
       </Modal>
+    </div>
+  )
+}
+
+function MuscleSelect({
+  id,
+  value,
+  onChange,
+  muscles,
+  placeholder,
+}: {
+  id: string
+  value: string
+  onChange: (v: string) => void
+  muscles: string[]
+  placeholder: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return q ? muscles.filter((m) => m.toLowerCase().includes(q)) : muscles
+  }, [muscles, search])
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div
+        onClick={() => setOpen(!open)}
+        className="input"
+        style={{
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          minHeight: 40, color: value ? 'var(--text)' : 'var(--text3)',
+        }}
+      >
+        <span>{value || placeholder}</span>
+        <i className={`fas fa-chevron-${open ? 'up' : 'down'}`} style={{ fontSize: 10, color: 'var(--text3)' }} />
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0,
+          marginTop: 4, background: 'var(--bg2)',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+          boxShadow: 'var(--shadow-elevated)', zIndex: 50,
+          maxHeight: 240, display: 'flex', flexDirection: 'column',
+          overflow: 'hidden',
+        }}>
+          {/* Search input */}
+          <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher..."
+              autoFocus
+              style={{
+                width: '100%', padding: '7px 10px',
+                background: 'var(--bg3)', border: '1px solid var(--border)',
+                borderRadius: 6, color: 'var(--text)', fontSize: 13, outline: 'none',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--primary)')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+            />
+          </div>
+
+          {/* Options */}
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {/* Clear option */}
+            {value && (
+              <div
+                onClick={() => { onChange(''); setOpen(false); setSearch('') }}
+                style={{
+                  padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                  color: 'var(--text3)', fontStyle: 'italic',
+                  borderBottom: '1px solid var(--border-subtle)',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover-bg)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                Effacer
+              </div>
+            )}
+
+            {filtered.length === 0 ? (
+              <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
+                {search ? (
+                  <div
+                    onClick={() => { onChange(search); setOpen(false); setSearch('') }}
+                    style={{ cursor: 'pointer', color: 'var(--primary)' }}
+                  >
+                    Créer &quot;{search}&quot;
+                  </div>
+                ) : 'Aucun muscle'}
+              </div>
+            ) : (
+              filtered.map((m) => (
+                <div
+                  key={m}
+                  onClick={() => { onChange(m); setOpen(false); setSearch('') }}
+                  style={{
+                    padding: '8px 12px', cursor: 'pointer', fontSize: 13,
+                    color: m === value ? 'var(--primary)' : 'var(--text)',
+                    fontWeight: m === value ? 600 : 400,
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--hover-bg)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  {m}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
