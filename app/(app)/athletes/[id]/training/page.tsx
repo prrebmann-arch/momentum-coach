@@ -1000,7 +1000,15 @@ function TemplatePicker({
 
   return (
     <div className="modal-overlay open" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540, maxHeight: '70vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: 'var(--bg2)', border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-elevated), 0 0 60px rgba(179,8,8,0.08)',
+        borderRadius: 'var(--radius-lg)', width: '100%',
+        maxWidth: 540, height: '60vh',
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden',
+        animation: 'modalSlideIn 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
+      }}>
         {/* Fixed header + search */}
         <div style={{ flexShrink: 0, padding: '24px 24px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
