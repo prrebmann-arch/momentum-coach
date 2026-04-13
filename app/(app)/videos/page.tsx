@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useAthleteContext } from '@/contexts/AthleteContext'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import { MAX_VIDEOS_LOAD } from '@/lib/constants'
 import VideosGrid, { type VideoItem } from '@/components/videos/VideosGrid'
@@ -17,6 +18,7 @@ type View = 'grid' | 'detail'
 export default function VideosPage() {
   const supabase = createClient()
   const { user } = useAuth()
+  const { athletes: contextAthletes } = useAthleteContext()
 
   const [videos, setVideos] = useState<VideoItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -27,19 +29,15 @@ export default function VideosPage() {
 
   const loadVideos = useCallback(async () => {
     if (!user) return
+    // Use athletes from context (already loaded) — skip extra DB query
+    const athleteIds = contextAthletes.map((a) => a.id)
+    if (!athleteIds.length) {
+      setVideos([])
+      setLoading(false)
+      return
+    }
     if (!videos.length) setLoading(true)
     try {
-      const { data: athletes } = await supabase
-        .from('athletes')
-        .select('id, prenom, nom, user_id')
-        .eq('coach_id', user.id)
-
-      const athleteIds = (athletes || []).map((a) => a.id)
-      if (!athleteIds.length) {
-        setVideos([])
-        return
-      }
-
       const { data: vids } = await supabase
         .from('execution_videos')
         .select('id, athlete_id, exercise_name, serie_number, date, status, video_url, thumbnail_url, session_name, session_id, coach_feedback_url, coach_notes, coach_audio_url, created_at')
@@ -48,8 +46,8 @@ export default function VideosPage() {
         .limit(MAX_VIDEOS_LOAD)
 
       const athleteMap: Record<string, { prenom: string; nom: string }> = {}
-      ;(athletes || []).forEach((a) => {
-        athleteMap[a.id] = a
+      contextAthletes.forEach((a) => {
+        athleteMap[a.id] = { prenom: a.prenom || '', nom: a.nom || '' }
       })
 
       setVideos(
@@ -63,7 +61,7 @@ export default function VideosPage() {
     } finally {
       setLoading(false)
     }
-  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, contextAthletes.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadVideos()

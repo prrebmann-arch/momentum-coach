@@ -279,7 +279,7 @@ export default function BilansOverview() {
     } finally {
       setLoading(false)
     }
-  }, [user?.id, athletes]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, athletes.length]) // eslint-disable-line react-hooks-exhaustive-deps
 
   // Reload reports when athletes list changes
   useEffect(() => {
