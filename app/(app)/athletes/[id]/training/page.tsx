@@ -1001,15 +1001,22 @@ function TemplatePicker({
   return (
     <div className="modal-overlay open" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540, maxHeight: '70vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
-        <div className="modal-header">
-          <h3 className="modal-title">Choisir un template</h3>
-          <button className="modal-close" onClick={onClose}>
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
-
-        {/* Search bar */}
-        <div style={{ padding: '12px 16px 0' }}>
+        {/* Fixed header + search */}
+        <div style={{ flexShrink: 0, padding: '24px 24px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>Choisir un template</h3>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'none', border: 'none', color: 'var(--text3)',
+                fontSize: 18, cursor: 'pointer', width: 32, height: 32,
+                borderRadius: 'var(--radius-sm)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <i className="fa-solid fa-xmark" />
+            </button>
+          </div>
           <div style={{ position: 'relative' }}>
             <i className="fas fa-search" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', fontSize: 12 }} />
             <input
@@ -1031,8 +1038,8 @@ function TemplatePicker({
           </div>
         </div>
 
-        {/* Template list */}
-        <div style={{ padding: 16, overflowY: 'auto', flex: 1 }}>
+        {/* Scrollable template list */}
+        <div style={{ padding: '0 24px 24px', overflowY: 'auto', flex: 1 }}>
           {loading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Skeleton height={48} borderRadius={8} />
