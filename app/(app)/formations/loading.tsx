@@ -1,0 +1,18 @@
+export default function FormationsLoading() {
+  return (
+    <div>
+      {/* Page header skeleton */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div className="skeleton" style={{ width: 180, height: 28, borderRadius: 10 }} />
+        <div className="skeleton" style={{ width: 140, height: 38, borderRadius: 10 }} />
+      </div>
+
+      {/* Formation card grid skeleton */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 }}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="skeleton" style={{ height: 160, borderRadius: 16 }} />
+        ))}
+      </div>
+    </div>
+  )
+}
