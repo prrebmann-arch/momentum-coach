@@ -263,12 +263,17 @@ export default function BilansOverview() {
     if (!athleteUserIds.length) { setReports([]); setLoading(false); return }
     setLoading(true)
     try {
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      const fromDate = thirtyDaysAgo.toISOString().slice(0, 10)
+
       const { data } = await supabase
         .from('daily_reports')
         .select('id, user_id, date, weight, energy, sleep_quality, stress, adherence, sessions_executed, session_performance, steps, photo_front, photo_side, photo_back')
         .in('user_id', athleteUserIds)
+        .gte('date', fromDate)
         .order('date', { ascending: false })
-        .limit(1000)
+        .limit(200)
       setReports((data as DailyReport[]) || [])
     } finally {
       setLoading(false)

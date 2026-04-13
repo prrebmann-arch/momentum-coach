@@ -49,3 +49,9 @@ CREATE INDEX IF NOT EXISTS idx_execution_videos_athlete_id ON execution_videos(a
 -- Templates
 CREATE INDEX IF NOT EXISTS idx_training_templates_coach ON training_templates(coach_id);
 CREATE INDEX IF NOT EXISTS idx_nutrition_templates_coach ON nutrition_templates(coach_id);
+
+-- Onboarding workflows
+CREATE INDEX IF NOT EXISTS idx_onboarding_workflows_coach ON onboarding_workflows(coach_id);
+
+-- Questionnaire templates
+CREATE INDEX IF NOT EXISTS idx_questionnaire_templates_coach ON questionnaire_templates(coach_id);
