@@ -74,7 +74,13 @@ export default function TemplatesPage() {
 
   const loadData = useCallback(async () => {
     if (!user) return
-    setLoading(true)
+    // Only show skeleton on first load — background refresh keeps existing data visible
+    const hasData =
+      (activeTab === 'training' && trainingTemplates.length > 0) ||
+      (activeTab === 'nutrition' && nutritionTemplates.length > 0) ||
+      (activeTab === 'workflow' && workflows.length > 0) ||
+      (activeTab === 'questionnaires' && questionnaireTemplates.length > 0)
+    if (!hasData) setLoading(true)
     try {
       if (activeTab === 'training') {
         const { data } = await supabase
@@ -112,7 +118,7 @@ export default function TemplatesPage() {
     } finally {
       setLoading(false)
     }
-  }, [user, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadData()
