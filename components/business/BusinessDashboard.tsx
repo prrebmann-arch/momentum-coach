@@ -337,7 +337,7 @@ export default function BusinessDashboard() {
 
   const loadAll = useCallback(async () => {
     if (!user) return
-    setLoading(true)
+    if (!clients.length) setLoading(true)
     try {
     // Single parallel batch for all independent queries (was 2 sequential batches)
     const [cfgRes, entriesRes, clientsRes, stripeRes, plansRes, paymentsRes, athletesRes] = await Promise.all([
@@ -381,7 +381,7 @@ export default function BusinessDashboard() {
       setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [user?.id])
 
   useEffect(() => { loadAll() }, [loadAll])
 

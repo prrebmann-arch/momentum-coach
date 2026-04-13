@@ -90,7 +90,7 @@ export default function ExercicesPage() {
 
   const loadExercices = useCallback(async () => {
     if (!user) return
-    setLoading(true)
+    if (!exercices.length) setLoading(true)
     try {
       const { data } = await supabase
         .from('exercices')
@@ -102,7 +102,7 @@ export default function ExercicesPage() {
     } finally {
       setLoading(false)
     }
-  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadExercices()
@@ -116,9 +116,18 @@ export default function ExercicesPage() {
     searchTimeout.current = setTimeout(() => setDebouncedSearch(value), 200)
   }, [])
 
-  // Derive muscle groups from data
+  // Derive muscle groups from data (principal + secondaire merged, deduplicated)
   const muscleGroups = useMemo(() => {
     return [...new Set(exercices.map((e) => e.muscle_principal).filter(Boolean) as string[])].sort()
+  }, [exercices])
+
+  const allMuscles = useMemo(() => {
+    const set = new Set<string>()
+    exercices.forEach((e) => {
+      if (e.muscle_principal) set.add(e.muscle_principal)
+      if (e.muscle_secondaire) set.add(e.muscle_secondaire)
+    })
+    return [...set].sort()
   }, [exercices])
 
   // Filter exercises

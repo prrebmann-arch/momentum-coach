@@ -87,7 +87,7 @@ export default function FormationsPage() {
   // ── Load formations list ──
   const loadFormations = useCallback(async () => {
     if (!user) return
-    setLoading(true)
+    if (!formations.length) setLoading(true)
     try {
       const [fRes, mRes] = await Promise.all([
         supabase.from('formations').select('id, coach_id, title, description, visibility, video_count, created_at').eq('coach_id', user.id).order('created_at', { ascending: false }).limit(100),
@@ -102,7 +102,7 @@ export default function FormationsPage() {
     } finally {
       setLoading(false)
     }
-  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadFormations() }, [loadFormations])
 

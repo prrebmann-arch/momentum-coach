@@ -262,7 +262,7 @@ export default function BilansOverview() {
     if (!user) return
     const athleteUserIds = athletes.map(a => a.user_id).filter(Boolean) as string[]
     if (!athleteUserIds.length) { setReports([]); setLoading(false); return }
-    setLoading(true)
+    if (!reports.length) setLoading(true)
     try {
       const thirtyDaysAgo = new Date()
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
@@ -279,7 +279,7 @@ export default function BilansOverview() {
     } finally {
       setLoading(false)
     }
-  }, [user, athletes]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, athletes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reload reports when athletes list changes
   useEffect(() => {

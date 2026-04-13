@@ -27,7 +27,7 @@ export default function VideosPage() {
 
   const loadVideos = useCallback(async () => {
     if (!user) return
-    setLoading(true)
+    if (!videos.length) setLoading(true)
     try {
       const { data: athletes } = await supabase
         .from('athletes')
@@ -63,7 +63,7 @@ export default function VideosPage() {
     } finally {
       setLoading(false)
     }
-  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadVideos()
