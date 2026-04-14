@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import MensurationCharts from './MensurationCharts'
 import styles from '@/styles/bilans.module.css'
 import type { DailyReport } from './BilanAccordion'
@@ -23,10 +22,6 @@ function toDateStr(d: Date): string {
 
 function formatShort(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-}
-
-function formatLong(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 interface WeekGroup {
@@ -59,28 +54,47 @@ function extractSeries(bilans: DailyReport[], field: string): { date: string; va
     .filter(p => !isNaN(p.value))
 }
 
-function ratingColor(val: number | null): string {
-  if (val == null) return 'var(--text3)'
-  if (val >= 7) return 'var(--success)'
-  if (val >= 5) return 'var(--warning)'
-  return 'var(--danger)'
-}
-
 function avg(nums: number[]): number | null {
   if (!nums.length) return null
   return nums.reduce((a, b) => a + b, 0) / nums.length
 }
 
-// ── SVG Weight Chart ──
+function pillClass(val: number | null, inverted?: boolean): string {
+  if (val == null) return ''
+  if (inverted) {
+    if (val <= 3) return styles.bpPillGood
+    if (val <= 5) return styles.bpPillOk
+    return styles.bpPillBad
+  }
+  if (val >= 7) return styles.bpPillGood
+  if (val >= 5) return styles.bpPillOk
+  return styles.bpPillBad
+}
+
+// ── Weight Chart with interactive tooltip ──
 
 function WeightChart({ data }: { data: { date: string; value: number }[] }) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+
   if (data.length < 2) {
-    return <div className={styles.bpEmpty}>Pas assez de données poids</div>
+    return (
+      <div className={styles.bpSection}>
+        <div className={styles.bpSectionHeader}>
+          <div className={styles.bpSectionTitle}>
+            <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(179,8,8,0.12)', color: 'var(--primary)' }}>
+              <i className="fas fa-weight-scale" />
+            </div>
+            Poids
+          </div>
+        </div>
+        <div className={styles.bpEmpty}>Pas assez de donnees poids</div>
+      </div>
+    )
   }
 
   const W = 600
-  const H = 160
-  const PAD = { top: 20, bottom: 28, left: 45, right: 15 }
+  const H = 180
+  const PAD = { top: 24, bottom: 32, left: 48, right: 16 }
 
   const values = data.map(d => d.value)
   const min = Math.min(...values) - 0.5
@@ -105,23 +119,60 @@ function WeightChart({ data }: { data: { date: string; value: number }[] }) {
     yLabels.push({ y: PAD.top + plotH - ((v - min) / range) * plotH, val: v.toFixed(1) })
   }
 
-  // X-axis labels (first, middle, last)
-  const xLabels = [
-    { x: points[0].x, label: formatShort(points[0].date) },
-    ...(points.length > 4 ? [{ x: points[Math.floor(points.length / 2)].x, label: formatShort(points[Math.floor(points.length / 2)].date) }] : []),
-    { x: points[points.length - 1].x, label: formatShort(points[points.length - 1].date) },
-  ]
+  // X-axis labels
+  const xIndices = [0, Math.floor(data.length / 2), data.length - 1]
+  const xLabels = [...new Set(xIndices)].map(i => ({
+    x: points[i].x, label: formatShort(points[i].date),
+  }))
 
   const first = points[0]
   const last = points[points.length - 1]
   const delta = last.value - first.value
   const deltaStr = (delta > 0 ? '+' : '') + delta.toFixed(1)
 
+  // Interactive crosshair
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    const wrap = wrapRef.current
+    if (!wrap) return
+    const rect = wrap.getBoundingClientRect()
+    const crosshair = wrap.querySelector<HTMLDivElement>('[data-crosshair]')
+    const tooltip = wrap.querySelector<HTMLDivElement>('[data-tooltip]')
+    if (!crosshair || !tooltip) return
+
+    const mouseX = (e.clientX - rect.left) / rect.width
+    let nearest = points[0]
+    let minDist = Infinity
+    for (const pt of points) {
+      const ptX = (pt.x / W)
+      const dist = Math.abs(ptX - mouseX)
+      if (dist < minDist) { minDist = dist; nearest = pt }
+    }
+    const leftPx = (nearest.x / W) * rect.width
+    crosshair.style.left = leftPx + 'px'
+    crosshair.style.display = 'block'
+    const d = new Date(nearest.date + 'T00:00:00')
+    const label = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+    tooltip.textContent = `${nearest.value.toFixed(1)} kg — ${label}`
+    tooltip.style.display = 'block'
+    tooltip.style.left = Math.min(Math.max(leftPx, 60), rect.width - 60) + 'px'
+  }, [points])
+
+  const handleMouseLeave = useCallback(() => {
+    const wrap = wrapRef.current
+    if (!wrap) return
+    const crosshair = wrap.querySelector<HTMLDivElement>('[data-crosshair]')
+    const tooltip = wrap.querySelector<HTMLDivElement>('[data-tooltip]')
+    if (crosshair) crosshair.style.display = 'none'
+    if (tooltip) tooltip.style.display = 'none'
+  }, [])
+
   return (
-    <div className={styles.bpChartCard}>
-      <div className={styles.bpChartHeader}>
-        <div className={styles.bpChartTitle}>
-          <i className="fas fa-weight-scale" style={{ color: 'var(--primary)', fontSize: 13 }} />
+    <div className={styles.bpSection}>
+      <div className={styles.bpSectionHeader}>
+        <div className={styles.bpSectionTitle}>
+          <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(179,8,8,0.12)', color: 'var(--primary)' }}>
+            <i className="fas fa-weight-scale" />
+          </div>
           Poids
         </div>
         <div className={styles.bpChartValues}>
@@ -131,32 +182,42 @@ function WeightChart({ data }: { data: { date: string; value: number }[] }) {
           </span>
         </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className={styles.bpSvg}>
-        <defs>
-          <linearGradient id="bp_weight_grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.2} />
-            <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        {/* Grid */}
-        {yLabels.map((yl, i) => (
-          <g key={i}>
-            <line x1={PAD.left} y1={yl.y} x2={W - PAD.right} y2={yl.y} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
-            <text x={PAD.left - 6} y={yl.y} fill="var(--text3)" fontSize={10} textAnchor="end" dominantBaseline="middle">{yl.val}</text>
-          </g>
-        ))}
-        {/* Fill */}
-        <polygon points={fillStr} fill="url(#bp_weight_grad)" />
-        {/* Line */}
-        <polyline points={lineStr} fill="none" stroke="var(--primary)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-        {/* Dots */}
-        <circle cx={first.x} cy={first.y} r={3.5} fill="var(--text3)" />
-        <circle cx={last.x} cy={last.y} r={4.5} fill="var(--primary)" stroke="var(--bg)" strokeWidth={2} />
-        {/* X labels */}
-        {xLabels.map((xl, i) => (
-          <text key={i} x={xl.x} y={H - 4} fill="var(--text3)" fontSize={10} textAnchor="middle">{xl.label}</text>
-        ))}
-      </svg>
+      <div
+        ref={wrapRef}
+        className={styles.bpChartWrap}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+      >
+        <svg viewBox={`0 0 ${W} ${H}`} className={styles.bpSvg}>
+          <defs>
+            <linearGradient id="bp_wg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.18} />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          {/* Grid */}
+          {yLabels.map((yl, i) => (
+            <g key={i}>
+              <line x1={PAD.left} y1={yl.y} x2={W - PAD.right} y2={yl.y} stroke="rgba(255,255,255,0.05)" strokeWidth={1} />
+              <text x={PAD.left - 8} y={yl.y} fill="var(--text3)" fontSize={10} textAnchor="end" dominantBaseline="middle">{yl.val}</text>
+            </g>
+          ))}
+          {/* Fill */}
+          <polygon points={fillStr} fill="url(#bp_wg)" />
+          {/* Line */}
+          <polyline points={lineStr} fill="none" stroke="var(--primary)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          {/* Dots */}
+          {points.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r={i === points.length - 1 ? 5 : 2.5} fill={i === points.length - 1 ? 'var(--primary)' : 'rgba(179,8,8,0.5)'} stroke={i === points.length - 1 ? 'var(--bg)' : 'none'} strokeWidth={i === points.length - 1 ? 2.5 : 0} />
+          ))}
+          {/* X labels */}
+          {xLabels.map((xl, i) => (
+            <text key={i} x={xl.x} y={H - 6} fill="var(--text3)" fontSize={10} textAnchor="middle">{xl.label}</text>
+          ))}
+        </svg>
+        <div data-crosshair className={styles.bpCrosshair} />
+        <div data-tooltip className={styles.bpTooltip} />
+      </div>
     </div>
   )
 }
@@ -179,7 +240,6 @@ function PhotoTimeline({
     [bilans],
   )
 
-  // Build URL lookup from photoHistory
   const urlsByDate = useMemo(() => {
     const map: Record<string, Record<PhotoType, string>> = {}
     for (const type of ['front', 'side', 'back'] as PhotoType[]) {
@@ -193,71 +253,64 @@ function PhotoTimeline({
 
   const hasLoadedPhotos = Object.values(photoHistory).some(arr => arr.length > 0)
 
-  // Trigger load on mount if photos exist
   useEffect(() => {
     if (photoBilans.length > 0 && !hasLoadedPhotos) {
       onLoadPhotos()
     }
   }, [photoBilans.length, hasLoadedPhotos, onLoadPhotos])
 
-  if (photoBilans.length === 0) {
-    return (
-      <div className={styles.bpChartCard}>
-        <div className={styles.bpChartHeader}>
-          <div className={styles.bpChartTitle}>
-            <i className="fas fa-camera" style={{ color: 'var(--primary)', fontSize: 13 }} />
-            Photos
-          </div>
-        </div>
-        <div className={styles.bpEmpty}>Aucune photo de bilan</div>
-      </div>
-    )
-  }
-
   return (
-    <div className={styles.bpChartCard}>
-      <div className={styles.bpChartHeader}>
-        <div className={styles.bpChartTitle}>
-          <i className="fas fa-camera" style={{ color: 'var(--primary)', fontSize: 13 }} />
+    <div className={styles.bpSection}>
+      <div className={styles.bpSectionHeader}>
+        <div className={styles.bpSectionTitle}>
+          <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--info)' }}>
+            <i className="fas fa-camera" />
+          </div>
           Evolution photos
         </div>
-        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{photoBilans.length} bilans</span>
+        {photoBilans.length > 0 && (
+          <span className={styles.bpSectionBadge}>{photoBilans.length} bilan{photoBilans.length > 1 ? 's' : ''}</span>
+        )}
       </div>
-      <div className={styles.bpPhotoScroll}>
-        {photoBilans.map(b => {
-          const urls = urlsByDate[b.date]
-          return (
-            <div key={b.date} className={styles.bpPhotoGroup}>
-              <div className={styles.bpPhotoDate}>{formatShort(b.date)}</div>
-              <div className={styles.bpPhotoRow}>
-                {(['front', 'side', 'back'] as PhotoType[]).map(pos => {
-                  const url = urls?.[pos]
-                  const hasRaw = !!b[`photo_${pos}`]
-                  if (!hasRaw) return null
-                  return (
-                    <div
-                      key={pos}
-                      className={styles.bpPhotoThumb}
-                      onClick={() => onOpenPhoto(pos, b.date)}
-                    >
-                      {url ? (
-                        <img src={url} alt={`${pos} ${b.date}`} />
-                      ) : (
-                        <div className={styles.bpPhotoPlaceholder}>
-                          <i className="fas fa-spinner fa-spin" style={{ fontSize: 11, color: 'var(--text3)' }} />
-                        </div>
-                      )}
-                      <span className={styles.bpPhotoLabel}>
-                        {pos === 'front' ? 'F' : pos === 'side' ? 'P' : 'D'}
-                      </span>
-                    </div>
-                  )
-                })}
+      {photoBilans.length === 0 ? (
+        <div className={styles.bpEmpty}>Aucune photo de bilan</div>
+      ) : (
+        <div className={styles.bpPhotoScroll}>
+          {photoBilans.map(b => {
+            const urls = urlsByDate[b.date]
+            return (
+              <div key={b.date} className={styles.bpPhotoGroup}>
+                <div className={styles.bpPhotoDate}>{formatShort(b.date)}</div>
+                <div className={styles.bpPhotoRow}>
+                  {(['front', 'side', 'back'] as PhotoType[]).map(pos => {
+                    const url = urls?.[pos]
+                    const hasRaw = !!b[`photo_${pos}`]
+                    if (!hasRaw) return null
+                    return (
+                      <div
+                        key={pos}
+                        className={styles.bpPhotoThumb}
+                        onClick={() => onOpenPhoto(pos, b.date)}
+                      >
+                        {url ? (
+                          <img src={url} alt={`${pos} ${b.date}`} />
+                        ) : (
+                          <div className={styles.bpPhotoPlaceholder}>
+                            <i className="fas fa-spinner fa-spin" style={{ fontSize: 11, color: 'var(--text3)' }} />
+                          </div>
+                        )}
+                        <span className={styles.bpPhotoLabel}>
+                          {pos === 'front' ? 'Face' : pos === 'side' ? 'Profil' : 'Dos'}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -275,30 +328,29 @@ const RATING_FIELDS: readonly { key: string; label: string; icon: string; invert
 
 function WeeklyAverages({ weeks }: { weeks: WeekGroup[] }) {
   return (
-    <div className={styles.bpChartCard}>
-      <div className={styles.bpChartHeader}>
-        <div className={styles.bpChartTitle}>
-          <i className="fas fa-chart-bar" style={{ color: 'var(--primary)', fontSize: 13 }} />
+    <div className={styles.bpSection}>
+      <div className={styles.bpSectionHeader}>
+        <div className={styles.bpSectionTitle}>
+          <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(34,197,94,0.12)', color: 'var(--success)' }}>
+            <i className="fas fa-chart-bar" />
+          </div>
           Moyennes hebdomadaires
         </div>
       </div>
-      <div className={styles.bpWeeksTable}>
-        {/* Header */}
-        <div className={styles.bpWeekRow} style={{ borderBottom: '1px solid var(--border)' }}>
-          <div className={styles.bpWeekDate} style={{ fontWeight: 700, fontSize: 9, color: 'var(--text3)' }}>SEMAINE</div>
+      <div className={styles.bpWeeksGrid}>
+        {/* Header row */}
+        <div className={`${styles.bpWeekRow} ${styles.bpWeekRowHeader}`}>
+          <div className={styles.bpWeekCellHeader}>Semaine</div>
           {RATING_FIELDS.map(f => (
-            <div key={f.key} className={styles.bpWeekCell} style={{ fontWeight: 700, fontSize: 9, color: 'var(--text3)' }}>
-              {f.label.toUpperCase()}
-            </div>
+            <div key={f.key} className={styles.bpWeekCellHeader}>{f.label}</div>
           ))}
-          <div className={styles.bpWeekCell} style={{ fontWeight: 700, fontSize: 9, color: 'var(--text3)' }}>CARDIO</div>
+          <div className={styles.bpWeekCellHeader}>Cardio</div>
         </div>
         {weeks.slice(0, 8).map(week => {
           const monday = new Date(week.weekStart + 'T00:00:00')
           const sunday = new Date(monday)
           sunday.setDate(sunday.getDate() + 6)
           const label = `${formatShort(week.weekStart)} — ${formatShort(toDateStr(sunday))}`
-
           const totalCardio = week.entries.reduce((s, b) => s + ((b.cardio_minutes as number) || 0), 0)
 
           return (
@@ -307,19 +359,26 @@ function WeeklyAverages({ weeks }: { weeks: WeekGroup[] }) {
               {RATING_FIELDS.map(f => {
                 const vals = week.entries.map(b => parseFloat(String(b[f.key] ?? ''))).filter(v => !isNaN(v))
                 const a = avg(vals)
-                const color = a != null
-                  ? (f.inverted
-                    ? (a <= 3 ? 'var(--success)' : a <= 5 ? 'var(--warning)' : 'var(--danger)')
-                    : ratingColor(a))
-                  : 'var(--text3)'
                 return (
-                  <div key={f.key} className={styles.bpWeekCell} style={{ color, fontWeight: 700 }}>
-                    {a != null ? a.toFixed(1) : '\u2014'}
+                  <div key={f.key} className={styles.bpWeekCell}>
+                    {a != null ? (
+                      <span className={`${styles.bpWeekPill} ${pillClass(a, f.inverted)}`}>
+                        {a.toFixed(1)}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text3)' }}>{'\u2014'}</span>
+                    )}
                   </div>
                 )
               })}
-              <div className={styles.bpWeekCell} style={{ color: totalCardio ? 'var(--info)' : 'var(--text3)' }}>
-                {totalCardio ? `${totalCardio}'` : '\u2014'}
+              <div className={styles.bpWeekCell}>
+                {totalCardio ? (
+                  <span className={styles.bpWeekPill} style={{ background: 'rgba(59,130,246,0.12)', color: 'var(--info)' }}>
+                    {totalCardio}&apos;
+                  </span>
+                ) : (
+                  <span style={{ color: 'var(--text3)' }}>{'\u2014'}</span>
+                )}
               </div>
             </div>
           )
@@ -342,9 +401,8 @@ export default function BilanProgressView({ bilans, photoHistory, onOpenPhoto, o
   const sorted = useMemo(() => [...bilans].sort((a, b) => a.date.localeCompare(b.date)), [bilans])
   const weightSeries = useMemo(() => extractSeries(sorted, 'weight'), [sorted])
   const weeks = useMemo(() => groupByWeek(sorted), [sorted])
-
-  // Get the latest date for mensurations
   const latestDate = sorted.length > 0 ? sorted[sorted.length - 1].date : ''
+  const hasMens = sorted.some(b => b.belly_measurement || b.hip_measurement || b.thigh_measurement)
 
   return (
     <div className={styles.bpContainer}>
@@ -359,16 +417,18 @@ export default function BilanProgressView({ bilans, photoHistory, onOpenPhoto, o
       {/* 2. Weight */}
       <WeightChart data={weightSeries} />
 
-      {/* 3. Mensurations - reuse existing component */}
-      {sorted.some(b => b.belly_measurement || b.hip_measurement || b.thigh_measurement) && (
-        <div className={styles.bpChartCard}>
-          <div className={styles.bpChartHeader}>
-            <div className={styles.bpChartTitle}>
-              <i className="fas fa-ruler" style={{ color: 'var(--primary)', fontSize: 13 }} />
+      {/* 3. Mensurations */}
+      {hasMens && (
+        <div className={styles.bpSection}>
+          <div className={styles.bpSectionHeader}>
+            <div className={styles.bpSectionTitle}>
+              <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(232,93,4,0.12)', color: '#E85D04' }}>
+                <i className="fas fa-ruler" />
+              </div>
               Mensurations
             </div>
           </div>
-          <div style={{ padding: '4px 12px 12px' }}>
+          <div className={styles.bpMensWrap}>
             <MensurationCharts bilans={sorted} upToDate={latestDate} suffix="progress" />
           </div>
         </div>
