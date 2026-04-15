@@ -291,6 +291,12 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
                     preload="auto"
                     src={compVideo.video_url}
                     poster={compVideo.thumbnail_url || undefined}
+                    onLoadedMetadata={(e) => {
+                      const el = e.currentTarget
+                      if (el.videoHeight > el.videoWidth) {
+                        el.closest(`.${styles.vidPlayerWrap}`)?.classList.add(styles.vidPortrait)
+                      }
+                    }}
                   />
                   <div className={styles.compNav}>
                     <button
