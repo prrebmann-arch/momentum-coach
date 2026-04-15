@@ -599,8 +599,15 @@
   font-size: 10px; font-weight: 800; color: var(--text3);
   text-transform: uppercase; letter-spacing: 1px;
 }
+.bpTransformSelect {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-size: 12px; font-weight: 600; padding: 6px 12px;
+  font-family: 'Inter', sans-serif; cursor: pointer; outline: none;
+  transition: border-color 0.15s;
+}
+.bpTransformSelect:focus { border-color: rgba(179,8,8,0.5); }
 .bpTransformPhoto {
-  width: 100%; max-width: 200px; aspect-ratio: 9/16; border-radius: 14px;
+  width: 100%; max-width: 300px; aspect-ratio: 9/16; border-radius: 14px;
   background: var(--bg4); border: 1px solid rgba(255,255,255,0.06);
   overflow: hidden; cursor: pointer;
   transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
@@ -649,7 +656,7 @@
 @media (max-width: 600px) {
   .bpTransformBody { flex-direction: column; align-items: center; gap: 16px; padding: 16px 20px; }
   .bpTransformCenter { width: auto; flex-direction: row; gap: 20px; padding: 0; }
-  .bpTransformPhoto { max-width: 160px; }
+  .bpTransformPhoto { max-width: 200px; }
 }
 
 /* ─── Hero Strip ─── */

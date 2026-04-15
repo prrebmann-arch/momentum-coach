@@ -68,6 +68,7 @@ function TransformationHero({
   onLoadPhotos: () => void
 }) {
   const [activeTab, setActiveTab] = useState<PhotoType>('front')
+  const [leftDateIdx, setLeftDateIdx] = useState(0) // index into photoBilans (0 = oldest)
 
   const photoBilans = useMemo(
     () => bilans.filter(b => b.photo_front || b.photo_side || b.photo_back).sort((a, b) => a.date.localeCompare(b.date)),
@@ -88,24 +89,30 @@ function TransformationHero({
   const hasLoadedPhotos = Object.values(photoHistory).some(arr => arr.length > 0)
   useEffect(() => { if (photoBilans.length > 0 && !hasLoadedPhotos) onLoadPhotos() }, [photoBilans.length, hasLoadedPhotos, onLoadPhotos])
 
+  // Reset leftDateIdx if it's out of bounds
+  const safeLeftIdx = Math.min(leftDateIdx, Math.max(photoBilans.length - 2, 0))
+
   if (photoBilans.length === 0) return null
 
-  const firstBilan = photoBilans[0]
+  const leftBilan = photoBilans[safeLeftIdx]
   const lastBilan = photoBilans[photoBilans.length - 1]
-  const firstUrl = urlsByDate[firstBilan.date]?.[activeTab]
+  const leftUrl = urlsByDate[leftBilan.date]?.[activeTab]
   const lastUrl = urlsByDate[lastBilan.date]?.[activeTab]
 
-  // Compute deltas
-  const weights = extractSeries(bilans, 'weight')
-  const bellies = extractSeries(bilans, 'belly_measurement')
-  const adherences = bilans.map(b => parseFloat(String(b.adherence ?? ''))).filter(v => !isNaN(v))
+  // Compute deltas between selected left and right
+  const leftWeight = bilans.find(b => b.date === leftBilan.date)?.weight
+  const rightWeight = bilans.find(b => b.date === lastBilan.date)?.weight
+  const weightDelta = (leftWeight != null && rightWeight != null) ? (rightWeight as number) - (leftWeight as number) : null
 
-  const weightDelta = weights.length >= 2 ? weights[weights.length - 1].value - weights[0].value : null
-  const bellyDelta = bellies.length >= 2 ? bellies[bellies.length - 1].value - bellies[0].value : null
+  const leftBelly = bilans.find(b => b.date === leftBilan.date)?.belly_measurement
+  const rightBelly = bilans.find(b => b.date === lastBilan.date)?.belly_measurement
+  const bellyDelta = (leftBelly != null && rightBelly != null) ? (rightBelly as number) - (leftBelly as number) : null
+
+  const adherences = bilans.map(b => parseFloat(String(b.adherence ?? ''))).filter(v => !isNaN(v))
   const avgAdh = adherences.length ? avg(adherences) : null
 
-  // Duration
-  const daysDiff = Math.round((new Date(lastBilan.date).getTime() - new Date(firstBilan.date).getTime()) / 86400000)
+  // Duration between selected dates
+  const daysDiff = Math.round((new Date(lastBilan.date).getTime() - new Date(leftBilan.date).getTime()) / 86400000)
   const durationLabel = daysDiff >= 30 ? `${Math.round(daysDiff / 30)} mois de suivi` : `${daysDiff} jours de suivi`
 
   const formatUpper = (dateStr: string) => new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase()
@@ -145,13 +152,25 @@ function TransformationHero({
       {/* Before / After */}
       <div className={styles.bpTransformBody}>
         <div className={styles.bpTransformSide}>
-          <div className={styles.bpTransformLabel}>Debut</div>
-          <div className={styles.bpTransformPhoto} onClick={() => onOpenPhoto(activeTab, firstBilan.date)}>
-            {firstUrl ? <img src={firstUrl} alt="debut" /> : (
+          {photoBilans.length > 2 ? (
+            <select
+              className={styles.bpTransformSelect}
+              value={safeLeftIdx}
+              onChange={(e) => setLeftDateIdx(Number(e.target.value))}
+            >
+              {photoBilans.slice(0, -1).map((b, i) => (
+                <option key={b.date} value={i}>{formatMedium(b.date)}</option>
+              ))}
+            </select>
+          ) : (
+            <div className={styles.bpTransformLabel}>Debut</div>
+          )}
+          <div className={styles.bpTransformPhoto} onClick={() => onOpenPhoto(activeTab, leftBilan.date)}>
+            {leftUrl ? <img src={leftUrl} alt="comparaison" /> : (
               <div className={styles.bpPhotoPlaceholder}><i className="fas fa-spinner fa-spin" style={{ fontSize: 16, color: 'var(--text3)' }} /></div>
             )}
           </div>
-          <div className={styles.bpTransformDate}>{formatUpper(firstBilan.date)}</div>
+          <div className={styles.bpTransformDate}>{formatUpper(leftBilan.date)}</div>
         </div>
 
         <div className={styles.bpTransformCenter}>
