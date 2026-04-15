@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useCallback, useEffect, useRef, useState } from 'react'
+import { useMemo, useCallback, useEffect, useRef } from 'react'
 import MensurationCharts from './MensurationCharts'
 import styles from '@/styles/bilans.module.css'
 import type { DailyReport } from './BilanAccordion'
@@ -26,10 +26,6 @@ function formatShort(dateStr: string): string {
 
 function formatMedium(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
-}
-
-function formatDay(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
 interface WeekGroup { weekStart: string; entries: DailyReport[] }
@@ -71,40 +67,45 @@ interface HeroCard {
 function HeroStrip({ bilans }: { bilans: DailyReport[] }) {
   const cards = useMemo(() => {
     const result: HeroCard[] = []
-    const weights = extractSeries(bilans, 'weight')
-    if (weights.length) {
-      const last = weights[weights.length - 1].value, first = weights[0].value, d = last - first
-      result.push({ icon: 'fa-weight-scale', iconColor: '#B30808', iconBg: 'rgba(179,8,8,0.12)',
-        gradient: 'linear-gradient(90deg,#B30808,#d40a0a)', label: 'Poids actuel',
-        value: last.toFixed(1), unit: 'kg',
-        delta: weights.length > 1 ? `${d > 0 ? '+' : ''}${d.toFixed(1)} kg` : undefined,
-        deltaColor: d <= 0 ? 'var(--success)' : 'var(--warning)' })
+
+    // Sommeil moy
+    const sleeps = bilans.map(b => parseFloat(String(b.sleep_quality ?? ''))).filter(v => !isNaN(v))
+    if (sleeps.length) {
+      result.push({ icon: 'fa-moon', iconColor: '#818cf8', iconBg: 'rgba(129,140,248,0.12)',
+        gradient: 'linear-gradient(90deg,#818cf8,#a5b4fc)', label: 'Sommeil moy.',
+        value: avg(sleeps)!.toFixed(1), unit: '/10' })
     }
-    const photoBilans = bilans.filter(b => b.photo_front || b.photo_side || b.photo_back)
-    result.push({ icon: 'fa-camera', iconColor: '#3b82f6', iconBg: 'rgba(59,130,246,0.12)',
-      gradient: 'linear-gradient(90deg,#3b82f6,#60a5fa)', label: 'Bilans photo', value: String(photoBilans.length) })
-    const bellies = extractSeries(bilans, 'belly_measurement')
-    if (bellies.length) {
-      const last = bellies[bellies.length - 1].value, first = bellies[0].value, d = last - first
-      result.push({ icon: 'fa-ruler-horizontal', iconColor: '#E85D04', iconBg: 'rgba(232,93,4,0.12)',
-        gradient: 'linear-gradient(90deg,#E85D04,#f97316)', label: 'Ventre',
-        value: last.toFixed(1), unit: 'cm',
-        delta: bellies.length > 1 ? `${d > 0 ? '+' : ''}${d.toFixed(1)} cm` : undefined,
-        deltaColor: d <= 0 ? 'var(--success)' : 'var(--danger)' })
+
+    // Energie moy
+    const energies = bilans.map(b => parseFloat(String(b.energy ?? ''))).filter(v => !isNaN(v))
+    if (energies.length) {
+      result.push({ icon: 'fa-bolt', iconColor: '#f59e0b', iconBg: 'rgba(245,158,11,0.12)',
+        gradient: 'linear-gradient(90deg,#f59e0b,#fbbf24)', label: 'Energie moy.',
+        value: avg(energies)!.toFixed(1), unit: '/10' })
     }
+
+    // Adherence moy
     const adherences = bilans.map(b => parseFloat(String(b.adherence ?? ''))).filter(v => !isNaN(v))
     if (adherences.length) {
-      const a = avg(adherences)!
       result.push({ icon: 'fa-circle-check', iconColor: '#22c55e', iconBg: 'rgba(34,197,94,0.12)',
         gradient: 'linear-gradient(90deg,#22c55e,#4ade80)', label: 'Adherence moy.',
-        value: a.toFixed(1), unit: '/10' })
+        value: avg(adherences)!.toFixed(1), unit: '/10' })
     }
+
+    // Seances (count days with workout logs approximated by sessions_executed or session_performance)
+    const seances = bilans.filter(b => b.sessions_executed || b.session_performance != null).length
+    result.push({ icon: 'fa-dumbbell', iconColor: '#3b82f6', iconBg: 'rgba(59,130,246,0.12)',
+      gradient: 'linear-gradient(90deg,#3b82f6,#60a5fa)', label: 'Seances',
+      value: String(seances) })
+
+    // Cardio total
     const totalCardio = bilans.reduce((s, b) => s + ((b.cardio_minutes as number) || 0), 0)
     if (totalCardio > 0) {
       result.push({ icon: 'fa-heart-pulse', iconColor: '#7209B7', iconBg: 'rgba(114,9,183,0.12)',
         gradient: 'linear-gradient(90deg,#7209B7,#a855f7)', label: 'Cardio total',
         value: String(totalCardio), unit: 'min' })
     }
+
     return result
   }, [bilans])
 
@@ -126,7 +127,7 @@ function HeroStrip({ bilans }: { bilans: DailyReport[] }) {
   )
 }
 
-// ── Photo Timeline Grid ──
+// ── Photo Grid ──
 
 function PhotoGrid({
   bilans, photoHistory, onOpenPhoto, onLoadPhotos,
@@ -253,7 +254,7 @@ function WeightChart({ data }: { data: { date: string; value: number }[] }) {
     const leftPx = (nearest.x / W) * rect.width
     ch.style.left = leftPx + 'px'; ch.style.display = 'block'
     const d = new Date(nearest.date + 'T00:00:00')
-    tt.textContent = `${nearest.value.toFixed(1)} kg — ${d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}`
+    tt.textContent = `${nearest.value.toFixed(1)} kg \u2014 ${d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}`
     tt.style.display = 'block'; tt.style.left = Math.min(Math.max(leftPx, 60), rect.width - 60) + 'px'
   }, [points])
   const handleMouseLeave = useCallback(() => {
@@ -313,219 +314,108 @@ function WeightChart({ data }: { data: { date: string; value: number }[] }) {
   )
 }
 
-// ── Radar Chart ──
+// ── Metric Sparkline Rows ──
 
-const RADAR_METRICS = [
-  { key: 'energy', label: 'Energie', inverted: false },
-  { key: 'sleep_quality', label: 'Sommeil', inverted: false },
-  { key: 'adherence', label: 'Adherence', inverted: false },
-  { key: 'session_enjoyment', label: 'Plaisir', inverted: false },
-  { key: 'soreness', label: 'Courb.', inverted: true },
-  { key: 'stress', label: 'Stress', inverted: true },
+const METRICS: { key: string; label: string; icon: string; color: string; inverted?: boolean }[] = [
+  { key: 'energy', label: 'Energie', icon: 'fa-bolt', color: '#f59e0b' },
+  { key: 'sleep_quality', label: 'Sommeil', icon: 'fa-moon', color: '#818cf8' },
+  { key: 'stress', label: 'Stress', icon: 'fa-face-grimace', color: '#ef4444', inverted: true },
+  { key: 'soreness', label: 'Courb.', icon: 'fa-dumbbell', color: '#f97316', inverted: true },
+  { key: 'adherence', label: 'Adherence', icon: 'fa-circle-check', color: '#22c55e' },
+  { key: 'session_enjoyment', label: 'Plaisir', icon: 'fa-heart', color: '#ec4899' },
 ]
 
-function RadarChart({ bilans }: { bilans: DailyReport[] }) {
-  const weeks = useMemo(() => groupByWeek(bilans), [bilans])
-  const currentWeek = weeks[0]
-  const prevWeek = weeks[1]
-
-  const computeAvgs = useCallback((entries: DailyReport[] | undefined) => {
-    if (!entries) return RADAR_METRICS.map(() => null)
-    return RADAR_METRICS.map(m => {
-      const vals = entries.map(b => parseFloat(String(b[m.key] ?? ''))).filter(v => !isNaN(v))
+function weeklyAvgSeries(bilans: DailyReport[], field: string): { date: string; value: number; label: string }[] {
+  const weeks = groupByWeek(bilans)
+  return weeks
+    .map(w => {
+      const vals = w.entries.map(b => parseFloat(String(b[field] ?? ''))).filter(v => !isNaN(v))
       if (!vals.length) return null
-      let a = vals.reduce((s, v) => s + v, 0) / vals.length
-      if (m.inverted) a = 10 - a // invert so higher = better on radar
-      return a
+      const a = vals.reduce((s, v) => s + v, 0) / vals.length
+      return { date: w.weekStart, value: parseFloat(a.toFixed(1)), label: formatShort(w.weekStart) }
     })
-  }, [])
+    .filter(Boolean)
+    .reverse() as { date: string; value: number; label: string }[]
+}
 
-  const currentAvgs = useMemo(() => computeAvgs(currentWeek?.entries), [currentWeek, computeAvgs])
-  const prevAvgs = useMemo(() => computeAvgs(prevWeek?.entries), [prevWeek, computeAvgs])
+function MetricSparkline({ points, color, uid }: { points: { value: number }[]; color: string; uid: string }) {
+  const vals = points.map(p => p.value)
+  const vMin = Math.min(...vals) - 0.5, vMax = Math.max(...vals) + 0.5
+  const range = vMax - vMin || 1
+  const W = 400, H = 36, px = 4, py = 4
+  const plotW = W - px * 2, plotH = H - py * 2
 
-  const hasData = currentAvgs.some(v => v !== null)
-  if (!hasData) return null
+  const pts = vals.map((v, i) => {
+    const x = px + (i / Math.max(vals.length - 1, 1)) * plotW
+    const y = py + plotH - ((v - vMin) / range) * plotH
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  const lineStr = pts.join(' ')
+  const fillStr = lineStr + ` ${(px + plotW).toFixed(1)},${(py + plotH).toFixed(1)} ${px.toFixed(1)},${(py + plotH).toFixed(1)}`
+  const lastPt = pts[pts.length - 1].split(',')
 
-  const cx = 190, cy = 180, R = 140, n = 6
-  const angles = RADAR_METRICS.map((_, i) => (Math.PI * 2 * i) / n - Math.PI / 2)
+  return (
+    <div className={styles.bpMetricRowChart}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 36 }} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={`mg_${uid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.2} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <polygon points={fillStr} fill={`url(#mg_${uid})`} />
+        <polyline points={lineStr} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <circle cx={lastPt[0]} cy={lastPt[1]} r={3.5} fill={color} stroke="#111114" strokeWidth={1.5} />
+      </svg>
+    </div>
+  )
+}
 
-  const toPoints = (avgs: (number | null)[]) => {
-    return avgs.map((v, i) => {
-      const r = v != null ? (v / 10) * R : 0
-      return { x: cx + r * Math.cos(angles[i]), y: cy + r * Math.sin(angles[i]) }
-    })
-  }
+function MetricRows({ bilans }: { bilans: DailyReport[] }) {
+  const rows = useMemo(() => {
+    return METRICS.map(m => {
+      const series = weeklyAvgSeries(bilans, m.key)
+      if (series.length < 2) return null
+      const lastVal = series[series.length - 1].value
+      const firstVal = series[0].value
+      const diff = parseFloat((lastVal - firstVal).toFixed(1))
+      const diffColor = m.inverted
+        ? (diff <= 0 ? 'var(--success)' : 'var(--danger)')
+        : (diff >= 0 ? 'var(--success)' : 'var(--danger)')
+      return { ...m, series, lastVal, diff, diffColor }
+    }).filter(Boolean) as (typeof METRICS[0] & { series: { value: number }[]; lastVal: number; diff: number; diffColor: string })[]
+  }, [bilans])
 
-  const currentPts = toPoints(currentAvgs)
-  const prevPts = toPoints(prevAvgs)
-  const currentStr = currentPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-  const prevStr = prevPts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-
-  // Grid rings at 25%, 50%, 75%, 100%
-  const rings = [0.25, 0.5, 0.75, 1]
+  if (!rows.length) return null
 
   return (
     <div className={styles.bpSection}>
       <div className={styles.bpSectionHeader}>
         <div className={styles.bpSectionTitle}>
           <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(129,140,248,0.12)', color: '#818cf8' }}>
-            <i className="fas fa-radar" />
+            <i className="fas fa-chart-line" />
           </div>
-          Vue d&apos;ensemble bien-etre
+          Bien-etre
         </div>
-        <span className={styles.bpSectionBadge}>vs semaine precedente</span>
+        <span className={styles.bpSectionBadge}>moyennes hebdo</span>
       </div>
-      <div className={styles.bpRadarWrap}>
-        <svg viewBox="0 0 380 360" className={styles.bpRadarSvg}>
-          {/* Grid rings */}
-          {rings.map((pct, ri) => {
-            const pts = angles.map(a => `${(cx + R * pct * Math.cos(a)).toFixed(1)},${(cy + R * pct * Math.sin(a)).toFixed(1)}`).join(' ')
-            return <polygon key={ri} points={pts} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
-          })}
-          {/* Axis lines */}
-          {angles.map((a, i) => (
-            <line key={i} x1={cx} y1={cy} x2={cx + R * Math.cos(a)} y2={cy + R * Math.sin(a)} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
-          ))}
-          {/* Previous week polygon */}
-          {prevAvgs.some(v => v !== null) && (
-            <polygon points={prevStr} fill="rgba(142,142,154,0.08)" stroke="var(--text3)" strokeWidth={1.5} strokeDasharray="4 3" />
-          )}
-          {/* Current week polygon */}
-          <polygon points={currentStr} fill="rgba(179,8,8,0.12)" stroke="#B30808" strokeWidth={2} />
-          {/* Current dots */}
-          {currentPts.map((p, i) => currentAvgs[i] != null && (
-            <circle key={i} cx={p.x} cy={p.y} r={4} fill="#B30808" stroke="var(--bg)" strokeWidth={2}
-              style={{ filter: 'drop-shadow(0 0 4px rgba(179,8,8,0.5))' }} />
-          ))}
-          {/* Labels */}
-          {RADAR_METRICS.map((m, i) => {
-            const labelR = R + 20
-            const x = cx + labelR * Math.cos(angles[i])
-            const y = cy + labelR * Math.sin(angles[i])
-            const anchor = Math.abs(Math.cos(angles[i])) < 0.1 ? 'middle' : Math.cos(angles[i]) > 0 ? 'start' : 'end'
-            const val = currentAvgs[i]
-            const displayVal = val != null ? (RADAR_METRICS[i].inverted ? (10 - val).toFixed(1) : val.toFixed(1)) : ''
-            return (
-              <g key={i}>
-                <text x={x} y={y - 6} fill="var(--text2)" fontSize={11} fontWeight={600} textAnchor={anchor}>{m.label}</text>
-                {displayVal && <text x={x} y={y + 8} fill="var(--text3)" fontSize={10} fontWeight={700} textAnchor={anchor}>{displayVal}</text>}
-              </g>
-            )
-          })}
-        </svg>
-      </div>
-      <div className={styles.bpRadarLegend}>
-        <div className={styles.bpRadarLegendItem}>
-          <div className={styles.bpRadarLegendDot} style={{ background: '#B30808' }} />
-          Sem. courante
-        </div>
-        {prevAvgs.some(v => v !== null) && (
-          <div className={styles.bpRadarLegendItem}>
-            <div className={styles.bpRadarLegendDot} style={{ background: 'var(--text3)', opacity: 0.5 }} />
-            Sem. precedente
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ── Heatmap ──
-
-const HEATMAP_METRICS = [
-  { key: 'energy', label: 'Energie', inverted: false },
-  { key: 'sleep_quality', label: 'Sommeil', inverted: false },
-  { key: 'stress', label: 'Stress', inverted: true },
-  { key: 'soreness', label: 'Courb.', inverted: true },
-  { key: 'adherence', label: 'Adher.', inverted: false },
-  { key: 'session_enjoyment', label: 'Plaisir', inverted: false },
-]
-
-function Heatmap({ bilans }: { bilans: DailyReport[] }) {
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null)
-
-  const sorted = useMemo(() => [...bilans].sort((a, b) => a.date.localeCompare(b.date)), [bilans])
-  const dates = useMemo(() => sorted.map(b => b.date), [sorted])
-  const byDate = useMemo(() => {
-    const map: Record<string, DailyReport> = {}
-    sorted.forEach(b => { map[b.date] = b })
-    return map
-  }, [sorted])
-
-  if (dates.length < 3) return null
-
-  const cellClass = (val: number | null, inverted: boolean): string => {
-    if (val == null) return styles.bpHeatEmpty
-    if (inverted) {
-      if (val <= 3) return styles.bpHeatGood
-      if (val <= 5) return styles.bpHeatOk
-      return styles.bpHeatBad
-    }
-    if (val >= 7) return styles.bpHeatGood
-    if (val >= 5) return styles.bpHeatOk
-    return styles.bpHeatBad
-  }
-
-  const handleMouseEnter = (e: React.MouseEvent, metric: string, date: string, val: number | null) => {
-    if (val == null) return
-    const rect = (e.target as HTMLElement).getBoundingClientRect()
-    setTooltip({ x: rect.left + rect.width / 2, y: rect.top - 8, text: `${metric} ${val}/10 — ${formatDay(date)}` })
-  }
-
-  return (
-    <div className={styles.bpSection}>
-      <div className={styles.bpSectionHeader}>
-        <div className={styles.bpSectionTitle}>
-          <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>
-            <i className="fas fa-th" />
-          </div>
-          Tendances quotidiennes
-        </div>
-        <span className={styles.bpSectionBadge}>{dates.length} jours</span>
-      </div>
-      <div className={styles.bpHeatmapWrap}>
-        {/* Day headers */}
-        <div className={styles.bpHeatmapDayHeaders}>
-          {dates.map((d, i) => {
-            const day = new Date(d + 'T00:00:00')
-            const show = i === 0 || i === dates.length - 1 || i % 7 === 0
-            return <div key={i} className={styles.bpHeatmapDayHeader}>{show ? formatShort(d) : ''}</div>
-          })}
-        </div>
-        <div className={styles.bpHeatmapTable}>
-          {HEATMAP_METRICS.map(m => (
-            <div key={m.key} className={styles.bpHeatmapRow}>
-              <div className={styles.bpHeatmapLabel}>{m.label}</div>
-              {dates.map(d => {
-                const b = byDate[d]
-                const val = b ? parseFloat(String(b[m.key] ?? '')) : NaN
-                const v = isNaN(val) ? null : val
-                return (
-                  <div
-                    key={d}
-                    className={`${styles.bpHeatmapCell} ${cellClass(v, m.inverted)}`}
-                    onMouseEnter={(e) => handleMouseEnter(e, m.label, d, v)}
-                    onMouseLeave={() => setTooltip(null)}
-                  />
-                )
-              })}
+      <div className={styles.bpMetricRows}>
+        {rows.map(r => (
+          <div key={r.key} className={styles.bpMetricRow}>
+            <div className={styles.bpMetricRowIcon} style={{ background: r.color + '1a', color: r.color }}>
+              <i className={`fas ${r.icon}`} />
             </div>
-          ))}
-        </div>
-        {/* Legend */}
-        <div className={styles.bpHeatmapLegend}>
-          <div className={styles.bpHeatmapLegendBox} style={{ background: 'rgba(34,197,94,0.6)' }} /> Bon
-          <div className={styles.bpHeatmapLegendBox} style={{ background: 'rgba(245,158,11,0.5)' }} /> Moyen
-          <div className={styles.bpHeatmapLegendBox} style={{ background: 'rgba(239,68,68,0.5)' }} /> Mauvais
-          <div className={styles.bpHeatmapLegendBox} style={{ background: 'rgba(255,255,255,0.03)' }} /> Vide
-        </div>
+            <div className={styles.bpMetricRowLabel}>{r.label}</div>
+            <MetricSparkline points={r.series} color={r.color} uid={r.key} />
+            <div className={styles.bpMetricRowValues}>
+              <span className={styles.bpMetricRowCurrent} style={{ color: r.color }}>{r.lastVal.toFixed(1)}</span>
+              <span className={styles.bpMetricRowDelta} style={{ color: r.diffColor }}>
+                {r.diff > 0 ? '+' : ''}{r.diff.toFixed(1)}
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
-      {/* Tooltip portal */}
-      {tooltip && (
-        <div className={styles.bpHeatmapTooltip} style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)' }}>
-          {tooltip.text}
-        </div>
-      )}
     </div>
   )
 }
@@ -549,20 +439,23 @@ export default function BilanProgressView({ bilans, photoHistory, onOpenPhoto, o
     <div className={styles.bpContainer}>
       <HeroStrip bilans={sorted} />
       <PhotoGrid bilans={sorted} photoHistory={photoHistory} onOpenPhoto={onOpenPhoto} onLoadPhotos={onLoadPhotos} />
-      <WeightChart data={weightSeries} />
-      {hasMens && (
-        <div className={styles.bpSection}>
-          <div className={styles.bpSectionHeader}>
-            <div className={styles.bpSectionTitle}>
-              <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(232,93,4,0.12)', color: '#E85D04' }}><i className="fas fa-ruler" /></div>
-              Mensurations
+
+      <div className={styles.bpTwoCol}>
+        <WeightChart data={weightSeries} />
+        {hasMens ? (
+          <div className={styles.bpSection}>
+            <div className={styles.bpSectionHeader}>
+              <div className={styles.bpSectionTitle}>
+                <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(232,93,4,0.12)', color: '#E85D04' }}><i className="fas fa-ruler" /></div>
+                Mensurations
+              </div>
             </div>
+            <div className={styles.bpMensWrap}><MensurationCharts bilans={sorted} upToDate={latestDate} suffix="progress" /></div>
           </div>
-          <div className={styles.bpMensWrap}><MensurationCharts bilans={sorted} upToDate={latestDate} suffix="progress" /></div>
-        </div>
-      )}
-      <RadarChart bilans={sorted} />
-      <Heatmap bilans={sorted} />
+        ) : <div />}
+      </div>
+
+      <MetricRows bilans={sorted} />
     </div>
   )
 }
