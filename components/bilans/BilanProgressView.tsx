@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useCallback, useEffect, useRef } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import MensurationCharts from './MensurationCharts'
 import styles from '@/styles/bilans.module.css'
 import type { DailyReport } from './BilanAccordion'
@@ -55,6 +55,158 @@ function extractSeries(bilans: DailyReport[], field: string): { date: string; va
 function avg(nums: number[]): number | null {
   if (!nums.length) return null
   return nums.reduce((a, b) => a + b, 0) / nums.length
+}
+
+// ── Transformation Hero ──
+
+function TransformationHero({
+  bilans, photoHistory, onOpenPhoto, onLoadPhotos,
+}: {
+  bilans: DailyReport[]
+  photoHistory: Record<PhotoType, PhotoEntry[]>
+  onOpenPhoto: (type: PhotoType, date: string) => void
+  onLoadPhotos: () => void
+}) {
+  const [activeTab, setActiveTab] = useState<PhotoType>('front')
+
+  const photoBilans = useMemo(
+    () => bilans.filter(b => b.photo_front || b.photo_side || b.photo_back).sort((a, b) => a.date.localeCompare(b.date)),
+    [bilans],
+  )
+
+  const urlsByDate = useMemo(() => {
+    const map: Record<string, Record<PhotoType, string>> = {}
+    for (const type of ['front', 'side', 'back'] as PhotoType[]) {
+      for (const entry of photoHistory[type] || []) {
+        if (!map[entry.date]) map[entry.date] = {} as Record<PhotoType, string>
+        map[entry.date][type] = entry.url
+      }
+    }
+    return map
+  }, [photoHistory])
+
+  const hasLoadedPhotos = Object.values(photoHistory).some(arr => arr.length > 0)
+  useEffect(() => { if (photoBilans.length > 0 && !hasLoadedPhotos) onLoadPhotos() }, [photoBilans.length, hasLoadedPhotos, onLoadPhotos])
+
+  if (photoBilans.length === 0) return null
+
+  const firstBilan = photoBilans[0]
+  const lastBilan = photoBilans[photoBilans.length - 1]
+  const firstUrl = urlsByDate[firstBilan.date]?.[activeTab]
+  const lastUrl = urlsByDate[lastBilan.date]?.[activeTab]
+
+  // Compute deltas
+  const weights = extractSeries(bilans, 'weight')
+  const bellies = extractSeries(bilans, 'belly_measurement')
+  const adherences = bilans.map(b => parseFloat(String(b.adherence ?? ''))).filter(v => !isNaN(v))
+
+  const weightDelta = weights.length >= 2 ? weights[weights.length - 1].value - weights[0].value : null
+  const bellyDelta = bellies.length >= 2 ? bellies[bellies.length - 1].value - bellies[0].value : null
+  const avgAdh = adherences.length ? avg(adherences) : null
+
+  // Duration
+  const daysDiff = Math.round((new Date(lastBilan.date).getTime() - new Date(firstBilan.date).getTime()) / 86400000)
+  const durationLabel = daysDiff >= 30 ? `${Math.round(daysDiff / 30)} mois de suivi` : `${daysDiff} jours de suivi`
+
+  const formatUpper = (dateStr: string) => new Date(dateStr + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase()
+
+  const TABS: { key: PhotoType; label: string }[] = [
+    { key: 'front', label: 'Face' },
+    { key: 'side', label: 'Profil' },
+    { key: 'back', label: 'Dos' },
+  ]
+
+  return (
+    <div className={styles.bpSection} style={{ position: 'relative' }}>
+      <div className={styles.bpTransformBg} />
+      <div className={styles.bpSectionHeader}>
+        <div className={styles.bpSectionTitle}>
+          <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(179,8,8,0.12)', color: '#B30808' }}>
+            <i className="fas fa-arrow-right-arrow-left" />
+          </div>
+          Transformation
+        </div>
+        <span className={styles.bpSectionBadge}>{durationLabel}</span>
+      </div>
+
+      {/* Tabs */}
+      <div className={styles.bpTransformTabs}>
+        {TABS.map(t => (
+          <button
+            key={t.key}
+            className={`${styles.bpTransformTab} ${activeTab === t.key ? styles.bpTransformTabActive : ''}`}
+            onClick={() => setActiveTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Before / After */}
+      <div className={styles.bpTransformBody}>
+        <div className={styles.bpTransformSide}>
+          <div className={styles.bpTransformLabel}>Debut</div>
+          <div className={styles.bpTransformPhoto} onClick={() => onOpenPhoto(activeTab, firstBilan.date)}>
+            {firstUrl ? <img src={firstUrl} alt="debut" /> : (
+              <div className={styles.bpPhotoPlaceholder}><i className="fas fa-spinner fa-spin" style={{ fontSize: 16, color: 'var(--text3)' }} /></div>
+            )}
+          </div>
+          <div className={styles.bpTransformDate}>{formatUpper(firstBilan.date)}</div>
+        </div>
+
+        <div className={styles.bpTransformCenter}>
+          {weightDelta !== null && (
+            <div className={styles.bpTransformDelta}>
+              <div className={styles.bpTransformDeltaValue} style={{ color: weightDelta <= 0 ? 'var(--success)' : 'var(--warning)' }}>
+                {weightDelta > 0 ? '+' : ''}{weightDelta.toFixed(1)} kg
+              </div>
+              <div className={styles.bpTransformDeltaLabel}>Poids</div>
+            </div>
+          )}
+          <div className={styles.bpTransformArrow}><i className="fas fa-right-long" /></div>
+          {bellyDelta !== null && (
+            <div className={styles.bpTransformDelta}>
+              <div className={styles.bpTransformDeltaValue} style={{ color: bellyDelta <= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                {bellyDelta > 0 ? '+' : ''}{bellyDelta.toFixed(1)} cm
+              </div>
+              <div className={styles.bpTransformDeltaLabel}>Ventre</div>
+            </div>
+          )}
+          {avgAdh !== null && (
+            <div className={styles.bpTransformDelta}>
+              <div className={styles.bpTransformDeltaValue} style={{ color: 'var(--text2)' }}>
+                {avgAdh.toFixed(1)}<span style={{ fontSize: 12, color: 'var(--text3)' }}>/10</span>
+              </div>
+              <div className={styles.bpTransformDeltaLabel}>Adherence moy.</div>
+            </div>
+          )}
+        </div>
+
+        <div className={styles.bpTransformSide}>
+          <div className={styles.bpTransformLabel} style={{ color: 'var(--success)' }}>Dernier</div>
+          <div className={styles.bpTransformPhoto} onClick={() => onOpenPhoto(activeTab, lastBilan.date)}>
+            {lastUrl ? <img src={lastUrl} alt="dernier" /> : (
+              <div className={styles.bpPhotoPlaceholder}><i className="fas fa-spinner fa-spin" style={{ fontSize: 16, color: 'var(--text3)' }} /></div>
+            )}
+          </div>
+          <div className={styles.bpTransformDate}>{formatUpper(lastBilan.date)}</div>
+        </div>
+      </div>
+
+      {/* Date dots */}
+      {photoBilans.length > 2 && (
+        <div className={styles.bpTransformDots}>
+          {photoBilans.map((b, i) => (
+            <div
+              key={b.date}
+              className={`${styles.bpTransformDot} ${i === photoBilans.length - 1 ? styles.bpTransformDotActive : ''}`}
+              title={formatShort(b.date)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── Hero Strip ──
@@ -437,8 +589,8 @@ export default function BilanProgressView({ bilans, photoHistory, onOpenPhoto, o
 
   return (
     <div className={styles.bpContainer}>
+      <TransformationHero bilans={sorted} photoHistory={photoHistory} onOpenPhoto={onOpenPhoto} onLoadPhotos={onLoadPhotos} />
       <HeroStrip bilans={sorted} />
-      <PhotoGrid bilans={sorted} photoHistory={photoHistory} onOpenPhoto={onOpenPhoto} onLoadPhotos={onLoadPhotos} />
 
       <div className={styles.bpTwoCol}>
         <WeightChart data={weightSeries} />

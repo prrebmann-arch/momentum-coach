@@ -570,6 +570,88 @@
 
 .bpContainer { display: flex; flex-direction: column; gap: 16px; }
 
+/* ─── Transformation Hero ─── */
+.bpTransformBg {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 30% 50%, rgba(179,8,8,0.06) 0%, transparent 70%),
+              radial-gradient(ellipse at 70% 50%, rgba(34,197,94,0.04) 0%, transparent 70%);
+}
+.bpTransformTabs {
+  display: flex; gap: 6px; padding: 0 24px; position: relative; z-index: 1;
+}
+.bpTransformTab {
+  padding: 6px 14px; border-radius: 8px; border: none;
+  background: var(--bg3); color: var(--text3);
+  font-size: 11px; font-weight: 700; cursor: pointer;
+  font-family: 'Inter', sans-serif; transition: all 0.15s;
+}
+.bpTransformTab:hover { color: var(--text2); }
+.bpTransformTabActive { background: var(--primary); color: #fff; }
+
+.bpTransformBody {
+  display: flex; align-items: stretch; gap: 0;
+  padding: 20px 28px 24px; position: relative; z-index: 1;
+}
+.bpTransformSide {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.bpTransformLabel {
+  font-size: 10px; font-weight: 800; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 1px;
+}
+.bpTransformPhoto {
+  width: 100%; max-width: 200px; aspect-ratio: 9/16; border-radius: 14px;
+  background: var(--bg4); border: 1px solid rgba(255,255,255,0.06);
+  overflow: hidden; cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.bpTransformPhoto:hover {
+  border-color: rgba(179,8,8,0.4);
+  box-shadow: 0 0 20px rgba(179,8,8,0.15), 0 8px 24px rgba(0,0,0,0.4);
+  transform: scale(1.02);
+}
+.bpTransformPhoto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bpTransformDate {
+  font-size: 11px; font-weight: 700; color: var(--text2);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+.bpTransformCenter {
+  width: 200px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+  padding: 20px 0; position: relative; z-index: 1;
+}
+.bpTransformDelta { text-align: center; }
+.bpTransformDeltaValue {
+  font-size: 28px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1;
+}
+.bpTransformDeltaLabel {
+  font-size: 10px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px;
+}
+.bpTransformArrow { color: var(--text3); font-size: 20px; }
+
+.bpTransformDots {
+  display: flex; gap: 8px; justify-content: center;
+  padding: 0 28px 16px; position: relative; z-index: 1;
+}
+.bpTransformDot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--bg4); border: 1px solid var(--border);
+  cursor: pointer; transition: all 0.2s;
+}
+.bpTransformDot:hover { border-color: var(--text3); transform: scale(1.3); }
+.bpTransformDotActive {
+  background: var(--primary); border-color: var(--primary);
+  box-shadow: 0 0 8px rgba(179,8,8,0.4);
+}
+
+@media (max-width: 600px) {
+  .bpTransformBody { flex-direction: column; align-items: center; gap: 16px; padding: 16px 20px; }
+  .bpTransformCenter { width: auto; flex-direction: row; gap: 20px; padding: 0; }
+  .bpTransformPhoto { max-width: 160px; }
+}
+
 /* ─── Hero Strip ─── */
 .bpHeroStrip {
   display: grid;
