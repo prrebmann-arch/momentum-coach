@@ -271,7 +271,14 @@ export default function BilanAccordion({
       const perfs: string[] = []
       bb.forEach(b => {
         (wlogsByDate[b.date] || []).forEach(log => {
-          const prev = allWLogs.find(l => l.session_id && l.session_id === log.session_id && l.date < log.date)
+          // Match by session_id first, fallback to session_name/titre
+          const logName = log.session_name || log.titre
+          const prev = allWLogs.find(l =>
+            l.date < log.date && (
+              (l.session_id && log.session_id && l.session_id === log.session_id) ||
+              (!l.session_id && !log.session_id && logName && (l.session_name === logName || l.titre === logName))
+            )
+          )
           if (!prev) return
           const curExs = parseExs(log.exercices_completes)
           const prevExs = parseExs(prev.exercices_completes)
@@ -599,7 +606,13 @@ export default function BilanAccordion({
                   let perfCell: React.ReactNode = '\u2014'
                   if (dayLogs.length) {
                     const perfs = dayLogs.map(log => {
-                      const prevLog = allWLogs.find(l => l.session_id && l.session_id === log.session_id && l.date < log.date)
+                      const logName = log.session_name || log.titre
+                      const prevLog = allWLogs.find(l =>
+                        l.date < log.date && (
+                          (l.session_id && log.session_id && l.session_id === log.session_id) ||
+                          (!l.session_id && !log.session_id && logName && (l.session_name === logName || l.titre === logName))
+                        )
+                      )
                       if (!prevLog) return null
                       const curExs = parseExs(log.exercices_completes)
                       const prevExs = parseExs(prevLog.exercices_completes)
