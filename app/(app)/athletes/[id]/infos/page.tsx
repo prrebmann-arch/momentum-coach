@@ -172,6 +172,10 @@ export default function InfosPage() {
 
   async function saveEdit(card: string) {
     const updateData = { ...formData }
+    // Normalize empty strings to null for nullable date/text columns
+    for (const k of Object.keys(updateData)) {
+      if (updateData[k] === '') updateData[k] = null
+    }
     if (card === 'personal') {
       const todayStr = new Date().toISOString().split('T')[0]
       // Set anchor dates if frequency changed
