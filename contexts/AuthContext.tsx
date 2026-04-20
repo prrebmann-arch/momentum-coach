@@ -144,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (_event: string, session: { user?: { id: string; email?: string }; access_token: string } | null) => {
         // Skip if signIn/signUp is handling state updates directly
         if (signingInRef.current) return
         if (session?.user) {
@@ -165,26 +165,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     )
 
-    // Wake signal: on tab return, dispatch 'coach:wake' so pages that use
-    // useRefetchOnResume can refetch if they choose. We do NOT ping Supabase
-    // proactively here anymore — that caused two problems:
-    //  1) supabase.auth.getUser() acquires the gotrue auth lock which can
-    //     orphan on navigation-during-request (5s deadlock on every query)
-    //  2) plain fetch HEAD can fail on some networks/CORS and we used to
-    //     reload the page on failure, creating visible loading loops
-    // The watchdog in useRefetchOnResume handles the case where queries
-    // legitimately hang (e.g., dead HTTP/2 connection) by reloading after
-    // 10s of stuck loading.
-    let hiddenSince: number | null = null
+    // Tab visibility handler — THE official Supabase fix for Safari tab
+    // freezing and orphaned auth locks. See:
+    //   https://supabase.com/docs/reference/javascript/auth-startautorefresh
+    //
+    // Root cause: @supabase/auth-js auto-refreshes the JWT on a timer. Safari
+    // throttles / freezes background-tab fetch calls. If the refresh fires
+    // while the tab is hidden, its fetch can be frozen mid-flight while
+    // holding the navigator.locks-based auth mutex. When the tab wakes up,
+    // every subsequent Supabase call queues behind that orphan lock for 5s
+    // (the library's internal timeout) — the "skeleton stuck on tab switch"
+    // bug.
+    //
+    // Fix: stop the auto-refresh timer when the tab is hidden; restart it on
+    // return. No await, no getSession, no blocking call inside the handler.
+    // We also dispatch 'coach:wake' so useRefetchOnResume consumers can
+    // refetch their data if they want.
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        hiddenSince = Date.now()
-        return
+        supabase.auth.stopAutoRefresh()
+      } else {
+        supabase.auth.startAutoRefresh()
+        window.dispatchEvent(new CustomEvent('coach:wake'))
       }
-      const wasHidden = hiddenSince !== null
-      hiddenSince = null
-      if (!wasHidden) return
-      window.dispatchEvent(new CustomEvent('coach:wake'))
     }
     document.addEventListener('visibilitychange', handleVisibility)
 
