@@ -56,16 +56,15 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Initialize from cache synchronously — no network wait
-  const cachedUser = useRef(getCachedUser())
-  const cachedCoach = useRef(getCachedCoach())
-  const hasCachedSession = useRef(cachedUser.current !== null && hasSupabaseSession())
-
-  const [user, setUser] = useState<User | null>(cachedUser.current)
-  const [coach, setCoach] = useState<CoachProfile | null>(cachedCoach.current)
+  // Initial state MUST match on server and client to avoid hydration mismatches.
+  // localStorage is only available on the client — reading it during initial
+  // render produces different HTML on SSR (null) vs client (cached user),
+  // triggering React error #418 and leaving the UI stuck in a broken state.
+  // We populate from localStorage inside useEffect instead (post-hydration).
+  const [user, setUser] = useState<User | null>(null)
+  const [coach, setCoach] = useState<CoachProfile | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
-  // If we have cached data, loading is already false — UI renders instantly
-  const [loading, setLoading] = useState(!hasCachedSession.current)
+  const [loading, setLoading] = useState(true)
   const initRef = useRef(false)
   // Prevents onAuthStateChange from interfering during explicit signIn/signUp
   const signingInRef = useRef(false)
@@ -109,6 +108,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (initRef.current) return
     initRef.current = true
+
+    // Populate from localStorage immediately after hydration (safe — client only)
+    const cachedU = getCachedUser()
+    const cachedC = getCachedCoach()
+    const hasSess = cachedU !== null && hasSupabaseSession()
+    if (cachedU) setUser(cachedU)
+    if (cachedC) setCoach(cachedC)
+    if (hasSess) setLoading(false)
 
     const init = async () => {
       try {
@@ -158,11 +165,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     )
 
-    // Wake recovery: when tab returns after being hidden >3s, ping Supabase
-    // with a 5s timeout to validate the session and revive the HTTP/2
-    // connection. Only AFTER this completes do we dispatch `coach:wake` so
-    // pages can safely refetch. If getSession hangs (dead connection that
-    // browser hasn't declared dead yet), we reload as last resort.
+    // Wake recovery: when tab returns after being hidden >3s, make a real
+    // network call (getUser hits /auth/v1/user) to verify the Supabase
+    // connection is alive. getSession is useless here — it returns from
+    // localStorage without network. If the network call times out at 4s, we
+    // reload (connection is truly dead). On success, dispatch 'coach:wake'
+    // so pages can safely refetch.
     let hiddenAt: number | null = null
     let wakeInFlight = false
     const handleVisibility = async () => {
@@ -176,11 +184,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (wakeInFlight) return
       wakeInFlight = true
       try {
-        const sessionCheck = supabase.auth.getSession().then(({ data }) => data.session)
-        const timeout = new Promise<null>((_, reject) => setTimeout(() => reject(new Error('wake-timeout')), 5000))
-        const session = await Promise.race([sessionCheck, timeout])
-        if (session?.user) setAccessToken(session.access_token)
-        // Signal pages that it's safe to refetch now that the connection is healthy
+        const ping = supabase.auth.getUser().then(() => true)
+        const timeout = new Promise<boolean>((_, reject) => setTimeout(() => reject(new Error('wake-timeout')), 4000))
+        await Promise.race([ping, timeout])
         window.dispatchEvent(new CustomEvent('coach:wake'))
       } catch {
         if (typeof window !== 'undefined') window.location.reload()
