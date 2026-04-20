@@ -158,7 +158,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     )
 
-    return () => subscription.unsubscribe()
+    // Wake recovery: when tab returns after being hidden, ping Supabase to
+    // validate the session and re-establish the HTTP connection. Safari
+    // suspends background tabs aggressively, leaving connections in a half-dead
+    // state that makes subsequent queries hang indefinitely.
+    let hiddenAt: number | null = null
+    const handleVisibility = async () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+        return
+      }
+      const duration = hiddenAt ? Date.now() - hiddenAt : 0
+      hiddenAt = null
+      if (duration < 3000) return
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
+          setAccessToken(session.access_token)
+        }
+      } catch {
+        // getSession failed — connection truly dead, force a reload as last resort
+        if (typeof window !== 'undefined') window.location.reload()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      subscription.unsubscribe()
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
