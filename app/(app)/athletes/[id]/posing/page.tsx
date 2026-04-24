@@ -203,42 +203,114 @@ export default function PosingPage() {
     )
   }
 
-  // Video detail view
+  // Video detail view — 2 column layout: video left, correction form right
   if (viewingVideo) {
     const v = viewingVideo
     const date = new Date(v.created_at).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     const isPending = v.status === 'a_traiter'
+    // Ensure modalVideoId tracks the current video so submitCorrection links it
+    if (modalVideoId !== v.id) setModalVideoId(v.id)
     return (
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <button className="btn btn-outline btn-sm" onClick={() => setViewingVideo(null)}><i className="fas fa-arrow-left" /> Retour</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          <button className="btn btn-outline btn-sm" onClick={() => { setViewingVideo(null); resetForm() }}><i className="fas fa-arrow-left" /> Retour</button>
           <span style={{ fontSize: 15, fontWeight: 600 }}>{v.titre || 'Posing'}</span>
           <Badge variant={isPending ? 'warning' : 'success'}>{isPending ? 'A traiter' : 'Traite'}</Badge>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center', background: '#000', borderRadius: 10 }}>
-          <video
-            controls
-            playsInline
-            src={v.video_url}
-            style={{ width: 'auto', maxWidth: '100%', maxHeight: '75vh', borderRadius: 10, background: '#000' }}
-          />
-        </div>
-        {v.commentaire && (
-          <div style={{ marginTop: 12, padding: 12, background: 'var(--bg2)', borderRadius: 8, fontSize: 13, color: 'var(--text2)' }}>
-            <i className="fas fa-quote-left" style={{ color: 'var(--text3)', marginRight: 6 }} />{v.commentaire}
-          </div>
-        )}
-        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>{date}</div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           {isPending && (
-            <button className="btn btn-outline btn-sm" style={{ color: 'var(--success)' }} onClick={() => markTraite(v.id)}>
+            <button className="btn btn-outline btn-sm" style={{ color: 'var(--success)', marginLeft: 'auto' }} onClick={() => markTraite(v.id)}>
               <i className="fas fa-check" /> Marquer traite
             </button>
           )}
-          <button className="btn btn-red btn-sm" onClick={() => { setModalVideoId(v.id); setShowModal(true) }}>
-            <i className="fas fa-video" /> Envoyer une correction
-          </button>
         </div>
+
+        <div className="posingDetailGrid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 420px)', gap: 16, alignItems: 'start' }}>
+          {/* LEFT: Video */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'center', background: '#000', borderRadius: 10 }}>
+              <video
+                controls
+                playsInline
+                src={v.video_url}
+                style={{ width: 'auto', maxWidth: '100%', maxHeight: '75vh', borderRadius: 10, background: '#000' }}
+              />
+            </div>
+            {v.commentaire && (
+              <div style={{ marginTop: 12, padding: 12, background: 'var(--bg2)', borderRadius: 8, fontSize: 13, color: 'var(--text2)' }}>
+                <i className="fas fa-quote-left" style={{ color: 'var(--text3)', marginRight: 6 }} />{v.commentaire}
+              </div>
+            )}
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>{date}</div>
+          </div>
+
+          {/* RIGHT: Correction form */}
+          <div style={{ padding: 16, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+              <i className="fas fa-paper-plane" style={{ marginRight: 6, color: 'var(--primary)' }} />
+              Envoyer un retour
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>Titre</label>
+              <input type="text" className="form-control" value={formTitre} onChange={(e) => setFormTitre(e.target.value)} placeholder="Correction posing" />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>
+                <i className="fas fa-comment" style={{ marginRight: 6 }} />Message texte
+              </label>
+              <textarea className="form-control" rows={3} value={formComment} onChange={(e) => setFormComment(e.target.value)} placeholder="Ton message à l'athlète..." />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>
+                <i className="fas fa-microphone" style={{ marginRight: 6 }} />Message vocal
+              </label>
+              {audioBlob ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 10, background: 'var(--bg3)', borderRadius: 8 }}>
+                  <audio controls src={audioPreviewUrl || undefined} style={{ flex: 1, height: 36 }} />
+                  <span style={{ fontSize: 11, color: 'var(--text3)' }}>{audioDuration}s</span>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={resetAudio} title="Réenregistrer">
+                    <i className="fas fa-trash" />
+                  </button>
+                </div>
+              ) : recording ? (
+                <button type="button" className="btn btn-red" onClick={stopRecording} style={{ width: '100%' }}>
+                  <i className="fas fa-stop-circle" style={{ marginRight: 6 }} />Arrêter l'enregistrement
+                </button>
+              ) : (
+                <button type="button" className="btn btn-outline" onClick={startRecording} style={{ width: '100%' }}>
+                  <i className="fas fa-microphone" style={{ marginRight: 6 }} />Enregistrer un message vocal
+                </button>
+              )}
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>
+                <i className="fas fa-link" style={{ marginRight: 6 }} />URL Loom (optionnel)
+              </label>
+              <input type="url" className="form-control" value={formLoom} onChange={(e) => setFormLoom(e.target.value)} placeholder="https://www.loom.com/share/..." />
+            </div>
+
+            <div style={{ fontSize: 11, color: 'var(--text3)' }}>Au moins un des trois est requis.</div>
+
+            <button
+              className="btn btn-red"
+              onClick={submitCorrection}
+              disabled={saving || recording}
+              style={{ marginTop: 4 }}
+            >
+              {saving ? <i className="fas fa-spinner fa-spin" /> : <><i className="fas fa-paper-plane" />  Envoyer le retour</>}
+            </button>
+          </div>
+        </div>
+
+        <style jsx>{`
+          @media (max-width: 900px) {
+            :global(.posingDetailGrid) {
+              grid-template-columns: 1fr !important;
+            }
+          }
+        `}</style>
       </div>
     )
   }
