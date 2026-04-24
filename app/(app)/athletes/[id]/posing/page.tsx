@@ -89,18 +89,23 @@ export default function PosingPage() {
   }
 
   async function submitCorrection() {
-    if (!formLoom.trim()) { toast("L'URL Loom est obligatoire", 'error'); return }
+    const loom = formLoom.trim()
+    const comment = formComment.trim()
+    if (!loom && !comment) {
+      toast('Ajoute au moins une URL Loom ou un commentaire', 'error')
+      return
+    }
     setSaving(true)
     const { error } = await supabase.from('posing_retours').insert({
       athlete_id: params.id,
       coach_id: user?.id,
       posing_video_id: modalVideoId || null,
-      loom_url: formLoom.trim(),
+      loom_url: loom || null,
       titre: formTitre.trim() || 'Correction posing',
-      commentaire: formComment.trim() || null,
+      commentaire: comment || null,
     })
     setSaving(false)
-    if (error) { toast('Erreur', 'error'); return }
+    if (error) { console.error('[posing] submitCorrection error:', error); toast(`Erreur: ${error.message}`, 'error'); return }
     toast('Correction posing envoyee !', 'success')
     setShowModal(false)
     setFormLoom(''); setFormTitre(''); setFormComment('')
@@ -243,7 +248,9 @@ export default function PosingPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <a href={r.loom_url} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm"><i className="fas fa-external-link-alt" /></a>
+                {r.loom_url && (
+                  <a href={r.loom_url} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm"><i className="fas fa-external-link-alt" /></a>
+                )}
                 <button className="btn btn-outline btn-sm" style={{ color: 'var(--danger)' }} onClick={() => deleteRetour(r.id)}><i className="fas fa-trash" /></button>
               </div>
             </div>
@@ -259,12 +266,15 @@ export default function PosingPage() {
             <input type="text" className="form-control" value={formTitre} onChange={(e) => setFormTitre(e.target.value)} placeholder="Correction posing" />
           </div>
           <div>
-            <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>URL Loom *</label>
+            <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>URL Loom (optionnel)</label>
             <input type="url" className="form-control" value={formLoom} onChange={(e) => setFormLoom(e.target.value)} placeholder="https://www.loom.com/share/..." />
           </div>
           <div>
             <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>Commentaire</label>
-            <textarea className="form-control" rows={3} value={formComment} onChange={(e) => setFormComment(e.target.value)} />
+            <textarea className="form-control" rows={4} value={formComment} onChange={(e) => setFormComment(e.target.value)} placeholder="Message texte à l'athlète..." />
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+              Au moins un des deux champs est requis (Loom OU commentaire).
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
             <button className="btn btn-outline" onClick={() => setShowModal(false)}>Annuler</button>
