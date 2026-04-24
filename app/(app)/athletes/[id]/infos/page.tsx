@@ -417,6 +417,43 @@ export default function InfosPage() {
   }
 
   // ── Onboarding section ──
+  async function toggleStep(stepIdx: number, currentlyDone: boolean) {
+    if (!workflow || !a) return
+    const existingCompleted = onboarding?.steps_completed || []
+    const nextCompleted = currentlyDone
+      ? existingCompleted.filter((v: any) => v !== stepIdx && v !== String(stepIdx))
+      : [...existingCompleted, stepIdx]
+
+    // Use user_id for athlete_id if present (how the ATHLETE app keys it),
+    // else fall back to athletes.id.
+    const onboardingAthleteId = a.user_id || a.id
+
+    if (onboarding?.id) {
+      const { error } = await supabase
+        .from('athlete_onboarding')
+        .update({ steps_completed: nextCompleted, completed: nextCompleted.length === (typeof workflow.steps === 'string' ? JSON.parse(workflow.steps).length : (workflow.steps?.length || 0)) })
+        .eq('id', onboarding.id)
+      if (error) { console.error('[toggleStep] update failed:', error); toast(`Erreur: ${error.message}`, 'error'); return }
+    } else {
+      const { data: inserted, error } = await supabase
+        .from('athlete_onboarding')
+        .insert({
+          athlete_id: onboardingAthleteId,
+          workflow_id: workflow.id,
+          steps_completed: nextCompleted,
+          current_step: 0,
+          completed: false,
+          responses: {},
+        })
+        .select('id, athlete_id, workflow_id, completed, steps_completed, started_at, responses')
+        .single()
+      if (error) { console.error('[toggleStep] insert failed:', error); toast(`Erreur: ${error.message}`, 'error'); return }
+      setOnboarding(inserted)
+      return
+    }
+    setOnboarding({ ...onboarding, steps_completed: nextCompleted })
+  }
+
   function OnboardingSection() {
     // Show the workflow as soon as it's assigned, even if the athlete
     // hasn't started it yet (no athlete_onboarding row) — progress defaults
@@ -481,14 +518,20 @@ export default function InfosPage() {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{step.title || step.type}</span>
-                    <span style={{
-                      fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
-                      background: done ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
-                      color: done ? '#22c55e' : '#f59e0b',
-                    }}>
+                    <button
+                      type="button"
+                      onClick={() => toggleStep(idx, done)}
+                      title={done ? 'Marquer comme non fait' : 'Marquer comme fait'}
+                      style={{
+                        fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
+                        background: done ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+                        color: done ? '#22c55e' : '#f59e0b',
+                        border: 'none', cursor: 'pointer',
+                      }}
+                    >
                       <i className={`fas ${done ? 'fa-check' : 'fa-clock'}`} style={{ marginRight: 4 }} />
                       {done ? labels.done : labels.pending}
-                    </span>
+                    </button>
                   </div>
                   {/* Show questionnaire answers if completed */}
                   {done && step.type === 'questionnaire' && step.questions?.length > 0 && (
