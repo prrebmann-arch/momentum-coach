@@ -31,13 +31,12 @@ const PHOTO_POSITIONS = [
 
 function isPhotoAnswer(answer: unknown): answer is string {
   if (typeof answer !== 'string' || !answer) return false
-  // Soit une URL http(s) avec extension image, soit un path athlete-photos
-  // ({user_id}/{date}_{position}.jpg ou similaire)
+  // URL http(s) athlete-photos OU se terminant par une extension image (avec ou sans query)
   if (/^https?:\/\//.test(answer)) {
-    return /\.(jpe?g|png|webp)/i.test(answer) || /athlete-photos/.test(answer)
+    return /athlete-photos/.test(answer) || /\.(jpe?g|png|webp)(\?.*)?$/i.test(answer)
   }
-  // Path : commence par un UUID ou ID, contient .jpg/.png/.webp
-  return /\.(jpe?g|png|webp)$/i.test(answer)
+  // Path style {uuid}/{date}_{position}.jpg — pas d'espace, pas de retour ligne, finit par .ext
+  return /^[\w-]+\/[\w._-]+\.(jpe?g|png|webp)$/i.test(answer)
 }
 
 function PhotoAnswer({ pathOrUrl }: { pathOrUrl: string }) {
