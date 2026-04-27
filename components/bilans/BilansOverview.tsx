@@ -92,7 +92,6 @@ function BilanTraitePopup({
     }
 
     const finalMsg = msg || 'Bilan verifie'
-    const body = 'Ton bilan a ete verifie : ' + finalMsg.charAt(0).toLowerCase() + finalMsg.slice(1)
 
     // Save in bilan_retours
     if (athleteId) {
@@ -112,7 +111,18 @@ function BilanTraitePopup({
     if (hasAudio && recorder.audioUrl) meta.audio_url = recorder.audioUrl
     if (hasLoom) meta.loom_url = loomUrl.trim()
 
-    await notifyAthlete(userId, 'bilan', 'Bilan traite', body, meta)
+    const title = hasAudio
+      ? 'Message vocal de ton coach'
+      : hasLoom
+        ? 'Video de ton coach'
+        : 'Retour bilan'
+    const body = hasAudio
+      ? (msg ? msg : "Ton coach t'a envoye un message vocal sur ton bilan")
+      : hasLoom
+        ? (msg ? msg : "Ton coach t'a envoye une video sur ton bilan")
+        : 'Ton bilan a ete verifie : ' + finalMsg.charAt(0).toLowerCase() + finalMsg.slice(1)
+
+    await notifyAthlete(userId, 'bilan', title, body, meta)
 
     onClose()
     onSent()
