@@ -1,5 +1,15 @@
 'use client'
 
+const METADATA_TIMEOUT_MS = 5000
+const SEEK_TIMEOUT_MS = 5000
+
+function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(msg)), ms)),
+  ])
+}
+
 /**
  * Extract a single JPEG frame from a video Blob, client-side.
  * Used to generate poster thumbnails without server-side ffmpeg.
@@ -13,18 +23,26 @@ export async function extractThumbnail(videoBlob: Blob): Promise<Blob> {
   video.preload = 'metadata'
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve()
-      video.onerror = () => reject(new Error('Failed to load video metadata for thumbnail'))
-    })
+    await withTimeout(
+      new Promise<void>((resolve, reject) => {
+        video.onloadedmetadata = () => resolve()
+        video.onerror = () => reject(new Error('Failed to load video metadata for thumbnail'))
+      }),
+      METADATA_TIMEOUT_MS,
+      'Thumbnail metadata timeout',
+    )
 
     const targetTime = Math.min(1, (video.duration || 2) / 2)
     video.currentTime = targetTime
 
-    await new Promise<void>((resolve, reject) => {
-      video.onseeked = () => resolve()
-      video.onerror = () => reject(new Error('Failed to seek video for thumbnail'))
-    })
+    await withTimeout(
+      new Promise<void>((resolve, reject) => {
+        video.onseeked = () => resolve()
+        video.onerror = () => reject(new Error('Failed to seek video for thumbnail'))
+      }),
+      SEEK_TIMEOUT_MS,
+      'Thumbnail seek timeout',
+    )
 
     const canvas = document.createElement('canvas')
     canvas.width = video.videoWidth || 1280
