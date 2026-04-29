@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
+import { getMealFoods, getActiveVariant, hasVariants, newVariantId } from '@/lib/nutrition'
 import FoodSearch, { type Aliment } from './FoodSearch'
 import styles from '@/styles/nutrition.module.css'
 
@@ -103,6 +104,29 @@ function calcMealTotals(foods: FoodItem[]): { kcal: number; p: number; g: number
   return { kcal, p, g, l }
 }
 
+/** Returns the foods of the active variant if the meal has variants, else `meal.foods`. */
+function getEditableFoods(meal: MealData, activeVariantId: string | undefined): FoodItem[] {
+  if (!hasVariants(meal)) return meal.foods ?? []
+  const v = getActiveVariant(meal, activeVariantId)
+  return v?.foods ?? []
+}
+
+/** Returns a new MealData with `newFoods` set on the active variant (or on `meal.foods` if no variants). */
+function setEditableFoods(meal: MealData, activeVariantId: string | undefined, newFoods: FoodItem[]): MealData {
+  if (!hasVariants(meal)) {
+    return { ...meal, foods: newFoods }
+  }
+  const variants = meal.variants!.map((v) =>
+    v.id === activeVariantId ? { ...v, foods: newFoods } : v,
+  )
+  // If the active id wasn't found, fall back to mutating the first variant (mirrors getActiveVariant fallback).
+  const found = activeVariantId && meal.variants!.some((v) => v.id === activeVariantId)
+  if (!found && variants.length > 0) {
+    variants[0] = { ...variants[0], foods: newFoods }
+  }
+  return { ...meal, variants }
+}
+
 export default function MealEditor({
   athleteId, planId, planName: initName, mealType: initMealType,
   initialMeals, macroOnly: initMacroOnly, initialMacros, initialOtherTab, onSaved, onBack,
@@ -115,6 +139,8 @@ export default function MealEditor({
 
   const [meals, setMeals] = useState<MealData[]>(initialMeals.length ? initialMeals : [{ foods: [] }])
   const [activeMealIdx, setActiveMealIdx] = useState(0)
+  // Map meal_index -> variant id active in editor (UI-only, not persisted).
+  const [activeVariantIdByMeal, setActiveVariantIdByMeal] = useState<Record<number, string>>({})
   const [planName, setPlanName] = useState(initName)
   const [mealType, setMealType] = useState<'training' | 'rest'>(initMealType)
   const [isMacroOnly, setIsMacroOnly] = useState(initMacroOnly || false)
@@ -168,8 +194,8 @@ export default function MealEditor({
 
   // Compute grand totals
   const totals = meals.reduce(
-    (acc, meal) => {
-      const mt = calcMealTotals(meal.foods)
+    (acc, meal, mealIdx) => {
+      const mt = calcMealTotals(getEditableFoods(meal, activeVariantIdByMeal[mealIdx]))
       return { kcal: acc.kcal + mt.kcal, p: acc.p + mt.p, g: acc.g + mt.g, l: acc.l + mt.l }
     },
     { kcal: 0, p: 0, g: 0, l: 0 },
@@ -178,29 +204,34 @@ export default function MealEditor({
   // Add food to active meal
   const addFood = useCallback((aliment: Aliment) => {
     setMeals((prev) => {
-      const copy = prev.map((m) => ({ ...m, foods: [...m.foods] }))
-      const idx = activeMealIdx < copy.length ? activeMealIdx : 0
-      copy[idx].foods.push({ aliment: aliment.nom, qte: 100, kcal: 0, p: 0, g: 0, l: 0 })
-      return copy
+      const idx = activeMealIdx < prev.length ? activeMealIdx : 0
+      return prev.map((m, i) => {
+        if (i !== idx) return m
+        const currentFoods = getEditableFoods(m, activeVariantIdByMeal[i])
+        const nextFoods = [...currentFoods, { aliment: aliment.nom, qte: 100, kcal: 0, p: 0, g: 0, l: 0 }]
+        return setEditableFoods(m, activeVariantIdByMeal[i], nextFoods)
+      })
     })
-  }, [activeMealIdx])
+  }, [activeMealIdx, activeVariantIdByMeal])
 
   // Update food quantity
   function updateFoodQty(mealIdx: number, foodIdx: number, qte: number) {
-    setMeals((prev) => {
-      const copy = prev.map((m) => ({ ...m, foods: [...m.foods] }))
-      copy[mealIdx].foods[foodIdx] = { ...copy[mealIdx].foods[foodIdx], qte }
-      return copy
-    })
+    setMeals((prev) => prev.map((m, i) => {
+      if (i !== mealIdx) return m
+      const currentFoods = getEditableFoods(m, activeVariantIdByMeal[i])
+      const nextFoods = currentFoods.map((f, fi) => fi === foodIdx ? { ...f, qte } : f)
+      return setEditableFoods(m, activeVariantIdByMeal[i], nextFoods)
+    }))
   }
 
   // Remove food
   function removeFood(mealIdx: number, foodIdx: number) {
-    setMeals((prev) => {
-      const copy = prev.map((m) => ({ ...m, foods: [...m.foods] }))
-      copy[mealIdx].foods.splice(foodIdx, 1)
-      return copy
-    })
+    setMeals((prev) => prev.map((m, i) => {
+      if (i !== mealIdx) return m
+      const currentFoods = getEditableFoods(m, activeVariantIdByMeal[i])
+      const nextFoods = currentFoods.filter((_, fi) => fi !== foodIdx)
+      return setEditableFoods(m, activeVariantIdByMeal[i], nextFoods)
+    }))
   }
 
   // Add meal
@@ -213,8 +244,9 @@ export default function MealEditor({
   function copyMeal(sourceIdx: number) {
     setMeals((prev) => {
       const source = prev[sourceIdx]
+      const sourceFoods = getEditableFoods(source, activeVariantIdByMeal[sourceIdx])
       const copy: MealData = {
-        foods: source.foods.map((f) => ({ ...f })),
+        foods: sourceFoods.map((f) => ({ ...f })),
         pre_workout: false,
         time: source.time,
       }
@@ -655,7 +687,8 @@ export default function MealEditor({
         {!isMacroOnly && (
           <div className={styles.mealsArea}>
             {meals.map((meal, mealIdx) => {
-              const mealTotals = calcMealTotals(meal.foods)
+              const mealFoods = getEditableFoods(meal, activeVariantIdByMeal[mealIdx])
+              const mealTotals = calcMealTotals(mealFoods)
               const isActive = mealIdx === activeMealIdx
               return (
                 <div
@@ -667,7 +700,7 @@ export default function MealEditor({
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span className={styles.mealTitle}>R{mealIdx + 1}</span>
                       {meal.pre_workout && <span className={styles.pwBadge}>Pre training</span>}
-                      {meal.foods.length > 0 && (
+                      {mealFoods.length > 0 && (
                         <span className={styles.mealHeadMacros}>
                           {mealTotals.kcal} kcal | P:{mealTotals.p.toFixed(1)}g G:{mealTotals.g.toFixed(1)}g L:{mealTotals.l.toFixed(1)}g
                         </span>
@@ -677,7 +710,7 @@ export default function MealEditor({
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
-                        onClick={(e) => { e.stopPropagation(); setClipboardMeal({ foods: meal.foods.map(f => ({ ...f })), pre_workout: meal.pre_workout, time: meal.time }); toast('Repas copie', 'success') }}
+                        onClick={(e) => { e.stopPropagation(); setClipboardMeal({ foods: mealFoods.map(f => ({ ...f })), pre_workout: meal.pre_workout, time: meal.time }); toast('Repas copie', 'success') }}
                         title="Copier ce repas"
                       >
                         <i className="fa-solid fa-copy" />
@@ -686,7 +719,7 @@ export default function MealEditor({
                         <button
                           type="button"
                           className="btn btn-outline btn-sm"
-                          onClick={(e) => { e.stopPropagation(); setMeals(prev => { const updated = [...prev]; updated[mealIdx] = { ...updated[mealIdx], foods: clipboardMeal.foods.map(f => ({ ...f })) }; return updated }) }}
+                          onClick={(e) => { e.stopPropagation(); setMeals(prev => prev.map((m, i) => i === mealIdx ? setEditableFoods(m, activeVariantIdByMeal[i], (clipboardMeal.foods ?? []).map(f => ({ ...f }))) : m)) }}
                           title="Coller le repas copie ici"
                         >
                           <i className="fa-solid fa-paste" />
@@ -725,7 +758,7 @@ export default function MealEditor({
 
                   {/* Food rows */}
                   <div>
-                    {meal.foods.map((food, foodIdx) => {
+                    {mealFoods.map((food, foodIdx) => {
                       const fm = calcFoodMacros(food)
                       return (
                         <div key={foodIdx} className={styles.foodRow}>
