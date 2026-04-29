@@ -46,34 +46,32 @@ export function useScreenRecorder() {
   const screenStreamRef = useRef<MediaStream | null>(null)
   const camStreamRef = useRef<MediaStream | null>(null)
   const micStreamRef = useRef<MediaStream | null>(null)
-  const compositingCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const compositorStopRef = useRef<(() => void) | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const animFrameRef = useRef<number | null>(null)
+  const secondsRef = useRef<number>(0)
   const dimensionsRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 })
   const mimeRef = useRef<{ mimeType: string; ext: 'mp4' | 'webm' } | null>(null)
-  const resolveStopRef = useRef<((res: RecorderResult) => void) | null>(null)
-  const rejectStopRef = useRef<((err: Error) => void) | null>(null)
 
   const cleanup = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
-    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null }
+    if (compositorStopRef.current) { compositorStopRef.current(); compositorStopRef.current = null }
     screenStreamRef.current?.getTracks().forEach(t => t.stop())
     camStreamRef.current?.getTracks().forEach(t => t.stop())
     micStreamRef.current?.getTracks().forEach(t => t.stop())
     screenStreamRef.current = null
     camStreamRef.current = null
     micStreamRef.current = null
-    compositingCanvasRef.current = null
     recorderRef.current = null
   }, [])
 
   const startRecording = useCallback(async (opts: StartRecordingOptions) => {
     setState({ isRecording: false, seconds: 0, errorMessage: null })
+    secondsRef.current = 0
 
     const mime = pickMimeType()
     if (!mime) {
-      setState({ isRecording: false, seconds: 0, errorMessage: 'Ton navigateur ne supporte pas l\'enregistrement vidéo. Utilise Chrome ou Safari récent.' })
+      setState({ isRecording: false, seconds: 0, errorMessage: "Ton navigateur ne supporte pas l'enregistrement vidéo. Utilise Chrome ou Safari récent." })
       throw new Error('No supported MIME type')
     }
     mimeRef.current = mime
@@ -85,7 +83,7 @@ export function useScreenRecorder() {
     try {
       screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false })
     } catch (err) {
-      setState({ isRecording: false, seconds: 0, errorMessage: 'Tu as refusé le partage d\'écran.' })
+      setState({ isRecording: false, seconds: 0, errorMessage: "Tu as refusé le partage d'écran." })
       throw err
     }
 
@@ -115,11 +113,18 @@ export function useScreenRecorder() {
     // Build the output stream
     let outputVideoStream: MediaStream
     if (camStream) {
-      const composited = await import('./../components/recorder/CanvasCompositor').then(m => m.startCompositing(screenStream, camStream!))
-      compositingCanvasRef.current = composited.canvas
-      animFrameRef.current = composited.animFrameId
-      outputVideoStream = composited.stream
-      dimensionsRef.current = { width: composited.canvas.width, height: composited.canvas.height }
+      try {
+        const composited = await import('./../components/recorder/CanvasCompositor').then(m => m.startCompositing(screenStream, camStream!))
+        compositorStopRef.current = composited.stop
+        outputVideoStream = composited.stream
+        dimensionsRef.current = { width: composited.canvas.width, height: composited.canvas.height }
+      } catch (err) {
+        screenStream.getTracks().forEach(t => t.stop())
+        micStream.getTracks().forEach(t => t.stop())
+        camStream.getTracks().forEach(t => t.stop())
+        setState({ isRecording: false, seconds: 0, errorMessage: 'Erreur composition webcam' })
+        throw err
+      }
     } else {
       outputVideoStream = screenStream
       const settings = screenStream.getVideoTracks()[0]?.getSettings()
@@ -144,17 +149,10 @@ export function useScreenRecorder() {
       if (e.data.size > 0) chunksRef.current.push(e.data)
     }
 
-    recorder.onstop = () => {
-      const durationS = state.seconds // captured in state, but we recompute below
-    }
-
-    // We don't rely on recorder.onstop to resolve; instead, stopRecording wires its own resolver.
-    // This sidesteps stale state from the closure.
-
-    // Auto-stop at hard cap
-    let secs = 0
+    // Auto-stop at hard cap; sync duration via secondsRef
     timerRef.current = setInterval(() => {
-      secs++
+      secondsRef.current = secondsRef.current + 1
+      const secs = secondsRef.current
       setState(s => ({ ...s, seconds: secs }))
       if (secs >= HARD_CAP_SECONDS && recorder.state === 'recording') {
         recorder.stop()
@@ -162,28 +160,25 @@ export function useScreenRecorder() {
     }, 1000)
 
     // If user stops sharing screen via browser UI, treat as stop
-    screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+    screenStream.getVideoTracks()[0]?.addEventListener('ended', () => {
       if (recorder.state === 'recording') recorder.stop()
     })
 
     recorder.start(1000) // chunk every 1s
     setState({ isRecording: true, seconds: 0, errorMessage: null })
-  }, [state.seconds])
+  }, [])
 
   const stopRecording = useCallback((): Promise<RecorderResult> => {
     return new Promise((resolve, reject) => {
       const recorder = recorderRef.current
       if (!recorder) { reject(new Error('No active recording')); return }
 
-      resolveStopRef.current = resolve
-      rejectStopRef.current = reject
-
       const finalize = () => {
         const mime = mimeRef.current!
         const blob = new Blob(chunksRef.current, { type: mime.mimeType.split(';')[0] })
         const result: RecorderResult = {
           blob,
-          durationS: state.seconds,
+          durationS: secondsRef.current,
           width: dimensionsRef.current.width,
           height: dimensionsRef.current.height,
           mimeType: mime.mimeType.split(';')[0],
@@ -194,14 +189,13 @@ export function useScreenRecorder() {
         resolve(result)
       }
 
-      if (recorder.state === 'inactive') {
-        finalize()
-      } else {
-        recorder.addEventListener('stop', finalize, { once: true })
+      // Always wait for the stop event to ensure final chunk is flushed
+      recorder.addEventListener('stop', finalize, { once: true })
+      if (recorder.state !== 'inactive') {
         recorder.stop()
       }
     })
-  }, [cleanup, state.seconds])
+  }, [cleanup])
 
   const cancelRecording = useCallback(() => {
     const recorder = recorderRef.current

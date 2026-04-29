@@ -1,13 +1,22 @@
 export interface CompositingResult {
   canvas: HTMLCanvasElement
   stream: MediaStream
-  animFrameId: number
+  stop: () => void
 }
 
 const BUBBLE_RADIUS = 90       // 180×180 webcam bubble
 const BUBBLE_INSET = 16
 const BUBBLE_BORDER = 4
 const FPS = 30
+
+async function waitForMetadata(video: HTMLVideoElement, timeoutMs = 5000): Promise<void> {
+  if (video.readyState >= 1 && video.videoWidth > 0) return
+  return new Promise<void>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('Video metadata timeout')), timeoutMs)
+    const onMeta = () => { clearTimeout(t); video.removeEventListener('loadedmetadata', onMeta); resolve() }
+    video.addEventListener('loadedmetadata', onMeta)
+  })
+}
 
 export async function startCompositing(
   screenStream: MediaStream,
@@ -18,28 +27,27 @@ export async function startCompositing(
   screenVideo.muted = true
   screenVideo.playsInline = true
   await screenVideo.play()
+  await waitForMetadata(screenVideo)
 
   const camVideo = document.createElement('video')
   camVideo.srcObject = camStream
   camVideo.muted = true
   camVideo.playsInline = true
   await camVideo.play()
+  await waitForMetadata(camVideo).catch(() => {})  // cam metadata is best-effort
 
   const canvas = document.createElement('canvas')
-  // Wait for screen video metadata before sizing canvas
-  if (screenVideo.videoWidth === 0) {
-    await new Promise<void>(r => {
-      screenVideo.onloadedmetadata = () => r()
-    })
-  }
   canvas.width = screenVideo.videoWidth
   canvas.height = screenVideo.videoHeight
 
   const ctx = canvas.getContext('2d', { alpha: false })
   if (!ctx) throw new Error('Canvas 2d context unavailable')
 
-  let animFrameId = 0
+  const idRef = { current: 0 }
+  let stopped = false
+
   const draw = () => {
+    if (stopped) return
     if (screenVideo.readyState >= 2) {
       ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height)
 
@@ -62,17 +70,26 @@ export async function startCompositing(
         ctx.restore()
 
         ctx.beginPath()
-        ctx.arc(cx, cy, BUBBLE_RADIUS, 0, Math.PI * 2)
+        ctx.arc(cx, cy, BUBBLE_RADIUS - BUBBLE_BORDER / 2, 0, Math.PI * 2)
         ctx.lineWidth = BUBBLE_BORDER
         ctx.strokeStyle = '#ffffff'
         ctx.stroke()
       }
     }
-    animFrameId = requestAnimationFrame(draw)
+    idRef.current = requestAnimationFrame(draw)
   }
-  draw()
+  idRef.current = requestAnimationFrame(draw)
 
   const stream = canvas.captureStream(FPS)
 
-  return { canvas, stream, animFrameId }
+  const stop = () => {
+    stopped = true
+    cancelAnimationFrame(idRef.current)
+    screenVideo.srcObject = null
+    camVideo.srcObject = null
+    screenVideo.remove()
+    camVideo.remove()
+  }
+
+  return { canvas, stream, stop }
 }
