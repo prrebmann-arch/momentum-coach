@@ -48,6 +48,7 @@ export default function RecordingPill() {
       <button
         className={`${styles.btn} ${styles.btnStop}`}
         onClick={() => { stopRecording() }}
+        disabled={isProcessing || isUploading}
         aria-label="Arrêter l'enregistrement"
       >
         <i className="fas fa-stop" /> Stop
@@ -57,6 +58,7 @@ export default function RecordingPill() {
         onClick={() => {
           if (confirm('Annuler cet enregistrement ? La vidéo sera perdue.')) cancelRecording()
         }}
+        disabled={isProcessing || isUploading}
         aria-label="Annuler"
       >
         Annuler

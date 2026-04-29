@@ -91,15 +91,18 @@ export default function RetoursPage() {
 
   async function deleteRetour(id: string) {
     if (!confirm('Supprimer ce retour video ?')) return
-    // Find the retour to know if there's video_path to clean
+    // Delete DB row FIRST so failures don't leave orphan storage entries
     const target = retours.find(r => r.id === id)
-    if (target?.video_path) {
-      // best-effort cleanup; RLS allows coach to delete own files
-      const paths = [target.video_path, target.thumbnail_path].filter(Boolean) as string[]
-      if (paths.length) await supabase.storage.from('coach-video').remove(paths)
-    }
     const { error } = await supabase.from('bilan_retours').delete().eq('id', id)
     if (error) { toast('Erreur lors de la suppression', 'error'); return }
+    // Then best-effort cleanup of storage files (RLS allows coach to delete own files)
+    if (target?.video_path) {
+      const paths = [target.video_path, target.thumbnail_path].filter(Boolean) as string[]
+      if (paths.length) {
+        try { await supabase.storage.from('coach-video').remove(paths) }
+        catch (e) { console.warn('storage cleanup failed (non-fatal):', e) }
+      }
+    }
     toast('Retour supprime', 'success')
     loadRetours()
   }
