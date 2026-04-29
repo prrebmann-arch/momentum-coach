@@ -13,6 +13,7 @@ import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import BilanAccordion from '@/components/bilans/BilanAccordion'
 import BilanProgressView from '@/components/bilans/BilanProgressView'
 import PhotoCompare from '@/components/bilans/PhotoCompare'
+import BilanPhotosUploadModal from '@/components/bilans/BilanPhotosUploadModal'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import NouveauRetourButton from '@/components/recorder/NouveauRetourButton'
@@ -64,7 +65,6 @@ function BilanTraitePopupInline({
     }
 
     const finalMsg = msg || 'Bilan verifie'
-    const body = 'Ton bilan a ete verifie : ' + finalMsg.charAt(0).toLowerCase() + finalMsg.slice(1)
 
     await supabase.from('bilan_retours').insert({
       athlete_id: athleteId,
@@ -80,7 +80,18 @@ function BilanTraitePopupInline({
     if (hasAudio && recorder.audioUrl) meta.audio_url = recorder.audioUrl
     if (hasLoom) meta.loom_url = loomUrl.trim()
 
-    await notifyAthlete(userId, 'bilan', 'Bilan traite', body, meta)
+    const title = hasAudio
+      ? 'Message vocal de ton coach'
+      : hasLoom
+        ? 'Video de ton coach'
+        : 'Retour bilan'
+    const body = hasAudio
+      ? (msg ? msg : "Ton coach t'a envoye un message vocal sur ton bilan")
+      : hasLoom
+        ? (msg ? msg : "Ton coach t'a envoye une video sur ton bilan")
+        : 'Ton bilan a ete verifie : ' + finalMsg.charAt(0).toLowerCase() + finalMsg.slice(1)
+
+    await notifyAthlete(userId, 'bilan', title, body, meta)
 
     onClose()
     toast('Notification envoyee !', 'success')
@@ -222,6 +233,9 @@ export default function BilansPage() {
   // Bilan traite popup state
   const [bilanTraiteOpen, setBilanTraiteOpen] = useState(false)
 
+  // Photo import modal state
+  const [photoImportOpen, setPhotoImportOpen] = useState(false)
+
   const loadData = useCallback(async () => {
     // Resolve user_id: from context or fallback via DB query
     let userId = athleteUserId
@@ -234,7 +248,7 @@ export default function BilansPage() {
     if (!bilans.length) setLoading(true)
     try {
       const [bilansRes, progRes, nutriRes, phasesRes, wlogsRes] = await Promise.all([
-        supabase.from('daily_reports').select('id, user_id, date, weight, sessions_executed, session_performance, energy, sleep_quality, steps, adherence, stress, soreness, session_enjoyment, cardio_minutes, bedtime, wakeup, sick_signs, positive_week, negative_week, general_notes, belly_measurement, hip_measurement, thigh_measurement, photo_front, photo_side, photo_back').eq('user_id', userId).order('date', { ascending: false }).limit(60),
+        supabase.from('daily_reports').select('id, user_id, date, weight, sessions_executed, session_performance, energy, sleep_quality, steps, adherence, stress, soreness, session_enjoyment, cardio_minutes, bedtime, wakeup, sick_signs, positive_week, negative_week, general_notes, belly_measurement, hip_measurement, thigh_measurement, photo_front, photo_side, photo_back').eq('user_id', userId).order('date', { ascending: false }).limit(365),
         supabase.from('programming_weeks').select('week_date, phase').eq('athlete_id', athleteId).order('week_date').limit(200),
         supabase.from('nutrition_plans').select('id, valid_from, meal_type, nom, calories_objectif, proteines, glucides, lipides, created_at').eq('athlete_id', athleteId).limit(50),
         supabase.from('roadmap_phases').select('phase, name, start_date, end_date').eq('athlete_id', athleteId).order('start_date').limit(50),
@@ -361,9 +375,9 @@ export default function BilansPage() {
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-        {/* View toggle */}
-        <div className={styles.bpToggle}>
+      {/* View toggle + actions (import photos + nouveau retour) */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div className={styles.bpToggle} style={{ marginBottom: 0 }}>
           <button
             className={`${styles.bpToggleBtn} ${viewMode === 'table' ? styles.bpToggleBtnActive : ''}`}
             onClick={() => setViewMode('table')}
@@ -379,7 +393,21 @@ export default function BilansPage() {
             Progression
           </button>
         </div>
-        <NouveauRetourButton athleteId={params.id} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setPhotoImportOpen(true)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)',
+              background: 'var(--bg2)', color: 'var(--text)', fontSize: 13, fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            <i className="fas fa-camera" />
+            Importer photos
+          </button>
+          <NouveauRetourButton athleteId={params.id} />
+        </div>
       </div>
 
       {viewMode === 'progress' ? (
@@ -410,6 +438,7 @@ export default function BilansPage() {
         initialType={photoType}
         initialDate={photoDate}
         photoHistory={photoHistory}
+        athleteName={(athlete || selectedAthlete) ? `${(athlete || selectedAthlete)!.prenom || ''}_${(athlete || selectedAthlete)!.nom || ''}`.trim() : undefined}
       />
 
       {bilanTraiteOpen && (athlete || selectedAthlete)?.user_id && (
@@ -420,6 +449,15 @@ export default function BilansPage() {
           onClose={() => setBilanTraiteOpen(false)}
         />
       )}
+
+      <BilanPhotosUploadModal
+        isOpen={photoImportOpen}
+        onClose={() => setPhotoImportOpen(false)}
+        athleteId={athleteId}
+        athletePrenom={(athlete || selectedAthlete)?.prenom || ''}
+        existingDates={bilans.map(b => b.date)}
+        onSuccess={() => { setPhotosLoaded(false); loadData() }}
+      />
     </>
   )
 }
