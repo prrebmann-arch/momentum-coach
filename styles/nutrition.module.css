@@ -620,3 +620,40 @@
   color: var(--text);
   border-color: var(--text3);
 }
+
+.compareWrap {
+  margin: 8px 0;
+  font-size: 12px;
+}
+.compareToggle {
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  color: var(--muted, #71717a);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+.compareTable {
+  margin-top: 4px;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.compareTable th,
+.compareTable td {
+  padding: 4px 8px;
+  text-align: right;
+}
+.compareTable th:first-child,
+.compareTable td:first-child {
+  text-align: left;
+}
+.compareTable th {
+  color: var(--muted, #71717a);
+  font-weight: 500;
+}
+.compareDelta td {
+  color: var(--muted, #71717a);
+  font-style: italic;
+}

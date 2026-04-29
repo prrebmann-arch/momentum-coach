@@ -181,6 +181,60 @@ function convertToSimpleMeal(meal: MealData, keepVariantId: string): MealData {
   }
 }
 
+function VariantCompareTable({ meal }: { meal: MealData }) {
+  const [open, setOpen] = useState(false)
+  if (!hasVariants(meal) || meal.variants!.length < 2) return null
+  const rows = meal.variants!.map((v) => ({
+    label: v.label,
+    totals: calcMealTotals(v.foods),
+  }))
+  const ref = rows[0].totals
+  return (
+    <div className={styles.compareWrap}>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
+        className={styles.compareToggle}
+      >
+        {open ? '▼' : '▶'} Comparer ({rows.length} variantes)
+      </button>
+      {open && (
+        <table className={styles.compareTable}>
+          <thead>
+            <tr><th>Variante</th><th>kcal</th><th>P</th><th>G</th><th>L</th></tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={`v${i}`}>
+                <td>{r.label}</td>
+                <td>{r.totals.kcal}</td>
+                <td>{r.totals.p.toFixed(1)}</td>
+                <td>{r.totals.g.toFixed(1)}</td>
+                <td>{r.totals.l.toFixed(1)}</td>
+              </tr>
+            ))}
+            {rows.slice(1).map((r, i) => {
+              const dKcal = r.totals.kcal - ref.kcal
+              const dP = r.totals.p - ref.p
+              const dG = r.totals.g - ref.g
+              const dL = r.totals.l - ref.l
+              return (
+                <tr key={`d${i}`} className={styles.compareDelta}>
+                  <td>Δ {r.label}</td>
+                  <td>{dKcal >= 0 ? '+' : ''}{dKcal}</td>
+                  <td>{dP >= 0 ? '+' : ''}{dP.toFixed(1)}</td>
+                  <td>{dG >= 0 ? '+' : ''}{dG.toFixed(1)}</td>
+                  <td>{dL >= 0 ? '+' : ''}{dL.toFixed(1)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
 export default function MealEditor({
   athleteId, planId, planName: initName, mealType: initMealType,
   initialMeals, macroOnly: initMacroOnly, initialMacros, initialOtherTab, onSaved, onBack,
@@ -894,6 +948,7 @@ export default function MealEditor({
                           Convertir en simple
                         </button>
                       </div>
+                      <VariantCompareTable meal={meal} />
                     </div>
                   )}
 
