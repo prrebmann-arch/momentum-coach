@@ -20,10 +20,24 @@ export interface FoodItem {
   allow_conversion?: boolean
 }
 
-export interface MealData {
+export interface MealVariant {
+  /** Stable UUID, généré côté client à la création. */
+  id: string
+  label: string
   foods: FoodItem[]
-  pre_workout?: boolean
+}
+
+export interface MealData {
+  /** Label du repas (ex: "Repas 1"). */
+  label?: string
+  /** Heure (HH:MM). */
   time?: string
+  /** Pré-workout flag. */
+  pre_workout?: boolean
+  /** Foods d'un repas SANS variantes. Mutuellement exclusif avec `variants`. */
+  foods?: FoodItem[]
+  /** Variantes d'un repas (max 3). Mutuellement exclusif avec `foods`. */
+  variants?: MealVariant[]
 }
 
 interface MealEditorProps {
