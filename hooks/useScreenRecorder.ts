@@ -27,7 +27,7 @@ const PREFERRED_MIMES: Array<{ mimeType: string; ext: 'mp4' | 'webm' }> = [
   { mimeType: 'video/webm;codecs=vp8,opus', ext: 'webm' },
 ]
 
-const VIDEO_BITS_PER_SECOND = 1_200_000  // 1.2 Mbps — see spec §3.1
+const VIDEO_BITS_PER_SECOND = 4_000_000  // 4 Mbps — HD-quality screen capture
 const HARD_CAP_SECONDS = 15 * 60
 
 function pickMimeType() {
@@ -41,6 +41,7 @@ function pickMimeType() {
 
 export function useScreenRecorder() {
   const [state, setState] = useState<ScreenRecorderState>({ isRecording: false, seconds: 0, errorMessage: null })
+  const [camStream, setCamStream] = useState<MediaStream | null>(null)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
@@ -70,6 +71,7 @@ export function useScreenRecorder() {
     camStreamRef.current = null
     micStreamRef.current = null
     recorderRef.current = null
+    setCamStream(null)
   }, [])
 
   const startRecording = useCallback(async (opts: StartRecordingOptions) => {
@@ -91,7 +93,14 @@ export function useScreenRecorder() {
     let camStream: MediaStream | null = null
 
     try {
-      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false })
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: { ideal: 30, max: 30 },
+          width: { ideal: 1920, max: 1920 },
+          height: { ideal: 1080, max: 1080 },
+        },
+        audio: false,
+      })
     } catch (err) {
       setState({ isRecording: false, seconds: 0, errorMessage: "Tu as refusé le partage d'écran." })
       throw err
@@ -119,6 +128,7 @@ export function useScreenRecorder() {
     screenStreamRef.current = screenStream
     micStreamRef.current = micStream
     camStreamRef.current = camStream
+    setCamStream(camStream)
 
     // Build the output stream
     let outputVideoStream: MediaStream
@@ -268,6 +278,7 @@ export function useScreenRecorder() {
     seconds: state.seconds,
     errorMessage: state.errorMessage,
     autoStoppedAt,
+    camStream,
     startRecording,
     stopRecording,
     cancelRecording,

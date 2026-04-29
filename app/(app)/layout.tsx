@@ -9,6 +9,7 @@ import styles from '@/styles/sidebar.module.css'
 import { RecorderProvider } from '@/contexts/RecorderContext'
 import RecordingPill from '@/components/recorder/RecordingPill'
 import RetourFinalizeModal from '@/components/recorder/RetourFinalizeModal'
+import WebcamPreview from '@/components/recorder/WebcamPreview'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -114,6 +115,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </main>
         </div>
         <RecordingPill />
+        <WebcamPreview />
         <RetourFinalizeModal />
       </RecorderProvider>
     </AthleteProvider>

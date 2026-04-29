@@ -75,6 +75,9 @@ interface RecorderContextValue {
   isUploading: boolean
   uploadProgress: number
 
+  // live preview
+  camStream: MediaStream | null
+
   // intent state
   athleteIdForNext: string | null
 
@@ -265,6 +268,7 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
     pending,
     isUploading,
     uploadProgress,
+    camStream: recorder.camStream,
     athleteIdForNext,
     startRecording,
     stopRecording,
