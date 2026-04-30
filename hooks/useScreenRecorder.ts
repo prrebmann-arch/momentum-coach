@@ -12,6 +12,14 @@ export interface StartRecordingOptions {
   withWebcam: boolean
   /** Pre-acquired cam stream (e.g. from modal preview) to avoid re-prompting */
   preAcquiredCamStream?: MediaStream | null
+  /**
+   * Recording mode:
+   * - 'screen' (default): captures the screen via getDisplayMedia + optional
+   *   cam overlay via in-page LiveCamBubble. Landscape output.
+   * - 'selfie': records ONLY the cam in portrait orientation (9:16). No screen
+   *   share, no getDisplayMedia prompt. Coach is the entire video.
+   */
+  mode?: 'screen' | 'selfie'
 }
 
 export interface RecorderResult {
@@ -92,40 +100,54 @@ export function useScreenRecorder() {
     }
     mimeRef.current = mime
 
-    let screenStream: MediaStream
+    const mode = opts.mode || 'screen'
+    let screenStream: MediaStream | null = null
     let micStream: MediaStream
     let camStream: MediaStream | null = null
 
-    try {
-      screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: { ideal: 30, max: 30 },
-          width: { ideal: 1920, max: 1920 },
-          height: { ideal: 1080, max: 1080 },
-        },
-        audio: false,
-      })
-    } catch (err) {
-      setState({ isRecording: false, seconds: 0, errorMessage: "Tu as refusé le partage d'écran." })
-      throw err
+    if (mode === 'screen') {
+      try {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            frameRate: { ideal: 30, max: 30 },
+            width: { ideal: 1920, max: 1920 },
+            height: { ideal: 1080, max: 1080 },
+          },
+          audio: false,
+        })
+      } catch (err) {
+        setState({ isRecording: false, seconds: 0, errorMessage: "Tu as refusé le partage d'écran." })
+        throw err
+      }
     }
 
     try {
       micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch (err) {
-      screenStream.getTracks().forEach(t => t.stop())
+      screenStream?.getTracks().forEach(t => t.stop())
       setState({ isRecording: false, seconds: 0, errorMessage: 'Accès au micro refusé.' })
       throw err
     }
 
-    if (opts.withWebcam) {
+    // Cam acquisition: required in selfie mode (cam IS the video), optional in screen mode
+    const needCam = mode === 'selfie' || opts.withWebcam
+    if (needCam) {
       if (opts.preAcquiredCamStream) {
         camStream = opts.preAcquiredCamStream
       } else {
         try {
-          camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 320 } })
+          // Selfie wants portrait 1080x1920; screen mode keeps the small square preview
+          const camConstraints: MediaTrackConstraints = mode === 'selfie'
+            ? {
+                width: { ideal: 1080 },
+                height: { ideal: 1920 },
+                aspectRatio: { ideal: 9 / 16 },
+                facingMode: 'user',
+              }
+            : { width: 320, height: 320 }
+          camStream = await navigator.mediaDevices.getUserMedia({ video: camConstraints })
         } catch (err) {
-          screenStream.getTracks().forEach(t => t.stop())
+          screenStream?.getTracks().forEach(t => t.stop())
           micStream.getTracks().forEach(t => t.stop())
           setState({ isRecording: false, seconds: 0, errorMessage: 'Accès à la webcam refusé.' })
           throw err
@@ -136,17 +158,24 @@ export function useScreenRecorder() {
     screenStreamRef.current = screenStream
     micStreamRef.current = micStream
     camStreamRef.current = camStream
-    setLiveCamStream(camStream)
+    // Live cam bubble is only useful in screen mode (in selfie the cam IS the video)
+    setLiveCamStream(mode === 'screen' ? camStream : null)
 
-    // Output = pure screen capture, no canvas compositing.
-    // The webcam appears in the recording only via the in-page LiveCamBubble
-    // that getDisplayMedia captures (when the coach shares "this tab" or
-    // "entire screen"). This avoids the previous "two bubbles" artifact
-    // where the canvas-composited cam (bottom-left) appeared in addition
-    // to the in-page bubble.
-    const outputVideoStream: MediaStream = screenStream
-    const settings = screenStream.getVideoTracks()[0]?.getSettings()
-    dimensionsRef.current = { width: settings?.width ?? 1920, height: settings?.height ?? 1080 }
+    // Output stream:
+    // - 'screen' → pure screen capture (cam appears via in-page LiveCamBubble if shared)
+    // - 'selfie' → cam stream directly, portrait orientation, no screen share at all
+    let outputVideoStream: MediaStream
+    if (mode === 'selfie' && camStream) {
+      outputVideoStream = camStream
+      const camSettings = camStream.getVideoTracks()[0]?.getSettings()
+      dimensionsRef.current = { width: camSettings?.width ?? 1080, height: camSettings?.height ?? 1920 }
+    } else if (screenStream) {
+      outputVideoStream = screenStream
+      const settings = screenStream.getVideoTracks()[0]?.getSettings()
+      dimensionsRef.current = { width: settings?.width ?? 1920, height: settings?.height ?? 1080 }
+    } else {
+      throw new Error('No video source available')
+    }
 
     // Combine output video + mic audio into a single stream for MediaRecorder
     const combined = new MediaStream([
@@ -214,10 +243,12 @@ export function useScreenRecorder() {
       }
     }, 1000)
 
-    // If user stops sharing screen via browser UI, treat as stop
-    screenStream.getVideoTracks()[0]?.addEventListener('ended', () => {
-      if (recorder.state === 'recording') recorder.stop()
-    })
+    // If user stops sharing screen via browser UI, treat as stop (screen mode only)
+    if (screenStream) {
+      screenStream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        if (recorder.state === 'recording') recorder.stop()
+      })
+    }
 
     recorder.start(1000) // chunk every 1s
     setState({ isRecording: true, seconds: 0, errorMessage: null })

@@ -94,6 +94,8 @@ interface RecorderContextValue {
     micDeviceId?: string
     camDeviceId?: string
     bubblePosition?: { xPct: number; yPct: number } | null
+    /** 'screen' (default) = screen capture + optional cam bubble; 'selfie' = portrait cam only */
+    mode?: 'screen' | 'selfie'
   }) => Promise<void>
   stopRecording: () => Promise<void>
   cancelRecording: () => void
@@ -157,16 +159,14 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
     micDeviceId?: string
     camDeviceId?: string
     bubblePosition?: { xPct: number; yPct: number } | null
+    mode?: 'screen' | 'selfie'
   }) => {
     cancelledRef.current = false
     setAthleteIdForNext(opts.athleteId)
     await recorder.startRecording({
       withWebcam: opts.withWebcam,
       preAcquiredCamStream: opts.preAcquiredCamStream,
-      preAcquiredMicStream: opts.preAcquiredMicStream,
-      micDeviceId: opts.micDeviceId,
-      camDeviceId: opts.camDeviceId,
-      bubblePosition: opts.bubblePosition,
+      mode: opts.mode,
     })
   }, [recorder])
 
