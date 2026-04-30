@@ -7,7 +7,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import VideoCompare from './VideoCompare'
-import NouveauRetourButton from '@/components/recorder/NouveauRetourButton'
+import NouveauRetourPanel from '@/components/recorder/NouveauRetourPanel'
 import styles from '@/styles/videos.module.css'
 
 interface VideoRow {
@@ -224,13 +224,10 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
 
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ marginBottom: 16 }}>
         <button className="btn btn-outline btn-sm" onClick={onBack}>
           <i className="fa-solid fa-arrow-left" /> Retour aux videos
         </button>
-        {video.athlete_id && (
-          <NouveauRetourButton athleteId={video.athlete_id} />
-        )}
       </div>
 
       <div
@@ -347,25 +344,20 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
         </div>
 
         <div className={styles.vidFeedbackPanel}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Cette vidéo</h3>
-          <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 16 }}>
-            Utilise <b>Nouveau retour</b> en haut pour envoyer une correction (texte, vocal, écran ou Loom). Ici tu peux comparer avec une session précédente et marquer la vidéo comme traitée.
-          </p>
-
           {compVideos.length > 0 ? (
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                marginBottom: 16,
-                padding: '10px 12px',
+                marginBottom: 12,
+                padding: '8px 12px',
                 background: 'var(--bg2, #1a1a1a)',
                 border: '1px solid var(--border-subtle, #2a2a2a)',
                 borderRadius: 8,
               }}
             >
-              <span style={{ fontSize: 13, fontWeight: 600 }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>
                 <i className="fa-solid fa-clone" style={{ marginRight: 6 }} />Vue comparative
               </span>
               <label className="toggle-switch" style={{ margin: 0 }}>
@@ -377,11 +369,10 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
                 <span className="switch" />
               </label>
             </div>
-          ) : (
-            <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 8, background: 'var(--bg2, #1a1a1a)', border: '1px solid var(--border-subtle, #2a2a2a)', fontSize: 12, color: 'var(--text3)' }}>
-              <i className="fa-solid fa-clone" style={{ marginRight: 6 }} />
-              Aucune session précédente pour comparer
-            </div>
+          ) : null}
+
+          {video.athlete_id && (
+            <NouveauRetourPanel athleteId={video.athlete_id} />
           )}
 
           <label
@@ -390,8 +381,11 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
               alignItems: 'center',
               gap: 8,
               cursor: 'pointer',
-              fontSize: 13,
-              marginBottom: 16,
+              fontSize: 12,
+              marginTop: 16,
+              marginBottom: 12,
+              paddingTop: 12,
+              borderTop: '1px solid var(--border-subtle)',
             }}
           >
             <input
@@ -403,12 +397,12 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
           </label>
 
           <button
-            className="btn btn-red"
+            className="btn btn-outline btn-sm"
             style={{ width: '100%' }}
             onClick={handleSave}
             disabled={saving}
           >
-            <i className="fa-solid fa-save" /> {saving ? 'Enregistrement...' : 'Enregistrer'}
+            <i className="fa-solid fa-save" /> {saving ? 'Enregistrement...' : 'Enregistrer statut'}
           </button>
 
           <div
