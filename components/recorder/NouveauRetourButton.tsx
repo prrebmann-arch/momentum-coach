@@ -29,7 +29,7 @@ type Tab = 'screen' | 'text'
 export default function NouveauRetourButton({ athleteId, onCreated, buttonClassName, label }: Props) {
   const { user } = useAuth()
   const { toast } = useToast()
-  const { startRecording, isRecording, isProcessing, isUploading, enterPipWithStream } = useRecorder()
+  const { startRecording, isRecording, isProcessing, isUploading } = useRecorder()
   const supabase = createClient()
 
   const [open, setOpen] = useState(false)
@@ -49,21 +49,9 @@ export default function NouveauRetourButton({ athleteId, onCreated, buttonClassN
   const [selectedMicId, setSelectedMicId] = useState<string>('')
   const [selectedCamId, setSelectedCamId] = useState<string>('')
 
-  // Bubble position (percent of canvas)
-  const BUBBLE_DEFAULT = { xPct: 0.07, yPct: 0.93 }
-  const [bubblePos, setBubblePos] = useState<{ xPct: number; yPct: number }>(() => {
-    if (typeof window === 'undefined') return BUBBLE_DEFAULT
-    try {
-      const saved = window.localStorage.getItem('recorder.bubblePos')
-      if (saved) {
-        const p = JSON.parse(saved) as { xPct: number; yPct: number }
-        if (typeof p.xPct === 'number' && typeof p.yPct === 'number') return p
-      }
-    } catch {}
-    return BUBBLE_DEFAULT
-  })
-  const stageRef = useRef<HTMLDivElement | null>(null)
-  const draggingRef = useRef(false)
+  // Bubble position fixed at bottom-left (drag UI removed — too complex pre-record;
+  // user can move the live PiP window OS-level instead).
+  const bubblePos = { xPct: 0.07, yPct: 0.93 }
 
   // ── Text/Loom/Audio state ──
   const [loomUrl, setLoomUrl] = useState('')
@@ -217,17 +205,11 @@ export default function NouveauRetourButton({ athleteId, onCreated, buttonClassN
       const micHandoff = previewMicStream
       const pos = withWebcam ? bubblePos : null
 
-      // Persist bubble position
-      if (typeof window !== 'undefined' && withWebcam) {
-        try { window.localStorage.setItem('recorder.bubblePos', JSON.stringify(bubblePos)) } catch {}
-      }
-
-      // CRITICAL: request PiP NOW while we still hold the user gesture
-      // (getDisplayMedia inside startRecording will consume the activation
-      // and prevent any subsequent PiP request).
-      if (withWebcam && camHandoff) {
-        await enterPipWithStream(camHandoff)
-      }
+      // NOTE: We do NOT call enterPipWithStream() here. PiP requires a
+      // user activation; getDisplayMedia (called inside startRecording)
+      // ALSO requires it and consumes it. Two gated APIs in one click
+      // handler = the second fails. PiP is triggered later by the user
+      // via the "Voir ma webcam" button in RecordingPill (fresh gesture).
 
       // Reset modal state — this also unmounts our local previews,
       // but we already handed off the streams to the recorder.
@@ -309,28 +291,6 @@ export default function NouveauRetourButton({ athleteId, onCreated, buttonClassN
     toast('Retour envoyé !', 'success')
     close()
     onCreated?.()
-  }
-
-  // Drag handlers
-  function onBubbleDragStart(e: React.PointerEvent) {
-    draggingRef.current = true
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-  }
-  function onBubbleDragMove(e: React.PointerEvent) {
-    if (!draggingRef.current) return
-    const stage = stageRef.current
-    if (!stage) return
-    const rect = stage.getBoundingClientRect()
-    const x = (e.clientX - rect.left) / rect.width
-    const y = (e.clientY - rect.top) / rect.height
-    setBubblePos({
-      xPct: Math.max(0.05, Math.min(0.95, x)),
-      yPct: Math.max(0.05, Math.min(0.95, y)),
-    })
-  }
-  function onBubbleDragEnd(e: React.PointerEvent) {
-    draggingRef.current = false
-    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
   }
 
   const recordingBusy = isRecording || isProcessing || isUploading
@@ -441,68 +401,37 @@ export default function NouveauRetourButton({ athleteId, onCreated, buttonClassN
                 </label>
 
                 {withWebcam && (
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      <i className="fas fa-arrows-alt" style={{ marginRight: 4 }} />Glisse la bulle où tu veux
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div
-                      ref={stageRef}
                       style={{
-                        position: 'relative',
-                        width: '100%',
-                        aspectRatio: '16 / 9',
-                        background: 'linear-gradient(135deg, #0a0a0a 0%, #1f1f1f 100%)',
-                        border: '1px solid var(--border, #2a2a2a)',
-                        borderRadius: 10,
-                        overflow: 'hidden',
-                        touchAction: 'none',
+                        width: 80, height: 80, borderRadius: '50%', overflow: 'hidden',
+                        background: '#000', border: '3px solid var(--primary, #5b8dff)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       }}
                     >
-                      <div
-                        onPointerDown={onBubbleDragStart}
-                        onPointerMove={onBubbleDragMove}
-                        onPointerUp={onBubbleDragEnd}
-                        onPointerCancel={onBubbleDragEnd}
-                        style={{
-                          position: 'absolute',
-                          width: 70,
-                          height: 70,
-                          borderRadius: '50%',
-                          overflow: 'hidden',
-                          background: '#000',
-                          border: '3px solid var(--primary, #5b8dff)',
-                          cursor: 'grab',
-                          left: `calc(${bubblePos.xPct * 100}% - 35px)`,
-                          top: `calc(${bubblePos.yPct * 100}% - 35px)`,
-                          touchAction: 'none',
-                          boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-                        }}
-                      >
-                        {previewError ? (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--danger, #ff6464)', textAlign: 'center', padding: 4, pointerEvents: 'none' }}>
-                            Cam KO
-                          </div>
-                        ) : previewCamStream ? (
-                          <video
-                            ref={previewVideoRef}
-                            autoPlay
-                            muted
-                            playsInline
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', pointerEvents: 'none' }}
-                          />
-                        ) : (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                            <i className="fas fa-spinner fa-spin" style={{ color: 'var(--text3)', fontSize: 16 }} />
-                          </div>
-                        )}
-                      </div>
+                      {previewError ? (
+                        <span style={{ fontSize: 9, color: 'var(--danger, #ff6464)', textAlign: 'center', padding: 4 }}>{previewError}</span>
+                      ) : previewCamStream ? (
+                        <video
+                          ref={previewVideoRef}
+                          autoPlay
+                          muted
+                          playsInline
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
+                        />
+                      ) : (
+                        <i className="fas fa-spinner fa-spin" style={{ color: 'var(--text3)' }} />
+                      )}
                     </div>
+                    <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+                      Aperçu webcam — apparaîtra en bas-gauche de la vidéo
+                    </span>
                   </div>
                 )}
 
                 <p style={{ fontSize: 12, color: 'var(--text3)', margin: 0 }}>
                   <i className="fas fa-info-circle" style={{ marginRight: 6 }} />
-                  Tu te verras dans une fenêtre flottante (Picture-in-Picture) pendant l&apos;enregistrement. 15 min max.
+                  Une fois l&apos;enregistrement lancé, clique sur <b>Voir ma webcam</b> dans la pill pour ouvrir ta cam en fenêtre flottante (Picture-in-Picture). 15 min max.
                 </p>
 
                 <div style={{ flex: 1 }} />
