@@ -220,7 +220,7 @@ function convertToSimpleMeal(meal: MealData, keepVariantId: string): MealData {
 }
 
 function VariantCompareCards({ meal }: { meal: MealData }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   if (!hasVariants(meal) || meal.variants!.length < 2) return null
   const rows = meal.variants!.map((v) => ({
     label: v.label,
