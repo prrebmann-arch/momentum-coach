@@ -48,10 +48,15 @@ interface NutritionPlan {
   created_at?: string
   macro_only?: boolean
   meal_times?: any
+  variant_label?: string | null
+  variant_order?: number
+  archived_at?: string | null
 }
 
 interface DietGroup {
   name: string
+  trainingVariants: NutritionPlan[]
+  restVariants: NutritionPlan[]
   tPlan: NutritionPlan | null
   rPlan: NutritionPlan | null
   isActive: boolean
@@ -125,17 +130,18 @@ export default function NutritionPage() {
       // Detail/editor views fetch full plan data on demand.
       const { data } = await supabase
         .from('nutrition_plans')
-        .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, actif, valid_from, created_at, macro_only, meal_times')
+        .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, actif, valid_from, created_at, macro_only, meal_times, variant_label, variant_order, archived_at')
         .eq('athlete_id', athleteId)
         .order('created_at', { ascending: false })
         .limit(50)
 
       const allPlans = (data || []) as NutritionPlan[]
-      setPlans(allPlans)
+      const activePlans = allPlans.filter((p) => !p.archived_at)
+      setPlans(activePlans)
 
       // Group by diet name
       const byName: Record<string, NutritionPlan[]> = {}
-      allPlans.forEach((p) => {
+      activePlans.forEach((p) => {
         const name = p.nom || 'Diete'
         if (!byName[name]) byName[name] = []
         byName[name].push(p)
@@ -144,18 +150,33 @@ export default function NutritionPage() {
       const groups: DietGroup[] = []
       Object.entries(byName).forEach(([name, dietPlans]) => {
         const sorted = [...dietPlans].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
-        const tPlan = sorted.find((p) => p.actif && (p.meal_type === 'training' || p.meal_type === 'entrainement'))
-          || sorted.find((p) => p.meal_type === 'training' || p.meal_type === 'entrainement') || null
-        const rPlan = sorted.find((p) => p.actif && (p.meal_type === 'rest' || p.meal_type === 'repos'))
-          || sorted.find((p) => p.meal_type === 'rest' || p.meal_type === 'repos') || null
+
+        const tAll = sorted.filter((p) => p.meal_type === 'training' || p.meal_type === 'entrainement')
+        const rAll = sorted.filter((p) => p.meal_type === 'rest' || p.meal_type === 'repos')
+
+        const tActive = tAll.filter((p) => p.actif).sort((a, b) => (a.variant_order ?? 0) - (b.variant_order ?? 0))
+        const rActive = rAll.filter((p) => p.actif).sort((a, b) => (a.variant_order ?? 0) - (b.variant_order ?? 0))
+
+        const tPlan = tActive[0] ?? tAll[0] ?? null
+        const rPlan = rActive[0] ?? rAll[0] ?? null
+
         const isActive = dietPlans.some((p) => p.actif)
-        groups.push({ name, tPlan, rPlan, isActive, versionCount: dietPlans.length, ids: dietPlans.map((p) => p.id) })
+        groups.push({
+          name,
+          trainingVariants: tActive.length ? tActive : (tAll[0] ? [tAll[0]] : []),
+          restVariants: rActive.length ? rActive : (rAll[0] ? [rAll[0]] : []),
+          tPlan,
+          rPlan,
+          isActive,
+          versionCount: dietPlans.length,
+          ids: dietPlans.map((p) => p.id),
+        })
       })
       groups.sort((a, b) => (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0))
       setDiets(groups)
 
       // Persist to sessionStorage for instant load next time
-      setPageCache(cacheKey, { plans: allPlans, diets: groups })
+      setPageCache(cacheKey, { plans: activePlans, diets: groups })
     } finally {
       setLoading(false)
     }
