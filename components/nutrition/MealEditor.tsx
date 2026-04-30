@@ -410,6 +410,16 @@ export default function MealEditor({
       updated.splice(sourceIdx + 1, 0, copy)
       return updated
     })
+    // Shift activeVariantIdByMeal indices > sourceIdx by +1 to keep them aligned with the new meals array.
+    setActiveVariantIdByMeal((prev) => {
+      const next: Record<number, string> = {}
+      Object.entries(prev).forEach(([k, v]) => {
+        const i = Number(k)
+        if (i > sourceIdx) next[i + 1] = v
+        else next[i] = v
+      })
+      return next
+    })
     setActiveMealIdx(sourceIdx + 1)
   }
 
@@ -417,6 +427,17 @@ export default function MealEditor({
   function removeMeal(idx: number) {
     if (meals.length <= 1) { toast('Minimum 1 repas', 'error'); return }
     setMeals((prev) => prev.filter((_, i) => i !== idx))
+    // Re-index activeVariantIdByMeal: drop idx, shift everything > idx by -1.
+    setActiveVariantIdByMeal((prev) => {
+      const next: Record<number, string> = {}
+      Object.entries(prev).forEach(([k, v]) => {
+        const i = Number(k)
+        if (i === idx) return
+        if (i > idx) next[i - 1] = v
+        else next[i] = v
+      })
+      return next
+    })
     if (activeMealIdx >= meals.length - 1) setActiveMealIdx(Math.max(0, meals.length - 2))
   }
 
