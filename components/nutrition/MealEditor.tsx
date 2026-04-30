@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
+import { getMealFoods, getActiveVariant, hasVariants, newVariantId } from '@/lib/nutrition'
 import FoodSearch, { type Aliment } from './FoodSearch'
 import styles from '@/styles/nutrition.module.css'
 
@@ -20,10 +21,24 @@ export interface FoodItem {
   allow_conversion?: boolean
 }
 
-export interface MealData {
+export interface MealVariant {
+  /** Stable UUID, généré côté client à la création. */
+  id: string
+  label: string
   foods: FoodItem[]
-  pre_workout?: boolean
+}
+
+export interface MealData {
+  /** Label du repas (ex: "Repas 1"). */
+  label?: string
+  /** Heure (HH:MM). */
   time?: string
+  /** Pré-workout flag. */
+  pre_workout?: boolean
+  /** Foods d'un repas SANS variantes. Mutuellement exclusif avec `variants`. */
+  foods?: FoodItem[]
+  /** Variantes d'un repas (max 3). Mutuellement exclusif avec `foods`. */
+  variants?: MealVariant[]
 }
 
 interface MealEditorProps {
@@ -89,6 +104,182 @@ function calcMealTotals(foods: FoodItem[]): { kcal: number; p: number; g: number
   return { kcal, p, g, l }
 }
 
+/**
+ * Sérialise les meals pour la persistance dans `meals_data` (nutrition_plans / nutrition_templates).
+ * - Préserve `variants` quand présent (avec `id` stable) — sinon préserve `foods`.
+ * - Strip défensif : seules les propriétés listées survivent (drop runtime-only fields).
+ * - `allow_conversion: false` est omis pour minimiser le JSON (seul `true` est conservé).
+ */
+function serializeMealsForSave(meals: MealData[]): MealData[] {
+  const serializeFood = (f: FoodItem): FoodItem => ({
+    aliment: f.aliment,
+    qte: f.qte,
+    kcal: f.kcal,
+    p: f.p,
+    g: f.g,
+    l: f.l,
+    ...(f.allow_conversion ? { allow_conversion: true } : {}),
+  })
+  return meals.map((m) => {
+    if (hasVariants(m)) {
+      return {
+        label: m.label,
+        time: m.time,
+        pre_workout: m.pre_workout,
+        variants: m.variants!.map((v) => ({
+          id: v.id,
+          label: v.label,
+          foods: v.foods.map(serializeFood),
+        })),
+      }
+    }
+    return {
+      label: m.label,
+      time: m.time,
+      pre_workout: m.pre_workout,
+      foods: (m.foods ?? []).map(serializeFood),
+    }
+  })
+}
+
+/** Returns the foods of the active variant if the meal has variants, else `meal.foods`. */
+function getEditableFoods(meal: MealData, activeVariantId: string | undefined): FoodItem[] {
+  if (!hasVariants(meal)) return meal.foods ?? []
+  const v = getActiveVariant(meal, activeVariantId)
+  return v?.foods ?? []
+}
+
+/** Returns a new MealData with `newFoods` set on the active variant (or on `meal.foods` if no variants). */
+function setEditableFoods(meal: MealData, activeVariantId: string | undefined, newFoods: FoodItem[]): MealData {
+  if (!hasVariants(meal)) {
+    return { ...meal, foods: newFoods }
+  }
+  const variants = meal.variants!.map((v) =>
+    v.id === activeVariantId ? { ...v, foods: newFoods } : v,
+  )
+  // If the active id wasn't found, fall back to mutating the first variant (mirrors getActiveVariant fallback).
+  const found = activeVariantId && meal.variants!.some((v) => v.id === activeVariantId)
+  if (!found && variants.length > 0) {
+    variants[0] = { ...variants[0], foods: newFoods }
+  }
+  return { ...meal, variants }
+}
+
+/** Ajoute une variante au repas. Si le repas est simple, le convertit en multi-variantes (la 1re variante reprend les foods existants). Max 3 variantes. */
+function addVariantToMeal(meal: MealData, label: string): MealData {
+  const newVariant: MealVariant = { id: newVariantId(), label, foods: [] }
+  if (!hasVariants(meal)) {
+    // Conversion repas simple → multi-variantes : la 1re variante reprend les foods existants.
+    const first: MealVariant = { id: newVariantId(), label: 'Variante 1', foods: meal.foods ?? [] }
+    return {
+      label: meal.label,
+      time: meal.time,
+      pre_workout: meal.pre_workout,
+      variants: [first, { ...newVariant, label }],
+    }
+  }
+  if (meal.variants!.length >= 3) return meal
+  return { ...meal, variants: [...meal.variants!, newVariant] }
+}
+
+/** Duplique une variante existante (max 3). */
+function duplicateVariant(meal: MealData, variantId: string): MealData {
+  if (!hasVariants(meal) || meal.variants!.length >= 3) return meal
+  const src = meal.variants!.find((v) => v.id === variantId)
+  if (!src) return meal
+  const copy: MealVariant = { id: newVariantId(), label: `${src.label} (copie)`, foods: [...src.foods] }
+  return { ...meal, variants: [...meal.variants!, copy] }
+}
+
+/** Renomme une variante. */
+function renameVariant(meal: MealData, variantId: string, newLabel: string): MealData {
+  if (!hasVariants(meal)) return meal
+  return {
+    ...meal,
+    variants: meal.variants!.map((v) => (v.id === variantId ? { ...v, label: newLabel } : v)),
+  }
+}
+
+/** Supprime une variante (garde au moins 1 variante). */
+function removeVariantFromMeal(meal: MealData, variantId: string): MealData {
+  if (!hasVariants(meal)) return meal
+  if (meal.variants!.length <= 1) return meal // protection : on garde au moins 1
+  return { ...meal, variants: meal.variants!.filter((v) => v.id !== variantId) }
+}
+
+/** Convertit un repas multi-variantes en repas simple, en gardant la variante choisie. */
+function convertToSimpleMeal(meal: MealData, keepVariantId: string): MealData {
+  if (!hasVariants(meal)) return meal
+  const keep = meal.variants!.find((v) => v.id === keepVariantId) ?? meal.variants![0]
+  return {
+    label: meal.label,
+    time: meal.time,
+    pre_workout: meal.pre_workout,
+    foods: keep.foods,
+  }
+}
+
+function VariantCompareCards({ meal }: { meal: MealData }) {
+  const [open, setOpen] = useState(true)
+  if (!hasVariants(meal) || meal.variants!.length < 2) return null
+  const rows = meal.variants!.map((v) => ({
+    label: v.label,
+    totals: calcMealTotals(v.foods),
+  }))
+  const ref = rows[0].totals
+  const fmtDelta = (v: number, decimals = 0) => {
+    const sign = v > 0 ? '+' : ''
+    return `${sign}${decimals ? v.toFixed(decimals) : Math.round(v)}`
+  }
+  const deltaClass = (v: number) => {
+    if (Math.abs(v) < 0.05) return styles.compareDeltaNeutral
+    return v > 0 ? styles.compareDeltaUp : styles.compareDeltaDown
+  }
+  return (
+    <div className={styles.compareWrap} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
+        className={styles.compareToggle}
+      >
+        {open ? '▼' : '▶'} Comparer ({rows.length} variantes)
+      </button>
+      {open && (
+        <div className={styles.compareCards}>
+          {rows.map((r, i) => {
+            const dKcal = r.totals.kcal - ref.kcal
+            const dP = r.totals.p - ref.p
+            const dG = r.totals.g - ref.g
+            const dL = r.totals.l - ref.l
+            return (
+              <div key={i} className={styles.compareCard}>
+                <div className={styles.compareCardLabel}>
+                  <span>{r.label}</span>
+                  {i === 0 && <span className={styles.compareCardRef}>Référence</span>}
+                </div>
+                <div className={styles.compareCardStats}>
+                  <span><b>{r.totals.kcal}</b> kcal</span>
+                  <span><b>{r.totals.p.toFixed(1)}</b> P</span>
+                  <span><b>{r.totals.g.toFixed(1)}</b> G</span>
+                  <span><b>{r.totals.l.toFixed(1)}</b> L</span>
+                </div>
+                {i > 0 && (
+                  <div className={styles.compareCardDelta}>
+                    <span className={deltaClass(dKcal)}>{fmtDelta(dKcal)} kcal</span>
+                    <span className={deltaClass(dP)}>{fmtDelta(dP, 1)} P</span>
+                    <span className={deltaClass(dG)}>{fmtDelta(dG, 1)} G</span>
+                    <span className={deltaClass(dL)}>{fmtDelta(dL, 1)} L</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function MealEditor({
   athleteId, planId, planName: initName, mealType: initMealType,
   initialMeals, macroOnly: initMacroOnly, initialMacros, initialOtherTab, onSaved, onBack,
@@ -101,6 +292,10 @@ export default function MealEditor({
 
   const [meals, setMeals] = useState<MealData[]>(initialMeals.length ? initialMeals : [{ foods: [] }])
   const [activeMealIdx, setActiveMealIdx] = useState(0)
+  // Map meal_index -> variant id active in editor (UI-only, not persisted).
+  const [activeVariantIdByMeal, setActiveVariantIdByMeal] = useState<Record<number, string>>({})
+  // Inline-edit state for variant labels: { mealIdx, variantId } | null.
+  const [editingVariantOf, setEditingVariantOf] = useState<{ mealIdx: number; variantId: string } | null>(null)
   const [planName, setPlanName] = useState(initName)
   const [mealType, setMealType] = useState<'training' | 'rest'>(initMealType)
   const [isMacroOnly, setIsMacroOnly] = useState(initMacroOnly || false)
@@ -154,8 +349,8 @@ export default function MealEditor({
 
   // Compute grand totals
   const totals = meals.reduce(
-    (acc, meal) => {
-      const mt = calcMealTotals(meal.foods)
+    (acc, meal, mealIdx) => {
+      const mt = calcMealTotals(getEditableFoods(meal, activeVariantIdByMeal[mealIdx]))
       return { kcal: acc.kcal + mt.kcal, p: acc.p + mt.p, g: acc.g + mt.g, l: acc.l + mt.l }
     },
     { kcal: 0, p: 0, g: 0, l: 0 },
@@ -164,29 +359,34 @@ export default function MealEditor({
   // Add food to active meal
   const addFood = useCallback((aliment: Aliment) => {
     setMeals((prev) => {
-      const copy = prev.map((m) => ({ ...m, foods: [...m.foods] }))
-      const idx = activeMealIdx < copy.length ? activeMealIdx : 0
-      copy[idx].foods.push({ aliment: aliment.nom, qte: 100, kcal: 0, p: 0, g: 0, l: 0 })
-      return copy
+      const idx = activeMealIdx < prev.length ? activeMealIdx : 0
+      return prev.map((m, i) => {
+        if (i !== idx) return m
+        const currentFoods = getEditableFoods(m, activeVariantIdByMeal[i])
+        const nextFoods = [...currentFoods, { aliment: aliment.nom, qte: 100, kcal: 0, p: 0, g: 0, l: 0 }]
+        return setEditableFoods(m, activeVariantIdByMeal[i], nextFoods)
+      })
     })
-  }, [activeMealIdx])
+  }, [activeMealIdx, activeVariantIdByMeal])
 
   // Update food quantity
   function updateFoodQty(mealIdx: number, foodIdx: number, qte: number) {
-    setMeals((prev) => {
-      const copy = prev.map((m) => ({ ...m, foods: [...m.foods] }))
-      copy[mealIdx].foods[foodIdx] = { ...copy[mealIdx].foods[foodIdx], qte }
-      return copy
-    })
+    setMeals((prev) => prev.map((m, i) => {
+      if (i !== mealIdx) return m
+      const currentFoods = getEditableFoods(m, activeVariantIdByMeal[i])
+      const nextFoods = currentFoods.map((f, fi) => fi === foodIdx ? { ...f, qte } : f)
+      return setEditableFoods(m, activeVariantIdByMeal[i], nextFoods)
+    }))
   }
 
   // Remove food
   function removeFood(mealIdx: number, foodIdx: number) {
-    setMeals((prev) => {
-      const copy = prev.map((m) => ({ ...m, foods: [...m.foods] }))
-      copy[mealIdx].foods.splice(foodIdx, 1)
-      return copy
-    })
+    setMeals((prev) => prev.map((m, i) => {
+      if (i !== mealIdx) return m
+      const currentFoods = getEditableFoods(m, activeVariantIdByMeal[i])
+      const nextFoods = currentFoods.filter((_, fi) => fi !== foodIdx)
+      return setEditableFoods(m, activeVariantIdByMeal[i], nextFoods)
+    }))
   }
 
   // Add meal
@@ -199,8 +399,9 @@ export default function MealEditor({
   function copyMeal(sourceIdx: number) {
     setMeals((prev) => {
       const source = prev[sourceIdx]
+      const sourceFoods = getEditableFoods(source, activeVariantIdByMeal[sourceIdx])
       const copy: MealData = {
-        foods: source.foods.map((f) => ({ ...f })),
+        foods: sourceFoods.map((f) => ({ ...f })),
         pre_workout: false,
         time: source.time,
       }
@@ -209,6 +410,16 @@ export default function MealEditor({
       updated.splice(sourceIdx + 1, 0, copy)
       return updated
     })
+    // Shift activeVariantIdByMeal indices > sourceIdx by +1 to keep them aligned with the new meals array.
+    setActiveVariantIdByMeal((prev) => {
+      const next: Record<number, string> = {}
+      Object.entries(prev).forEach(([k, v]) => {
+        const i = Number(k)
+        if (i > sourceIdx) next[i + 1] = v
+        else next[i] = v
+      })
+      return next
+    })
     setActiveMealIdx(sourceIdx + 1)
   }
 
@@ -216,6 +427,17 @@ export default function MealEditor({
   function removeMeal(idx: number) {
     if (meals.length <= 1) { toast('Minimum 1 repas', 'error'); return }
     setMeals((prev) => prev.filter((_, i) => i !== idx))
+    // Re-index activeVariantIdByMeal: drop idx, shift everything > idx by -1.
+    setActiveVariantIdByMeal((prev) => {
+      const next: Record<number, string> = {}
+      Object.entries(prev).forEach(([k, v]) => {
+        const i = Number(k)
+        if (i === idx) return
+        if (i > idx) next[i - 1] = v
+        else next[i] = v
+      })
+      return next
+    })
     if (activeMealIdx >= meals.length - 1) setActiveMealIdx(Math.max(0, meals.length - 2))
   }
 
@@ -242,16 +464,24 @@ export default function MealEditor({
     if (!user) return
     setSaving(true)
 
-    const mealsData = isMacroOnly ? [] : meals.map((m) => {
-      const foods = m.foods.map((f) => {
-        const macros = calcFoodMacros(f)
-        return { aliment: f.aliment, qte: f.qte, ...macros, allow_conversion: f.allow_conversion || false }
-      })
-      const obj: any = { foods }
-      if (m.pre_workout) obj.pre_workout = true
-      if (m.time) obj.time = m.time
-      return obj
+    // Recompute macros on each food before serialization, so DB always reflects
+    // the latest aliments_db values (qty changes, food edits, etc.).
+    const mealsWithFreshMacros: MealData[] = meals.map((m) => {
+      if (hasVariants(m)) {
+        return {
+          ...m,
+          variants: m.variants!.map((v) => ({
+            ...v,
+            foods: v.foods.map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
+          })),
+        }
+      }
+      return {
+        ...m,
+        foods: (m.foods ?? []).map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
+      }
     })
+    const mealsData = isMacroOnly ? [] : serializeMealsForSave(mealsWithFreshMacros)
 
     const finalTotals = isMacroOnly ? manualMacros : {
       calories: totals.kcal, proteines: Math.round(totals.p), glucides: Math.round(totals.g), lipides: Math.round(totals.l),
@@ -278,7 +508,8 @@ export default function MealEditor({
 
           let otherTab: any = { meals: [], macros: { calories: 0, proteines: 0, glucides: 0, lipides: 0 }, macro_only: false }
           if (otherTemp) {
-            const hasFood = otherTemp.meals.some((m) => m.foods.length > 0)
+            // hasFood doit prendre en compte variants ET foods.
+            const hasFood = otherTemp.meals.some((m) => getMealFoods(m).length > 0)
             const otherMacros = otherTemp.macros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 }
             const hasMacros = !!(otherMacros.calories || otherMacros.proteines || otherMacros.glucides || otherMacros.lipides)
 
@@ -289,20 +520,27 @@ export default function MealEditor({
                 macro_only: true,
               }
             } else if (hasFood) {
-              const otherMealsData = otherTemp.meals.map((m) => {
-                const foods = m.foods.map((f) => {
-                  const macros = calcFoodMacros(f)
-                  return { aliment: f.aliment, qte: f.qte, ...macros, allow_conversion: f.allow_conversion || false }
-                })
-                const obj: any = { foods }
-                if (m.pre_workout) obj.pre_workout = true
-                if (m.time) obj.time = m.time
-                return obj
+              const otherWithFreshMacros: MealData[] = otherTemp.meals.map((m) => {
+                if (hasVariants(m)) {
+                  return {
+                    ...m,
+                    variants: m.variants!.map((v) => ({
+                      ...v,
+                      foods: v.foods.map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
+                    })),
+                  }
+                }
+                return {
+                  ...m,
+                  foods: (m.foods ?? []).map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
+                }
               })
-              const otherTotals = otherMealsData.reduce(
-                (acc: { kcal: number; p: number; g: number; l: number }, m: any) => {
-                  (m.foods || []).forEach((f: any) => { acc.kcal += f.kcal || 0; acc.p += f.p || 0; acc.g += f.g || 0; acc.l += f.l || 0 })
-                  return acc
+              const otherMealsData = serializeMealsForSave(otherWithFreshMacros)
+              // Totals: pour les repas multi-variantes, on prend la 1re variante comme canonique.
+              const otherTotals = otherWithFreshMacros.reduce(
+                (acc, m) => {
+                  const t = calcMealTotals(getMealFoods(m))
+                  return { kcal: acc.kcal + t.kcal, p: acc.p + t.p, g: acc.g + t.g, l: acc.l + t.l }
                 },
                 { kcal: 0, p: 0, g: 0, l: 0 },
               )
@@ -380,23 +618,29 @@ export default function MealEditor({
         const otherType = mealType === 'training' ? 'rest' : 'training'
         const otherTemp = tempMeals[otherType]
         if (otherTemp) {
-          const hasFood = otherTemp.meals.some((m) => m.foods.length > 0)
+          const hasFood = otherTemp.meals.some((m) => getMealFoods(m).length > 0)
           const otherMacros = otherTemp.macros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 }
           const hasMacros = !!(otherMacros.calories || otherMacros.proteines || otherMacros.glucides || otherMacros.lipides)
           // Save if user filled foods OR (macro-only) entered any macro values
           if (hasFood || (isMacroOnly && hasMacros)) {
             await supabase.from('nutrition_plans').update({ actif: false }).eq('athlete_id', athleteId).eq('meal_type', otherType)
 
-            const otherMealsData = isMacroOnly ? [] : otherTemp.meals.map((m) => {
-              const foods = m.foods.map((f) => {
-                const macros = calcFoodMacros(f)
-                return { aliment: f.aliment, qte: f.qte, ...macros, allow_conversion: f.allow_conversion || false }
-              })
-              const obj: any = { foods }
-              if (m.pre_workout) obj.pre_workout = true
-              if (m.time) obj.time = m.time
-              return obj
+            const otherWithFreshMacros: MealData[] = otherTemp.meals.map((m) => {
+              if (hasVariants(m)) {
+                return {
+                  ...m,
+                  variants: m.variants!.map((v) => ({
+                    ...v,
+                    foods: v.foods.map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
+                  })),
+                }
+              }
+              return {
+                ...m,
+                foods: (m.foods ?? []).map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
+              }
             })
+            const otherMealsData = isMacroOnly ? [] : serializeMealsForSave(otherWithFreshMacros)
 
             let otherCal = 0, otherP = 0, otherG = 0, otherL = 0
             if (isMacroOnly) {
@@ -405,10 +649,11 @@ export default function MealEditor({
               otherG = otherMacros.glucides
               otherL = otherMacros.lipides
             } else {
-              const totals = otherMealsData.reduce(
-                (acc: { kcal: number; p: number; g: number; l: number }, m: any) => {
-                  (m.foods || []).forEach((f: any) => { acc.kcal += f.kcal || 0; acc.p += f.p || 0; acc.g += f.g || 0; acc.l += f.l || 0 })
-                  return acc
+              // Totals: 1re variante = canonique pour les repas multi-variantes.
+              const totals = otherWithFreshMacros.reduce(
+                (acc, m) => {
+                  const t = calcMealTotals(getMealFoods(m))
+                  return { kcal: acc.kcal + t.kcal, p: acc.p + t.p, g: acc.g + t.g, l: acc.l + t.l }
                 },
                 { kcal: 0, p: 0, g: 0, l: 0 },
               )
@@ -641,7 +886,8 @@ export default function MealEditor({
         {!isMacroOnly && (
           <div className={styles.mealsArea}>
             {meals.map((meal, mealIdx) => {
-              const mealTotals = calcMealTotals(meal.foods)
+              const mealFoods = getEditableFoods(meal, activeVariantIdByMeal[mealIdx])
+              const mealTotals = calcMealTotals(mealFoods)
               const isActive = mealIdx === activeMealIdx
               return (
                 <div
@@ -653,7 +899,7 @@ export default function MealEditor({
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span className={styles.mealTitle}>R{mealIdx + 1}</span>
                       {meal.pre_workout && <span className={styles.pwBadge}>Pre training</span>}
-                      {meal.foods.length > 0 && (
+                      {mealFoods.length > 0 && (
                         <span className={styles.mealHeadMacros}>
                           {mealTotals.kcal} kcal | P:{mealTotals.p.toFixed(1)}g G:{mealTotals.g.toFixed(1)}g L:{mealTotals.l.toFixed(1)}g
                         </span>
@@ -663,7 +909,7 @@ export default function MealEditor({
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
-                        onClick={(e) => { e.stopPropagation(); setClipboardMeal({ foods: meal.foods.map(f => ({ ...f })), pre_workout: meal.pre_workout, time: meal.time }); toast('Repas copie', 'success') }}
+                        onClick={(e) => { e.stopPropagation(); setClipboardMeal({ foods: mealFoods.map(f => ({ ...f })), pre_workout: meal.pre_workout, time: meal.time }); toast('Repas copie', 'success') }}
                         title="Copier ce repas"
                       >
                         <i className="fa-solid fa-copy" />
@@ -672,7 +918,7 @@ export default function MealEditor({
                         <button
                           type="button"
                           className="btn btn-outline btn-sm"
-                          onClick={(e) => { e.stopPropagation(); setMeals(prev => { const updated = [...prev]; updated[mealIdx] = { ...updated[mealIdx], foods: clipboardMeal.foods.map(f => ({ ...f })) }; return updated }) }}
+                          onClick={(e) => { e.stopPropagation(); setMeals(prev => prev.map((m, i) => i === mealIdx ? setEditableFoods(m, activeVariantIdByMeal[i], (clipboardMeal.foods ?? []).map(f => ({ ...f }))) : m)) }}
                           title="Coller le repas copie ici"
                         >
                           <i className="fa-solid fa-paste" />
@@ -698,6 +944,172 @@ export default function MealEditor({
                     </div>
                   </div>
 
+                  {/* Variant tabs (multi-variant meal) */}
+                  {hasVariants(meal) && (
+                    <>
+                      <div className={styles.variantTabs} onClick={(e) => e.stopPropagation()}>
+                        {meal.variants!.map((v) => {
+                          const isActiveVariant = (activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id) === v.id
+                          const isEditing = editingVariantOf?.mealIdx === mealIdx && editingVariantOf?.variantId === v.id
+                          const canDelete = meal.variants!.length > 1
+                          return (
+                            <span
+                              key={v.id}
+                              className={`${styles.variantTab} ${isActiveVariant ? styles.variantTabActive : ''}`}
+                              onClick={() => {
+                                if (isEditing) return
+                                if (isActiveVariant) {
+                                  // Click on already-active tab → enter edit mode
+                                  setEditingVariantOf({ mealIdx, variantId: v.id })
+                                } else {
+                                  setActiveVariantIdByMeal({ ...activeVariantIdByMeal, [mealIdx]: v.id })
+                                }
+                              }}
+                            >
+                              {isEditing ? (
+                                <input
+                                  type="text"
+                                  className={styles.variantTabEdit}
+                                  defaultValue={v.label}
+                                  autoFocus
+                                  onClick={(e) => e.stopPropagation()}
+                                  onFocus={(e) => e.currentTarget.select()}
+                                  onBlur={(e) => {
+                                    const newLabel = e.currentTarget.value.trim()
+                                    if (newLabel && newLabel !== v.label) {
+                                      const updated = renameVariant(meal, v.id, newLabel)
+                                      const newMeals = [...meals]
+                                      newMeals[mealIdx] = updated
+                                      setMeals(newMeals)
+                                    }
+                                    setEditingVariantOf(null)
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.currentTarget.blur()
+                                    } else if (e.key === 'Escape') {
+                                      // Cancel: reset value and blur without saving
+                                      e.currentTarget.value = v.label
+                                      setEditingVariantOf(null)
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <>
+                                  <span className={styles.variantTabLabel}>{v.label}</span>
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      className={styles.variantTabRemove}
+                                      title="Supprimer cette variante"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (!confirm(`Supprimer la variante "${v.label}" ?`)) return
+                                        const updated = removeVariantFromMeal(meal, v.id)
+                                        const newMeals = [...meals]
+                                        newMeals[mealIdx] = updated
+                                        setMeals(newMeals)
+                                        // If we just deleted the active variant, point to the first remaining.
+                                        const activeId = activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id
+                                        if (activeId === v.id && updated.variants && updated.variants.length > 0) {
+                                          setActiveVariantIdByMeal({ ...activeVariantIdByMeal, [mealIdx]: updated.variants[0].id })
+                                        }
+                                      }}
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </span>
+                          )
+                        })}
+                        {meal.variants!.length < 3 && (
+                          <button
+                            type="button"
+                            className={styles.variantTabAdd}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const nextNum = (meal.variants?.length ?? 0) + 1
+                              const label = `Variante ${nextNum}`
+                              const updated = addVariantToMeal(meal, label)
+                              const newMeals = [...meals]
+                              newMeals[mealIdx] = updated
+                              setMeals(newMeals)
+                              // Switch to the new variant + enter edit mode immediately.
+                              const newVariant = updated.variants?.[updated.variants.length - 1]
+                              if (newVariant) {
+                                setActiveVariantIdByMeal({ ...activeVariantIdByMeal, [mealIdx]: newVariant.id })
+                                setEditingVariantOf({ mealIdx, variantId: newVariant.id })
+                              }
+                            }}
+                          >
+                            + Option
+                          </button>
+                        )}
+                        <div className={styles.variantActions}>
+                          <button
+                            type="button"
+                            title="Dupliquer la variante active"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const activeId = activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id
+                              const updated = duplicateVariant(meal, activeId)
+                              if (updated === meal) return
+                              const newMeals = [...meals]
+                              newMeals[mealIdx] = updated
+                              setMeals(newMeals)
+                            }}
+                            disabled={meal.variants!.length >= 3}
+                          >
+                            Dupliquer
+                          </button>
+                          <button
+                            type="button"
+                            title="Convertir en repas simple"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!confirm('Convertir en repas simple ? Les autres variantes seront perdues.')) return
+                              const activeId = activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id
+                              const updated = convertToSimpleMeal(meal, activeId)
+                              const newMeals = [...meals]
+                              newMeals[mealIdx] = updated
+                              setMeals(newMeals)
+                            }}
+                          >
+                            Convertir en simple
+                          </button>
+                        </div>
+                      </div>
+                      {/* Comparator: full-width row below tabs */}
+                      <VariantCompareCards meal={meal} />
+                    </>
+                  )}
+
+                  {/* "Add variant" button (simple meal) */}
+                  {!hasVariants(meal) && (
+                    <button
+                      type="button"
+                      className={styles.addVariantBtn}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        // Auto-label the new variant. After conversion: existing foods → "Variante 1", new empty → "Variante 2".
+                        const updated = addVariantToMeal(meal, 'Variante 2')
+                        const newMeals = [...meals]
+                        newMeals[mealIdx] = updated
+                        setMeals(newMeals)
+                        // Switch to the new variant + enter edit mode.
+                        if (updated.variants && updated.variants.length >= 2) {
+                          const newVariant = updated.variants[updated.variants.length - 1]
+                          setActiveVariantIdByMeal({ ...activeVariantIdByMeal, [mealIdx]: newVariant.id })
+                          setEditingVariantOf({ mealIdx, variantId: newVariant.id })
+                        }
+                      }}
+                    >
+                      + Ajouter une option
+                    </button>
+                  )}
+
                   {/* Food header */}
                   <div className={styles.foodHeader}>
                     <span className={styles.fhName}>Aliment</span>
@@ -711,7 +1123,7 @@ export default function MealEditor({
 
                   {/* Food rows */}
                   <div>
-                    {meal.foods.map((food, foodIdx) => {
+                    {mealFoods.map((food, foodIdx) => {
                       const fm = calcFoodMacros(food)
                       return (
                         <div key={foodIdx} className={styles.foodRow}>
