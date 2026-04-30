@@ -16,7 +16,6 @@ import PhotoCompare from '@/components/bilans/PhotoCompare'
 import BilanPhotosUploadModal from '@/components/bilans/BilanPhotosUploadModal'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
-import NouveauRetourButton from '@/components/recorder/NouveauRetourButton'
 import type { DailyReport } from '@/components/bilans/BilanAccordion'
 import type { PhotoType, PhotoEntry } from '@/components/bilans/PhotoCompare'
 import type { Athlete } from '@/lib/types'
@@ -406,7 +405,6 @@ export default function BilansPage() {
             <i className="fas fa-camera" />
             Importer photos
           </button>
-          <NouveauRetourButton athleteId={params.id} />
         </div>
       </div>
 
