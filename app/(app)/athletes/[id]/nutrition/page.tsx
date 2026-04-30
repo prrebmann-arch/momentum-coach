@@ -12,6 +12,7 @@ import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import Toggle from '@/components/ui/Toggle'
 import Skeleton from '@/components/ui/Skeleton'
 import { type MealData } from '@/components/nutrition/MealEditor'
+import { getMealFoods, newVariantId } from '@/lib/nutrition'
 import styles from '@/styles/nutrition.module.css'
 
 const MealEditor = dynamic(() => import('@/components/nutrition/MealEditor'), {
@@ -48,10 +49,15 @@ interface NutritionPlan {
   created_at?: string
   macro_only?: boolean
   meal_times?: any
+  variant_label?: string | null
+  variant_order?: number
+  archived_at?: string | null
 }
 
 interface DietGroup {
   name: string
+  trainingVariants: NutritionPlan[]
+  restVariants: NutritionPlan[]
   tPlan: NutritionPlan | null
   rPlan: NutritionPlan | null
   isActive: boolean
@@ -65,9 +71,78 @@ interface PendingChange {
   foodIndex: number
   type: 'replace' | 'extra'
   foodData: any
+  /** Pour les repas multi-variantes : variante choisie par l'athlete dans son log. */
+  chosenVariantId?: string | null
 }
 
 type View = 'list' | 'editor' | 'detail' | 'history'
+
+function DayVariantTabs({
+  variants,
+  selectedId,
+  onSelect,
+  onAddVariant,
+  onRenameVariant,
+  onArchiveVariant,
+}: {
+  variants: NutritionPlan[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+  onAddVariant: () => void
+  onRenameVariant: (id: string, label: string) => void
+  onArchiveVariant: (id: string) => void
+}) {
+  if (variants.length === 0) return null
+  // Si 1 seule variante sans label → on cache l'UI (singleton legacy).
+  if (variants.length === 1 && !variants[0].variant_label) {
+    return null
+  }
+  return (
+    <div className={styles.dayVariantTabs}>
+      {variants.map((v) => (
+        <div
+          key={v.id}
+          className={`${styles.dayVariantTab} ${v.id === selectedId ? styles.dayVariantTabActive : ''}`}
+        >
+          <button type="button" onClick={() => onSelect(v.id)}>
+            {v.variant_label || 'Standard'}
+          </button>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            title="Renommer"
+            onClick={() => {
+              const label = prompt('Label de variante', v.variant_label || '')
+              if (label != null) onRenameVariant(v.id, label)
+            }}
+          >
+            &#9998;
+          </button>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            title="Archiver"
+            onClick={() => {
+              if (variants.length <= 1) {
+                alert('Impossible : variante unique. Supprime d\'abord la diete entiere.')
+                return
+              }
+              if (!confirm(`Archiver la variante "${v.variant_label || 'Standard'}" ?`)) return
+              onArchiveVariant(v.id)
+            }}
+          >
+            &#128465;
+          </button>
+        </div>
+      ))}
+      {variants.length < 4 && (
+        <button type="button" className={styles.dayVariantAdd} onClick={onAddVariant}>
+          + Variante
+        </button>
+      )}
+    </div>
+  )
+}
 
 export default function NutritionPage() {
   const params = useParams<{ id: string }>()
@@ -97,7 +172,11 @@ export default function NutritionPage() {
   // Detail view
   const [detailPlan, setDetailPlan] = useState<NutritionPlan | null>(null)
   const [detailType, setDetailType] = useState<'training' | 'rest'>('training')
-  const [detailDiet, setDetailDiet] = useState<{ tPlan: NutritionPlan | null; rPlan: NutritionPlan | null } | null>(null)
+  const [detailDiet, setDetailDiet] = useState<{ name: string; tPlan: NutritionPlan | null; rPlan: NutritionPlan | null; trainingVariants: NutritionPlan[]; restVariants: NutritionPlan[] } | null>(null)
+
+  // Selected variant per diet (keyed by diet name)
+  const [selectedTrainingByDiet, setSelectedTrainingByDiet] = useState<Record<string, string>>({})
+  const [selectedRestByDiet, setSelectedRestByDiet] = useState<Record<string, string>>({})
 
   // Template picker state
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
@@ -125,17 +204,18 @@ export default function NutritionPage() {
       // Detail/editor views fetch full plan data on demand.
       const { data } = await supabase
         .from('nutrition_plans')
-        .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, actif, valid_from, created_at, macro_only, meal_times')
+        .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, actif, valid_from, created_at, macro_only, meal_times, variant_label, variant_order, archived_at')
         .eq('athlete_id', athleteId)
         .order('created_at', { ascending: false })
         .limit(50)
 
       const allPlans = (data || []) as NutritionPlan[]
-      setPlans(allPlans)
+      const activePlans = allPlans.filter((p) => !p.archived_at)
+      setPlans(activePlans)
 
       // Group by diet name
       const byName: Record<string, NutritionPlan[]> = {}
-      allPlans.forEach((p) => {
+      activePlans.forEach((p) => {
         const name = p.nom || 'Diete'
         if (!byName[name]) byName[name] = []
         byName[name].push(p)
@@ -144,18 +224,33 @@ export default function NutritionPage() {
       const groups: DietGroup[] = []
       Object.entries(byName).forEach(([name, dietPlans]) => {
         const sorted = [...dietPlans].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
-        const tPlan = sorted.find((p) => p.actif && (p.meal_type === 'training' || p.meal_type === 'entrainement'))
-          || sorted.find((p) => p.meal_type === 'training' || p.meal_type === 'entrainement') || null
-        const rPlan = sorted.find((p) => p.actif && (p.meal_type === 'rest' || p.meal_type === 'repos'))
-          || sorted.find((p) => p.meal_type === 'rest' || p.meal_type === 'repos') || null
+
+        const tAll = sorted.filter((p) => p.meal_type === 'training' || p.meal_type === 'entrainement')
+        const rAll = sorted.filter((p) => p.meal_type === 'rest' || p.meal_type === 'repos')
+
+        const tActive = tAll.filter((p) => p.actif).sort((a, b) => (a.variant_order ?? 0) - (b.variant_order ?? 0))
+        const rActive = rAll.filter((p) => p.actif).sort((a, b) => (a.variant_order ?? 0) - (b.variant_order ?? 0))
+
+        const tPlan = tActive[0] ?? tAll[0] ?? null
+        const rPlan = rActive[0] ?? rAll[0] ?? null
+
         const isActive = dietPlans.some((p) => p.actif)
-        groups.push({ name, tPlan, rPlan, isActive, versionCount: dietPlans.length, ids: dietPlans.map((p) => p.id) })
+        groups.push({
+          name,
+          trainingVariants: tActive.length ? tActive : (tAll[0] ? [tAll[0]] : []),
+          restVariants: rActive.length ? rActive : (rAll[0] ? [rAll[0]] : []),
+          tPlan,
+          rPlan,
+          isActive,
+          versionCount: dietPlans.length,
+          ids: dietPlans.map((p) => p.id),
+        })
       })
       groups.sort((a, b) => (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0))
       setDiets(groups)
 
       // Persist to sessionStorage for instant load next time
-      setPageCache(cacheKey, { plans: allPlans, diets: groups })
+      setPageCache(cacheKey, { plans: activePlans, diets: groups })
     } finally {
       setLoading(false)
     }
@@ -220,7 +315,7 @@ export default function NutritionPage() {
       // Fetch current plan
       const { data: plan } = await supabase
         .from('nutrition_plans')
-        .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, macro_only, meal_times')
+        .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, macro_only, meal_times, variant_label, variant_order')
         .eq('id', planId)
         .single()
       if (!plan) continue
@@ -231,19 +326,36 @@ export default function NutritionPage() {
         meals = typeof plan.meals_data === 'string' ? JSON.parse(plan.meals_data) : (plan.meals_data || [])
       } catch { meals = [] }
 
-      // Normalize meals to { foods: [...] } format
+      // Normalize meals: preserve variants, otherwise wrap in { foods: [] }
       meals = meals.map((m: any) => {
+        if (m && !Array.isArray(m) && Array.isArray(m.variants) && m.variants.length > 0) return m
         if (m && !Array.isArray(m) && m.foods) return m
         return { foods: Array.isArray(m) ? m : [] }
       })
 
+      /** Get a mutable foods array for the meal at mealIndex, picking the right variant when applicable. */
+      function getFoodsTarget(mealIndex: number, chosenVariantId: string | null | undefined): any[] | null {
+        const meal = meals[mealIndex]
+        if (!meal) return null
+        if (Array.isArray(meal.variants) && meal.variants.length > 0) {
+          // Pick chosen variant or fallback to the first one
+          const variant = (chosenVariantId && meal.variants.find((v: any) => v.id === chosenVariantId)) || meal.variants[0]
+          if (!variant) return null
+          if (!Array.isArray(variant.foods)) variant.foods = []
+          return variant.foods
+        }
+        if (!Array.isArray(meal.foods)) meal.foods = []
+        return meal.foods
+      }
+
       // Apply changes
       planChanges.forEach((change) => {
+        const foodsArr = getFoodsTarget(change.mealIndex, change.chosenVariantId)
+        if (!foodsArr) return
         if (change.type === 'replace') {
-          // Replace the food at the given index with the replacement data
-          if (meals[change.mealIndex]?.foods?.[change.foodIndex]) {
+          if (foodsArr[change.foodIndex]) {
             const repl = change.foodData
-            meals[change.mealIndex].foods[change.foodIndex] = {
+            foodsArr[change.foodIndex] = {
               aliment: repl.aliment || repl.nom || '?',
               qte: repl.qte || 0,
               kcal: repl.kcal || 0,
@@ -253,26 +365,25 @@ export default function NutritionPage() {
             }
           }
         } else if (change.type === 'extra') {
-          // Add extra food to the meal
-          if (meals[change.mealIndex]) {
-            if (!meals[change.mealIndex].foods) meals[change.mealIndex].foods = []
-            const ex = change.foodData
-            meals[change.mealIndex].foods.push({
-              aliment: ex.aliment || ex.nom || '?',
-              qte: ex.qte || 0,
-              kcal: ex.kcal || 0,
-              p: ex.p || 0,
-              g: ex.g || 0,
-              l: ex.l || 0,
-            })
-          }
+          const ex = change.foodData
+          foodsArr.push({
+            aliment: ex.aliment || ex.nom || '?',
+            qte: ex.qte || 0,
+            kcal: ex.kcal || 0,
+            p: ex.p || 0,
+            g: ex.g || 0,
+            l: ex.l || 0,
+          })
         }
       })
 
-      // Recalculate total macros from meals
+      // Recalculate total macros: for variant meals, fall back to first variant (coach default).
       let totalK = 0, totalP = 0, totalG = 0, totalL = 0
       meals.forEach((m: any) => {
-        (m.foods || []).forEach((f: any) => {
+        const foods: any[] = Array.isArray(m.variants) && m.variants.length > 0
+          ? (m.variants[0].foods || [])
+          : (m.foods || [])
+        foods.forEach((f: any) => {
           totalK += parseFloat(f.kcal) || 0
           totalP += parseFloat(f.p) || 0
           totalG += parseFloat(f.g) || 0
@@ -295,6 +406,9 @@ export default function NutritionPage() {
         valid_from: new Date().toISOString().split('T')[0],
         macro_only: plan.macro_only || false,
         meal_times: plan.meal_times,
+        // Conserver la variante de jour si la source en était une (sinon la nouvelle version perd son label).
+        variant_label: (plan as any).variant_label ?? null,
+        variant_order: (plan as any).variant_order ?? 0,
       })
 
       if (error) {
@@ -305,19 +419,42 @@ export default function NutritionPage() {
           await supabase.from('nutrition_plans').update({ actif: false }).eq('id', planId)
         }
 
-        // Duplicate the complementary plan (ON<->OFF) so the version pair stays complete
+        // Duplicate the complementary plan (ON<->OFF) so the version pair stays complete.
+        // Si la source est une variante de jour (variant_label), on cherche d'abord le complémentaire
+        // avec le même variant_label pour préserver l'appairage Push/Push, Pull/Pull, etc.
         const isTraining = plan.meal_type === 'training' || plan.meal_type === 'entrainement'
         const complementaryTypes = isTraining ? ['rest', 'repos'] : ['training', 'entrainement']
-        const { data: compPlan } = await supabase
-          .from('nutrition_plans')
-          .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, macro_only, meal_times')
-          .eq('athlete_id', plan.athlete_id)
-          .eq('nom', plan.nom)
-          .eq('actif', true)
-          .in('meal_type', complementaryTypes)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single()
+        const sourceLabel = (plan as any).variant_label ?? null
+        const compSelect = 'id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, macro_only, meal_times, variant_label, variant_order'
+
+        let compPlan: any = null
+        if (sourceLabel) {
+          const { data } = await supabase
+            .from('nutrition_plans')
+            .select(compSelect)
+            .eq('athlete_id', plan.athlete_id)
+            .eq('nom', plan.nom)
+            .eq('actif', true)
+            .eq('variant_label', sourceLabel)
+            .in('meal_type', complementaryTypes)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          compPlan = data
+        }
+        if (!compPlan) {
+          const { data } = await supabase
+            .from('nutrition_plans')
+            .select(compSelect)
+            .eq('athlete_id', plan.athlete_id)
+            .eq('nom', plan.nom)
+            .eq('actif', true)
+            .in('meal_type', complementaryTypes)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          compPlan = data
+        }
 
         if (compPlan) {
           const { error: compError } = await supabase.from('nutrition_plans').insert({
@@ -334,6 +471,9 @@ export default function NutritionPage() {
             valid_from: new Date().toISOString().split('T')[0],
             macro_only: compPlan.macro_only || false,
             meal_times: compPlan.meal_times,
+            // Préserver le couple variant_label/variant_order pour ne pas casser l'appairage Push/Pull.
+            variant_label: compPlan.variant_label ?? null,
+            variant_order: compPlan.variant_order ?? 0,
           })
           if (!compError) {
             // Deactivate the old complementary plan
@@ -448,8 +588,21 @@ export default function NutritionPage() {
     if (typeof raw === 'string') raw = JSON.parse(raw)
     if (typeof raw === 'string') raw = JSON.parse(raw)
 
-    // Helper: convert any meal-like item to MealData
+    // Helper: convert any meal-like item to MealData (preserve variants)
     const toMeal = (item: any): MealData => {
+      if (item && !Array.isArray(item) && Array.isArray(item.variants) && item.variants.length > 0) {
+        return {
+          label: item.label,
+          time: item.time,
+          pre_workout: item.pre_workout,
+          // Heal: assigner un id stable si absent pour éviter les collisions côté UI.
+          variants: item.variants.map((v: any, vi: number) => ({
+            id: (typeof v?.id === 'string' && v.id.trim()) ? v.id : newVariantId(),
+            label: v?.label || `Variante ${vi + 1}`,
+            foods: Array.isArray(v?.foods) ? v.foods : [],
+          })),
+        }
+      }
       if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, time: item.time }
       if (Array.isArray(item)) return { foods: item }
       return { foods: [] }
@@ -497,17 +650,32 @@ export default function NutritionPage() {
     if (!loadedPlans?.length) { toast('Plan introuvable', 'error'); return }
 
     // Find ON and OFF
-    const tPlan = loadedPlans.find(p => p.meal_type === 'training' || p.meal_type === 'entrainement') || null
-    const rPlan = loadedPlans.find(p => p.meal_type === 'rest' || p.meal_type === 'repos') || null
+    const tPlan = (loadedPlans as NutritionPlan[]).find((p) => p.meal_type === 'training' || p.meal_type === 'entrainement') || null
+    const rPlan = (loadedPlans as NutritionPlan[]).find((p) => p.meal_type === 'rest' || p.meal_type === 'repos') || null
     const primary = tPlan || rPlan
     if (!primary) { toast('Plan introuvable', 'error'); return }
 
     function parseMealsData(plan: any): MealData[] {
       try {
         const parsed = typeof plan.meals_data === 'string' ? JSON.parse(plan.meals_data) : (plan.meals_data || [])
-        const m = (parsed as any[]).map((m: any) => {
-          if (m && !Array.isArray(m) && m.foods) return { foods: m.foods, pre_workout: m.pre_workout, time: m.time }
-          return { foods: Array.isArray(m) ? m : [] }
+        const m = (parsed as any[]).map((meal: any) => {
+          if (meal && !Array.isArray(meal) && Array.isArray(meal.variants) && meal.variants.length > 0) {
+            // Preserve multi-variant meal — heal des id manquants pour MealEditor.
+            return {
+              label: meal.label,
+              time: meal.time,
+              pre_workout: meal.pre_workout,
+              variants: meal.variants.map((v: any, vi: number) => ({
+                id: (typeof v?.id === 'string' && v.id.trim()) ? v.id : newVariantId(),
+                label: v?.label || `Variante ${vi + 1}`,
+                foods: Array.isArray(v?.foods) ? v.foods : [],
+              })),
+            } as MealData
+          }
+          if (meal && !Array.isArray(meal) && meal.foods) {
+            return { foods: meal.foods, pre_workout: meal.pre_workout, time: meal.time }
+          }
+          return { foods: Array.isArray(meal) ? meal : [] }
         })
         return m.length ? m : [{ foods: [] }]
       } catch { return [{ foods: [] }] }
@@ -541,21 +709,107 @@ export default function NutritionPage() {
   }, [supabase, toast])
 
   // Open detail view — fetch full plan data (meals_data) on demand
-  const viewDiet = useCallback(async (tPlan: NutritionPlan | null, rPlan: NutritionPlan | null) => {
-    const idsToLoad = [tPlan?.id, rPlan?.id].filter(Boolean) as string[]
+  const viewDiet = useCallback(async (tPlan: NutritionPlan | null, rPlan: NutritionPlan | null, diet?: DietGroup) => {
+    // If a DietGroup is provided, load meals_data for ALL its variants (so variant tabs can switch instantly).
+    const tIds = diet?.trainingVariants?.map((p) => p.id) ?? (tPlan ? [tPlan.id] : [])
+    const rIds = diet?.restVariants?.map((p) => p.id) ?? (rPlan ? [rPlan.id] : [])
+    const idsToLoad = [...tIds, ...rIds]
     if (!idsToLoad.length) return
     const { data: fullPlans } = await supabase
       .from('nutrition_plans')
-      .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, created_at, macro_only, meal_times')
+      .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, created_at, macro_only, meal_times, variant_label, variant_order, archived_at')
       .in('id', idsToLoad)
     const loaded = (fullPlans || []) as NutritionPlan[]
-    const fullT = loaded.find(p => p.meal_type === 'training' || p.meal_type === 'entrainement') || null
-    const fullR = loaded.find(p => p.meal_type === 'rest' || p.meal_type === 'repos') || null
-    setDetailDiet({ tPlan: fullT, rPlan: fullR })
+    const byOrder = (a: NutritionPlan, b: NutritionPlan) => (a.variant_order ?? 0) - (b.variant_order ?? 0)
+    const trainingVariants = loaded.filter((p) => p.meal_type === 'training' || p.meal_type === 'entrainement').sort(byOrder)
+    const restVariants = loaded.filter((p) => p.meal_type === 'rest' || p.meal_type === 'repos').sort(byOrder)
+    const name = diet?.name ?? loaded[0]?.nom ?? 'Diete'
+    const fullT = trainingVariants[0] || null
+    const fullR = restVariants[0] || null
+    setDetailDiet({ name, tPlan: fullT, rPlan: fullR, trainingVariants, restVariants })
     setDetailPlan(fullT || fullR)
     setDetailType(fullT ? 'training' : 'rest')
     setView('detail')
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── DAY VARIANTS ──
+
+  const addDayVariant = useCallback(async (group: DietGroup, mealType: 'training' | 'rest') => {
+    const label = prompt('Label de la nouvelle variante (ex: Push, Pull)')
+    if (!label) return
+    const sourceArr = mealType === 'training' ? group.trainingVariants : group.restVariants
+    const source = sourceArr[0]
+    if (!source) {
+      toast(`Cree d'abord une diete ${mealType === 'training' ? 'training' : 'rest'} de base`, 'error')
+      return
+    }
+
+    // Charger les donnees completes de la source pour les copier (meals_data n'est pas dans la list query)
+    const { data: full } = await supabase
+      .from('nutrition_plans')
+      .select('*')
+      .eq('id', source.id)
+      .single()
+    if (!full) {
+      toast('Impossible de charger la variante source', 'error')
+      return
+    }
+
+    const nextOrder = Math.max(0, ...sourceArr.map((p) => p.variant_order ?? 0)) + 1
+    const todayStr = new Date().toISOString().split('T')[0]
+    const { error } = await supabase.from('nutrition_plans').insert({
+      nom: full.nom,
+      athlete_id: full.athlete_id,
+      coach_id: full.coach_id,
+      meal_type: full.meal_type,
+      calories_objectif: full.calories_objectif,
+      proteines: full.proteines,
+      glucides: full.glucides,
+      lipides: full.lipides,
+      meals_data: full.meals_data,
+      // Inherit actif from source: si la diète source est inactive, la nouvelle variante l'est aussi.
+      actif: !!full.actif,
+      valid_from: todayStr,
+      macro_only: full.macro_only,
+      meal_times: full.meal_times,
+      variant_label: label,
+      variant_order: nextOrder,
+    })
+    if (error) {
+      toast(`Erreur creation variante: ${error.message}`, 'error')
+      return
+    }
+
+    // Si la source n'avait pas encore de label, lui en attribuer un par defaut pour coherence UI
+    if (!source.variant_label) {
+      await supabase.from('nutrition_plans').update({ variant_label: 'Standard' }).eq('id', source.id)
+    }
+    await loadPlans()
+  }, [supabase, toast, loadPlans])
+
+  const renameDayVariant = useCallback(async (planId: string, label: string) => {
+    const { error } = await supabase
+      .from('nutrition_plans')
+      .update({ variant_label: label || null })
+      .eq('id', planId)
+    if (error) {
+      toast(`Erreur renommage: ${error.message}`, 'error')
+      return
+    }
+    await loadPlans()
+  }, [supabase, toast, loadPlans])
+
+  const archiveDayVariant = useCallback(async (planId: string) => {
+    const { error } = await supabase
+      .from('nutrition_plans')
+      .update({ archived_at: new Date().toISOString() })
+      .eq('id', planId)
+    if (error) {
+      toast(`Erreur archivage: ${error.message}`, 'error')
+      return
+    }
+    await loadPlans()
+  }, [supabase, toast, loadPlans])
 
   // Toggle active
   const toggleActive = useCallback(async (isActive: boolean, tId: string | null, rId: string | null) => {
@@ -605,7 +859,25 @@ export default function NutritionPage() {
 
   // ── DETAIL VIEW ──
   if (view === 'detail' && detailDiet) {
-    const plan = detailType === 'training' ? detailDiet.tPlan : detailDiet.rPlan
+    // Resolve the currently-selected plan based on per-diet variant selection
+    const dietName = detailDiet.name
+    const selT = selectedTrainingByDiet[dietName]
+    const selR = selectedRestByDiet[dietName]
+    const currentT = (selT && detailDiet.trainingVariants.find((p) => p.id === selT)) || detailDiet.tPlan
+    const currentR = (selR && detailDiet.restVariants.find((p) => p.id === selR)) || detailDiet.rPlan
+    const plan = detailType === 'training' ? currentT : currentR
+
+    // Sibling DietGroup (from list state) for add/rename/archive actions
+    const dietGroup = diets.find((d) => d.name === dietName) || {
+      name: dietName,
+      tPlan: detailDiet.tPlan,
+      rPlan: detailDiet.rPlan,
+      trainingVariants: detailDiet.trainingVariants,
+      restVariants: detailDiet.restVariants,
+      isActive: false,
+      versionCount: 0,
+      ids: [],
+    } as DietGroup
 
     function parseMeals(p: NutritionPlan | null): any[] {
       if (!p?.meals_data) return []
@@ -626,7 +898,10 @@ export default function NutritionPage() {
             </button>
             <div className="card-title" style={{ margin: 0 }}>{plan?.nom || 'Diete'}</div>
           </div>
-          <button className="btn btn-red btn-sm" onClick={() => editDiet(detailDiet.tPlan?.id || null, detailDiet.rPlan?.id || null)}>
+          <button
+            className="btn btn-red btn-sm"
+            onClick={() => editDiet(currentT?.id || null, currentR?.id || null)}
+          >
             <i className="fa-solid fa-pen" /> Modifier
           </button>
         </div>
@@ -635,16 +910,39 @@ export default function NutritionPage() {
         <div style={{ display: 'flex', gap: 8, padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
           <button
             className={`athlete-tab-btn ${detailType === 'training' ? 'active' : ''}`}
-            onClick={() => { setDetailType('training'); setDetailPlan(detailDiet.tPlan) }}
+            onClick={() => { setDetailType('training'); setDetailPlan(currentT) }}
           >
             <i className="fa-solid fa-dumbbell" /> Jour ON
           </button>
           <button
             className={`athlete-tab-btn ${detailType === 'rest' ? 'active' : ''}`}
-            onClick={() => { setDetailType('rest'); setDetailPlan(detailDiet.rPlan) }}
+            onClick={() => { setDetailType('rest'); setDetailPlan(currentR) }}
           >
             <i className="fa-solid fa-bed" /> Jour OFF
           </button>
+        </div>
+
+        {/* Day variant tabs (for current ON/OFF section) */}
+        <div style={{ padding: '8px 20px 0' }}>
+          {detailType === 'training' ? (
+            <DayVariantTabs
+              variants={detailDiet.trainingVariants}
+              selectedId={selT ?? detailDiet.tPlan?.id ?? null}
+              onSelect={(id) => setSelectedTrainingByDiet({ ...selectedTrainingByDiet, [dietName]: id })}
+              onAddVariant={() => addDayVariant(dietGroup, 'training')}
+              onRenameVariant={renameDayVariant}
+              onArchiveVariant={archiveDayVariant}
+            />
+          ) : (
+            <DayVariantTabs
+              variants={detailDiet.restVariants}
+              selectedId={selR ?? detailDiet.rPlan?.id ?? null}
+              onSelect={(id) => setSelectedRestByDiet({ ...selectedRestByDiet, [dietName]: id })}
+              onAddVariant={() => addDayVariant(dietGroup, 'rest')}
+              onRenameVariant={renameDayVariant}
+              onArchiveVariant={archiveDayVariant}
+            />
+          )}
         </div>
 
         <div style={{ padding: 20 }}>
@@ -683,7 +981,16 @@ export default function NutritionPage() {
                 </div>
               ) : (
                 meals.map((meal: any, idx: number) => {
-                  const items = (meal && !Array.isArray(meal) && meal.foods) ? meal.foods : (Array.isArray(meal) ? meal : [])
+                  // Normalize legacy formats and route through getMealFoods (variant-aware, fallback to first variant for coach view)
+                  let normalizedMeal: MealData
+                  if (Array.isArray(meal)) {
+                    normalizedMeal = { foods: meal }
+                  } else if (meal && typeof meal === 'object') {
+                    normalizedMeal = meal as MealData
+                  } else {
+                    normalizedMeal = { foods: [] }
+                  }
+                  const items = getMealFoods(normalizedMeal)
                   return (
                     <div key={idx} className={styles.mealRow}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -934,6 +1241,7 @@ export default function NutritionPage() {
               const mealLabel = meal?.meal_label || `Repas ${mIdx + 1}`
               const foods = meal?.foods || []
               const extras = meal?.extras || []
+              const chosenVariantId: string | null = meal?.chosen_variant_id ?? null
               return (
                 <div key={mIdx} style={{ marginBottom: 12, padding: 12, background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
                   <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>{mealLabel}</div>
@@ -964,6 +1272,7 @@ export default function NutritionPage() {
                                   foodIndex: fIdx,
                                   type: 'replace',
                                   foodData: f.replacement,
+                                  chosenVariantId,
                                 })}
                               >
                                 <i className="fa-solid fa-check" /> Accepter
@@ -1000,6 +1309,7 @@ export default function NutritionPage() {
                                 foodIndex: exIdx,
                                 type: 'extra',
                                 foodData: ex,
+                                chosenVariantId,
                               })}
                             >
                               <i className="fa-solid fa-check" /> Accepter
@@ -1092,7 +1402,7 @@ export default function NutritionPage() {
                   <React.Fragment key={idx}>
                     <tr
                       className={`${styles.dietTr} ${d.isActive ? styles.dietTrActive : ''}`}
-                      onClick={() => viewDiet(d.tPlan, d.rPlan)}
+                      onClick={() => viewDiet(d.tPlan, d.rPlan, d)}
                       style={{ cursor: 'pointer' }}
                     >
                       <td>
