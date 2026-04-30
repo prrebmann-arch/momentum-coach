@@ -74,6 +74,73 @@ interface PendingChange {
 
 type View = 'list' | 'editor' | 'detail' | 'history'
 
+function DayVariantTabs({
+  variants,
+  selectedId,
+  onSelect,
+  onAddVariant,
+  onRenameVariant,
+  onArchiveVariant,
+}: {
+  variants: NutritionPlan[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+  onAddVariant: () => void
+  onRenameVariant: (id: string, label: string) => void
+  onArchiveVariant: (id: string) => void
+}) {
+  if (variants.length === 0) return null
+  // Si 1 seule variante sans label → on cache l'UI (singleton legacy).
+  if (variants.length === 1 && !variants[0].variant_label) {
+    return null
+  }
+  return (
+    <div className={styles.dayVariantTabs}>
+      {variants.map((v) => (
+        <div
+          key={v.id}
+          className={`${styles.dayVariantTab} ${v.id === selectedId ? styles.dayVariantTabActive : ''}`}
+        >
+          <button type="button" onClick={() => onSelect(v.id)}>
+            {v.variant_label || 'Standard'}
+          </button>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            title="Renommer"
+            onClick={() => {
+              const label = prompt('Label de variante', v.variant_label || '')
+              if (label != null) onRenameVariant(v.id, label)
+            }}
+          >
+            &#9998;
+          </button>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            title="Archiver"
+            onClick={() => {
+              if (variants.length <= 1) {
+                alert('Impossible : variante unique. Supprime d\'abord la diete entiere.')
+                return
+              }
+              if (!confirm(`Archiver la variante "${v.variant_label || 'Standard'}" ?`)) return
+              onArchiveVariant(v.id)
+            }}
+          >
+            &#128465;
+          </button>
+        </div>
+      ))}
+      {variants.length < 4 && (
+        <button type="button" className={styles.dayVariantAdd} onClick={onAddVariant}>
+          + Variante
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function NutritionPage() {
   const params = useParams<{ id: string }>()
   const athleteId = params.id
@@ -102,7 +169,11 @@ export default function NutritionPage() {
   // Detail view
   const [detailPlan, setDetailPlan] = useState<NutritionPlan | null>(null)
   const [detailType, setDetailType] = useState<'training' | 'rest'>('training')
-  const [detailDiet, setDetailDiet] = useState<{ tPlan: NutritionPlan | null; rPlan: NutritionPlan | null } | null>(null)
+  const [detailDiet, setDetailDiet] = useState<{ name: string; tPlan: NutritionPlan | null; rPlan: NutritionPlan | null; trainingVariants: NutritionPlan[]; restVariants: NutritionPlan[] } | null>(null)
+
+  // Selected variant per diet (keyed by diet name)
+  const [selectedTrainingByDiet, setSelectedTrainingByDiet] = useState<Record<string, string>>({})
+  const [selectedRestByDiet, setSelectedRestByDiet] = useState<Record<string, string>>({})
 
   // Template picker state
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
@@ -562,21 +633,106 @@ export default function NutritionPage() {
   }, [supabase, toast])
 
   // Open detail view — fetch full plan data (meals_data) on demand
-  const viewDiet = useCallback(async (tPlan: NutritionPlan | null, rPlan: NutritionPlan | null) => {
-    const idsToLoad = [tPlan?.id, rPlan?.id].filter(Boolean) as string[]
+  const viewDiet = useCallback(async (tPlan: NutritionPlan | null, rPlan: NutritionPlan | null, diet?: DietGroup) => {
+    // If a DietGroup is provided, load meals_data for ALL its variants (so variant tabs can switch instantly).
+    const tIds = diet?.trainingVariants?.map((p) => p.id) ?? (tPlan ? [tPlan.id] : [])
+    const rIds = diet?.restVariants?.map((p) => p.id) ?? (rPlan ? [rPlan.id] : [])
+    const idsToLoad = [...tIds, ...rIds]
     if (!idsToLoad.length) return
     const { data: fullPlans } = await supabase
       .from('nutrition_plans')
-      .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, created_at, macro_only, meal_times')
+      .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, created_at, macro_only, meal_times, variant_label, variant_order, archived_at')
       .in('id', idsToLoad)
     const loaded = (fullPlans || []) as NutritionPlan[]
-    const fullT = loaded.find(p => p.meal_type === 'training' || p.meal_type === 'entrainement') || null
-    const fullR = loaded.find(p => p.meal_type === 'rest' || p.meal_type === 'repos') || null
-    setDetailDiet({ tPlan: fullT, rPlan: fullR })
+    const byOrder = (a: NutritionPlan, b: NutritionPlan) => (a.variant_order ?? 0) - (b.variant_order ?? 0)
+    const trainingVariants = loaded.filter((p) => p.meal_type === 'training' || p.meal_type === 'entrainement').sort(byOrder)
+    const restVariants = loaded.filter((p) => p.meal_type === 'rest' || p.meal_type === 'repos').sort(byOrder)
+    const name = diet?.name ?? loaded[0]?.nom ?? 'Diete'
+    const fullT = trainingVariants[0] || null
+    const fullR = restVariants[0] || null
+    setDetailDiet({ name, tPlan: fullT, rPlan: fullR, trainingVariants, restVariants })
     setDetailPlan(fullT || fullR)
     setDetailType(fullT ? 'training' : 'rest')
     setView('detail')
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── DAY VARIANTS ──
+
+  const addDayVariant = useCallback(async (group: DietGroup, mealType: 'training' | 'rest') => {
+    const label = prompt('Label de la nouvelle variante (ex: Push, Pull)')
+    if (!label) return
+    const sourceArr = mealType === 'training' ? group.trainingVariants : group.restVariants
+    const source = sourceArr[0]
+    if (!source) {
+      toast(`Cree d'abord une diete ${mealType === 'training' ? 'training' : 'rest'} de base`, 'error')
+      return
+    }
+
+    // Charger les donnees completes de la source pour les copier (meals_data n'est pas dans la list query)
+    const { data: full } = await supabase
+      .from('nutrition_plans')
+      .select('*')
+      .eq('id', source.id)
+      .single()
+    if (!full) {
+      toast('Impossible de charger la variante source', 'error')
+      return
+    }
+
+    const nextOrder = Math.max(0, ...sourceArr.map((p) => p.variant_order ?? 0)) + 1
+    const todayStr = new Date().toISOString().split('T')[0]
+    const { error } = await supabase.from('nutrition_plans').insert({
+      nom: full.nom,
+      athlete_id: full.athlete_id,
+      coach_id: full.coach_id,
+      meal_type: full.meal_type,
+      calories_objectif: full.calories_objectif,
+      proteines: full.proteines,
+      glucides: full.glucides,
+      lipides: full.lipides,
+      meals_data: full.meals_data,
+      actif: true,
+      valid_from: todayStr,
+      macro_only: full.macro_only,
+      meal_times: full.meal_times,
+      variant_label: label,
+      variant_order: nextOrder,
+    })
+    if (error) {
+      toast(`Erreur creation variante: ${error.message}`, 'error')
+      return
+    }
+
+    // Si la source n'avait pas encore de label, lui en attribuer un par defaut pour coherence UI
+    if (!source.variant_label) {
+      await supabase.from('nutrition_plans').update({ variant_label: 'Standard' }).eq('id', source.id)
+    }
+    await loadPlans()
+  }, [supabase, toast, loadPlans])
+
+  const renameDayVariant = useCallback(async (planId: string, label: string) => {
+    const { error } = await supabase
+      .from('nutrition_plans')
+      .update({ variant_label: label || null })
+      .eq('id', planId)
+    if (error) {
+      toast(`Erreur renommage: ${error.message}`, 'error')
+      return
+    }
+    await loadPlans()
+  }, [supabase, toast, loadPlans])
+
+  const archiveDayVariant = useCallback(async (planId: string) => {
+    const { error } = await supabase
+      .from('nutrition_plans')
+      .update({ archived_at: new Date().toISOString() })
+      .eq('id', planId)
+    if (error) {
+      toast(`Erreur archivage: ${error.message}`, 'error')
+      return
+    }
+    await loadPlans()
+  }, [supabase, toast, loadPlans])
 
   // Toggle active
   const toggleActive = useCallback(async (isActive: boolean, tId: string | null, rId: string | null) => {
@@ -626,7 +782,25 @@ export default function NutritionPage() {
 
   // ── DETAIL VIEW ──
   if (view === 'detail' && detailDiet) {
-    const plan = detailType === 'training' ? detailDiet.tPlan : detailDiet.rPlan
+    // Resolve the currently-selected plan based on per-diet variant selection
+    const dietName = detailDiet.name
+    const selT = selectedTrainingByDiet[dietName]
+    const selR = selectedRestByDiet[dietName]
+    const currentT = (selT && detailDiet.trainingVariants.find((p) => p.id === selT)) || detailDiet.tPlan
+    const currentR = (selR && detailDiet.restVariants.find((p) => p.id === selR)) || detailDiet.rPlan
+    const plan = detailType === 'training' ? currentT : currentR
+
+    // Sibling DietGroup (from list state) for add/rename/archive actions
+    const dietGroup = diets.find((d) => d.name === dietName) || {
+      name: dietName,
+      tPlan: detailDiet.tPlan,
+      rPlan: detailDiet.rPlan,
+      trainingVariants: detailDiet.trainingVariants,
+      restVariants: detailDiet.restVariants,
+      isActive: false,
+      versionCount: 0,
+      ids: [],
+    } as DietGroup
 
     function parseMeals(p: NutritionPlan | null): any[] {
       if (!p?.meals_data) return []
@@ -647,7 +821,10 @@ export default function NutritionPage() {
             </button>
             <div className="card-title" style={{ margin: 0 }}>{plan?.nom || 'Diete'}</div>
           </div>
-          <button className="btn btn-red btn-sm" onClick={() => editDiet(detailDiet.tPlan?.id || null, detailDiet.rPlan?.id || null)}>
+          <button
+            className="btn btn-red btn-sm"
+            onClick={() => editDiet(currentT?.id || null, currentR?.id || null)}
+          >
             <i className="fa-solid fa-pen" /> Modifier
           </button>
         </div>
@@ -656,16 +833,39 @@ export default function NutritionPage() {
         <div style={{ display: 'flex', gap: 8, padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
           <button
             className={`athlete-tab-btn ${detailType === 'training' ? 'active' : ''}`}
-            onClick={() => { setDetailType('training'); setDetailPlan(detailDiet.tPlan) }}
+            onClick={() => { setDetailType('training'); setDetailPlan(currentT) }}
           >
             <i className="fa-solid fa-dumbbell" /> Jour ON
           </button>
           <button
             className={`athlete-tab-btn ${detailType === 'rest' ? 'active' : ''}`}
-            onClick={() => { setDetailType('rest'); setDetailPlan(detailDiet.rPlan) }}
+            onClick={() => { setDetailType('rest'); setDetailPlan(currentR) }}
           >
             <i className="fa-solid fa-bed" /> Jour OFF
           </button>
+        </div>
+
+        {/* Day variant tabs (for current ON/OFF section) */}
+        <div style={{ padding: '8px 20px 0' }}>
+          {detailType === 'training' ? (
+            <DayVariantTabs
+              variants={detailDiet.trainingVariants}
+              selectedId={selT ?? detailDiet.tPlan?.id ?? null}
+              onSelect={(id) => setSelectedTrainingByDiet({ ...selectedTrainingByDiet, [dietName]: id })}
+              onAddVariant={() => addDayVariant(dietGroup, 'training')}
+              onRenameVariant={renameDayVariant}
+              onArchiveVariant={archiveDayVariant}
+            />
+          ) : (
+            <DayVariantTabs
+              variants={detailDiet.restVariants}
+              selectedId={selR ?? detailDiet.rPlan?.id ?? null}
+              onSelect={(id) => setSelectedRestByDiet({ ...selectedRestByDiet, [dietName]: id })}
+              onAddVariant={() => addDayVariant(dietGroup, 'rest')}
+              onRenameVariant={renameDayVariant}
+              onArchiveVariant={archiveDayVariant}
+            />
+          )}
         </div>
 
         <div style={{ padding: 20 }}>
@@ -1113,7 +1313,7 @@ export default function NutritionPage() {
                   <React.Fragment key={idx}>
                     <tr
                       className={`${styles.dietTr} ${d.isActive ? styles.dietTrActive : ''}`}
-                      onClick={() => viewDiet(d.tPlan, d.rPlan)}
+                      onClick={() => viewDiet(d.tPlan, d.rPlan, d)}
                       style={{ cursor: 'pointer' }}
                     >
                       <td>

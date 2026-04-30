@@ -657,3 +657,51 @@
   color: var(--muted, #71717a);
   font-style: italic;
 }
+
+/* ── Day variant tabs (training-1/2, rest-1/2…) ── */
+.dayVariantTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+.dayVariantTab {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border, #d4d4d8);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.dayVariantTab > button:first-child {
+  padding: 4px 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  font-family: inherit;
+}
+.dayVariantTabActive > button:first-child {
+  background: var(--accent, #18181b);
+  color: white;
+}
+.iconBtn {
+  padding: 4px 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.6;
+  font-size: 12px;
+  font-family: inherit;
+}
+.iconBtn:hover { opacity: 1; }
+.dayVariantAdd {
+  padding: 4px 10px;
+  border: 1px dashed var(--border, #d4d4d8);
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  font-family: inherit;
+}
