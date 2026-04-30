@@ -6,14 +6,10 @@ import { useRecorder } from '@/contexts/RecorderContext'
 const SIZE = 140
 const STORAGE_KEY = 'recorder.liveBubblePos'
 
-interface Position {
-  x: number
-  y: number
-}
+interface Position { x: number; y: number }
 
 function getDefaultPosition(): Position {
   if (typeof window === 'undefined') return { x: 24, y: 100 }
-  // Default: top-right, below any header
   return { x: window.innerWidth - SIZE - 24, y: 100 }
 }
 
@@ -31,30 +27,16 @@ function loadPosition(): Position {
 
 /**
  * Floating, draggable, in-page webcam preview shown during recording.
- * Visible to the coach without any click; appears in the final video
- * IFF the coach shares "this tab" or "entire screen" via getDisplayMedia.
- * For "other tab" or "specific window" shares, it stays out of the
- * captured surface.
+ * No click required — visible automatically when recording with webcam.
+ * Stream binding uses a callback ref so srcObject is set synchronously
+ * on element mount (avoids the "stays black" race vs a useEffect-based
+ * binding that runs after the first paint).
  */
 export default function LiveCamBubble() {
   const { isRecording, liveCamStream } = useRecorder()
-  const videoRef = useRef<HTMLVideoElement | null>(null)
   const [pos, setPos] = useState<Position>(loadPosition)
   const dragRef = useRef<{ active: boolean; offsetX: number; offsetY: number }>({ active: false, offsetX: 0, offsetY: 0 })
 
-  // Bind stream
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v) return
-    if (liveCamStream && v.srcObject !== liveCamStream) {
-      v.srcObject = liveCamStream
-      v.play().catch(() => {})
-    } else if (!liveCamStream && v.srcObject) {
-      v.srcObject = null
-    }
-  }, [liveCamStream])
-
-  // Clamp position on window resize so the bubble never goes off-screen
   useEffect(() => {
     if (typeof window === 'undefined') return
     function clamp() {
@@ -69,14 +51,9 @@ export default function LiveCamBubble() {
   }, [])
 
   function onPointerDown(e: React.PointerEvent) {
-    dragRef.current = {
-      active: true,
-      offsetX: e.clientX - pos.x,
-      offsetY: e.clientY - pos.y,
-    }
+    dragRef.current = { active: true, offsetX: e.clientX - pos.x, offsetY: e.clientY - pos.y }
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
-
   function onPointerMove(e: React.PointerEvent) {
     if (!dragRef.current.active) return
     const x = e.clientX - dragRef.current.offsetX
@@ -86,12 +63,10 @@ export default function LiveCamBubble() {
       y: Math.max(8, Math.min(window.innerHeight - SIZE - 8, y)),
     })
   }
-
   function onPointerUp(e: React.PointerEvent) {
     if (!dragRef.current.active) return
     dragRef.current.active = false
     try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch {}
-    // Persist final position
     try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(pos)) } catch {}
   }
 
@@ -122,7 +97,15 @@ export default function LiveCamBubble() {
       title="Glisse pour déplacer"
     >
       <video
-        ref={videoRef}
+        ref={(el) => {
+          // Synchronous bind on mount — useEffect would run after first
+          // paint and the video element sometimes shows a black frame
+          // until the stream change is re-evaluated.
+          if (el && liveCamStream && el.srcObject !== liveCamStream) {
+            el.srcObject = liveCamStream
+            el.play().catch(() => {})
+          }
+        }}
         autoPlay
         muted
         playsInline
