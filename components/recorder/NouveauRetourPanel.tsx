@@ -40,6 +40,10 @@ export default function NouveauRetourPanel({ athleteId, onCreated, onAfter, acti
   const [tab, setTab] = useState<Tab>('text')
 
   // Screen recording state
+  // Recording sub-mode within the "Écran ou Loom" tab:
+  // - 'screen' (default) → captures the screen, optional cam bubble overlay (in-page)
+  // - 'selfie' → portrait cam only (no screen share, no getDisplayMedia prompt)
+  const [recordMode, setRecordMode] = useState<'screen' | 'selfie'>('screen')
   const [withWebcam, setWithWebcam] = useState(false)
   const [starting, setStarting] = useState(false)
   const [previewCamStream, setPreviewCamStream] = useState<MediaStream | null>(null)
@@ -103,12 +107,22 @@ export default function NouveauRetourPanel({ athleteId, onCreated, onAfter, acti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMicId])
 
+  // Need cam preview when:
+  // - on screen tab + withWebcam toggle ON (small preview for the bubble)
+  // - on screen tab + selfie mode (cam IS the recording, want full preview)
+  const needCamPreview = active && tab === 'screen' && (recordMode === 'selfie' || withWebcam)
+
   useEffect(() => {
     let cancelled = false
-    if (active && tab === 'screen' && withWebcam && !previewCamStream) {
-      const constraint: MediaTrackConstraints = selectedCamId
-        ? { deviceId: { exact: selectedCamId }, width: 320, height: 320 }
-        : { width: 320, height: 320 }
+    if (needCamPreview && !previewCamStream) {
+      // Selfie mode wants portrait constraints; screen mode keeps the small preview
+      const constraint: MediaTrackConstraints = recordMode === 'selfie'
+        ? (selectedCamId
+            ? { deviceId: { exact: selectedCamId }, width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 9 / 16 }, facingMode: 'user' }
+            : { width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 9 / 16 }, facingMode: 'user' })
+        : (selectedCamId
+            ? { deviceId: { exact: selectedCamId }, width: 320, height: 320 }
+            : { width: 320, height: 320 })
       navigator.mediaDevices.getUserMedia({ video: constraint }).then((s) => {
         if (cancelled) { s.getTracks().forEach((t) => t.stop()); return }
         setPreviewCamStream(s)
@@ -117,13 +131,13 @@ export default function NouveauRetourPanel({ athleteId, onCreated, onAfter, acti
         setPreviewError(err instanceof Error ? err.message : 'Accès webcam refusé')
       })
     }
-    if ((!withWebcam || tab !== 'screen' || !active) && previewCamStream && !handoffRef.current) {
+    if (!needCamPreview && previewCamStream && !handoffRef.current) {
       previewCamStream.getTracks().forEach((t) => t.stop())
       setPreviewCamStream(null)
     }
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, withWebcam, selectedCamId, tab])
+  }, [needCamPreview, selectedCamId, recordMode])
 
   useEffect(() => {
     let cancelled = false
@@ -170,6 +184,7 @@ export default function NouveauRetourPanel({ athleteId, onCreated, onAfter, acti
     setSelectedChip(-1)
     setCustomMsg('')
     setWithWebcam(false)
+    setRecordMode('screen')
     if (audio.isRecording) audio.stopRecording()
     audio.clearAudio()
   }
@@ -180,15 +195,19 @@ export default function NouveauRetourPanel({ athleteId, onCreated, onAfter, acti
     try {
       const camHandoff = previewCamStream
       const micHandoff = previewMicStream
+      const modeAtStart = recordMode
       setWithWebcam(false)
       setPreviewCamStream(null)
       setPreviewMicStream(null)
       reset()
+      // Selfie mode reuses the pre-acquired cam stream as the actual video source.
+      // Screen mode hands the cam off to LiveCamBubble for the in-page preview.
       micHandoff?.getTracks().forEach((t) => t.stop())
       await startRecording({
-        withWebcam: !!camHandoff,
+        withWebcam: modeAtStart === 'selfie' ? true : !!camHandoff,
         athleteId,
         preAcquiredCamStream: camHandoff,
+        mode: modeAtStart,
       })
       onAfter?.()
     } catch (err) {
@@ -379,14 +398,52 @@ export default function NouveauRetourPanel({ athleteId, onCreated, onAfter, acti
           </>
         ) : (
           <>
+            {/* Mode selector — Écran + cam vs Selfie portrait */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
+              <button
+                type="button"
+                onClick={() => setRecordMode('screen')}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: recordMode === 'screen' ? '2px solid var(--primary, #5b8dff)' : '1px solid var(--border, #2a2a2a)',
+                  background: recordMode === 'screen' ? 'rgba(91,141,255,0.1)' : 'transparent',
+                  color: recordMode === 'screen' ? 'var(--primary, #5b8dff)' : 'var(--text2)',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textAlign: 'center',
+                }}
+              >
+                <i className="fas fa-desktop" style={{ marginRight: 6 }} />Écran + cam
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecordMode('selfie')}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: recordMode === 'selfie' ? '2px solid var(--primary, #5b8dff)' : '1px solid var(--border, #2a2a2a)',
+                  background: recordMode === 'selfie' ? 'rgba(91,141,255,0.1)' : 'transparent',
+                  color: recordMode === 'selfie' ? 'var(--primary, #5b8dff)' : 'var(--text2)',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textAlign: 'center',
+                }}
+              >
+                <i className="fas fa-mobile-screen" style={{ marginRight: 6 }} />Selfie portrait
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div style={{ minWidth: 0 }}>
                 <label style={labelStyle}>
                   <i className="fas fa-microphone" style={{ marginRight: 4 }} />Micro
                 </label>
                 <select
                   className="form-control"
-                  style={{ fontSize: 12 }}
+                  style={{ fontSize: 12, width: '100%', maxWidth: '100%' }}
                   value={selectedMicId}
                   onChange={(e) => setSelectedMicId(e.target.value)}
                 >
@@ -396,16 +453,16 @@ export default function NouveauRetourPanel({ athleteId, onCreated, onAfter, acti
                   ))}
                 </select>
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <label style={labelStyle}>
                   <i className="fas fa-video" style={{ marginRight: 4 }} />Caméra
                 </label>
                 <select
                   className="form-control"
-                  style={{ fontSize: 12 }}
+                  style={{ fontSize: 12, width: '100%', maxWidth: '100%' }}
                   value={selectedCamId}
                   onChange={(e) => setSelectedCamId(e.target.value)}
-                  disabled={!withWebcam}
+                  disabled={recordMode === 'screen' && !withWebcam}
                 >
                   {videoDevices.length === 0 && <option value="">Défaut</option>}
                   {videoDevices.map((d) => (
@@ -415,17 +472,21 @@ export default function NouveauRetourPanel({ athleteId, onCreated, onAfter, acti
               </div>
             </div>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, padding: '4px 0' }}>
-              <input
-                type="checkbox"
-                checked={withWebcam}
-                onChange={(e) => setWithWebcam(e.target.checked)}
-                style={{ width: 16, height: 16 }}
-              />
-              Inclure ma webcam
-            </label>
+            {/* Webcam toggle — only in screen mode (selfie always uses cam) */}
+            {recordMode === 'screen' && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, padding: '4px 0' }}>
+                <input
+                  type="checkbox"
+                  checked={withWebcam}
+                  onChange={(e) => setWithWebcam(e.target.checked)}
+                  style={{ width: 16, height: 16 }}
+                />
+                Inclure ma webcam
+              </label>
+            )}
 
-            {withWebcam && (
+            {/* Cam preview */}
+            {recordMode === 'screen' && withWebcam && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
                   width: 60, height: 60, borderRadius: '50%', overflow: 'hidden',
@@ -448,6 +509,34 @@ export default function NouveauRetourPanel({ athleteId, onCreated, onAfter, acti
                 </div>
                 <span style={{ fontSize: 11, color: 'var(--text3)' }}>
                   Cercle déplaçable pendant l&apos;enregistrement
+                </span>
+              </div>
+            )}
+
+            {/* Selfie mode — large portrait preview */}
+            {recordMode === 'selfie' && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <div style={{
+                  width: 144, height: 256, borderRadius: 12, overflow: 'hidden',
+                  background: '#000', border: '2px solid var(--primary, #5b8dff)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {previewError ? (
+                    <span style={{ fontSize: 11, color: 'var(--danger, #ff6464)', textAlign: 'center', padding: 8 }}>{previewError}</span>
+                  ) : previewCamStream ? (
+                    <video
+                      ref={previewVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
+                    />
+                  ) : (
+                    <i className="fas fa-spinner fa-spin" style={{ color: 'var(--text3)' }} />
+                  )}
+                </div>
+                <span style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center' }}>
+                  Aperçu — la vidéo finale aura ce format vertical (9:16)
                 </span>
               </div>
             )}
@@ -484,10 +573,18 @@ export default function NouveauRetourPanel({ athleteId, onCreated, onAfter, acti
               <button
                 className="btn btn-red"
                 onClick={handleStartRecord}
-                disabled={starting || (withWebcam && !previewCamStream && !previewError)}
+                disabled={
+                  starting ||
+                  (recordMode === 'selfie' && !previewCamStream && !previewError) ||
+                  (recordMode === 'screen' && withWebcam && !previewCamStream && !previewError)
+                }
                 style={{ width: '100%', marginTop: 4 }}
               >
-                {starting ? <i className="fas fa-spinner fa-spin" /> : <><i className="fas fa-circle" /> Démarrer enregistrement</>}
+                {starting
+                  ? <i className="fas fa-spinner fa-spin" />
+                  : recordMode === 'selfie'
+                    ? <><i className="fas fa-mobile-screen" /> Démarrer selfie portrait</>
+                    : <><i className="fas fa-circle" /> Démarrer enregistrement écran</>}
               </button>
             )}
           </>
