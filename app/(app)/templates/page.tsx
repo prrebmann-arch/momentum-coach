@@ -9,7 +9,7 @@ import Skeleton from '@/components/ui/Skeleton'
 import TrainingTemplatesList from '@/components/templates/TrainingTemplatesList'
 import dynamic from 'next/dynamic'
 import type { MealData, FoodItem, MealVariant } from '@/components/nutrition/MealEditor'
-import { getMealFoods } from '@/lib/nutrition'
+import { getMealFoods, newVariantId } from '@/lib/nutrition'
 
 const ProgramEditor = dynamic(() => import('@/components/training/ProgramEditor'), {
   loading: () => <Skeleton height={400} borderRadius={12} />,
@@ -277,9 +277,11 @@ export default function TemplatesPage() {
         const m = meal as Record<string, unknown>
         // Multi-variant meal
         if (Array.isArray(m.variants) && (m.variants as unknown[]).length > 0) {
-          const variants: MealVariant[] = (m.variants as Array<Record<string, unknown>>).map((v) => ({
-            id: (v.id as string) || '',
-            label: (v.label as string) || '',
+          const variants: MealVariant[] = (m.variants as Array<Record<string, unknown>>).map((v, vi) => ({
+            // Si l'id est absent (data legacy), en générer un stable côté client
+            // pour éviter les collisions et garantir le bon fonctionnement de getActiveVariant.
+            id: ((v.id as string) || '').trim() || newVariantId(),
+            label: (v.label as string) || `Variante ${vi + 1}`,
             foods: ((v.foods as Array<Record<string, unknown>>) || []).map((f) => normalizeFood(f)),
           }))
           return {
