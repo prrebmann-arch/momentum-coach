@@ -219,7 +219,7 @@ function convertToSimpleMeal(meal: MealData, keepVariantId: string): MealData {
   }
 }
 
-function VariantCompareTable({ meal }: { meal: MealData }) {
+function VariantCompareCards({ meal }: { meal: MealData }) {
   const [open, setOpen] = useState(false)
   if (!hasVariants(meal) || meal.variants!.length < 2) return null
   const rows = meal.variants!.map((v) => ({
@@ -227,8 +227,16 @@ function VariantCompareTable({ meal }: { meal: MealData }) {
     totals: calcMealTotals(v.foods),
   }))
   const ref = rows[0].totals
+  const fmtDelta = (v: number, decimals = 0) => {
+    const sign = v > 0 ? '+' : ''
+    return `${sign}${decimals ? v.toFixed(decimals) : Math.round(v)}`
+  }
+  const deltaClass = (v: number) => {
+    if (Math.abs(v) < 0.05) return styles.compareDeltaNeutral
+    return v > 0 ? styles.compareDeltaUp : styles.compareDeltaDown
+  }
   return (
-    <div className={styles.compareWrap}>
+    <div className={styles.compareWrap} onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
@@ -237,37 +245,36 @@ function VariantCompareTable({ meal }: { meal: MealData }) {
         {open ? '▼' : '▶'} Comparer ({rows.length} variantes)
       </button>
       {open && (
-        <table className={styles.compareTable}>
-          <thead>
-            <tr><th>Variante</th><th>kcal</th><th>P</th><th>G</th><th>L</th></tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={`v${i}`}>
-                <td>{r.label}</td>
-                <td>{r.totals.kcal}</td>
-                <td>{r.totals.p.toFixed(1)}</td>
-                <td>{r.totals.g.toFixed(1)}</td>
-                <td>{r.totals.l.toFixed(1)}</td>
-              </tr>
-            ))}
-            {rows.slice(1).map((r, i) => {
-              const dKcal = r.totals.kcal - ref.kcal
-              const dP = r.totals.p - ref.p
-              const dG = r.totals.g - ref.g
-              const dL = r.totals.l - ref.l
-              return (
-                <tr key={`d${i}`} className={styles.compareDelta}>
-                  <td>Δ {r.label}</td>
-                  <td>{dKcal >= 0 ? '+' : ''}{dKcal}</td>
-                  <td>{dP >= 0 ? '+' : ''}{dP.toFixed(1)}</td>
-                  <td>{dG >= 0 ? '+' : ''}{dG.toFixed(1)}</td>
-                  <td>{dL >= 0 ? '+' : ''}{dL.toFixed(1)}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        <div className={styles.compareCards}>
+          {rows.map((r, i) => {
+            const dKcal = r.totals.kcal - ref.kcal
+            const dP = r.totals.p - ref.p
+            const dG = r.totals.g - ref.g
+            const dL = r.totals.l - ref.l
+            return (
+              <div key={i} className={styles.compareCard}>
+                <div className={styles.compareCardLabel}>
+                  <span>{r.label}</span>
+                  {i === 0 && <span className={styles.compareCardRef}>Référence</span>}
+                </div>
+                <div className={styles.compareCardStats}>
+                  <span><b>{r.totals.kcal}</b> kcal</span>
+                  <span><b>{r.totals.p.toFixed(1)}</b> P</span>
+                  <span><b>{r.totals.g.toFixed(1)}</b> G</span>
+                  <span><b>{r.totals.l.toFixed(1)}</b> L</span>
+                </div>
+                {i > 0 && (
+                  <div className={styles.compareCardDelta}>
+                    <span className={deltaClass(dKcal)}>{fmtDelta(dKcal)} kcal</span>
+                    <span className={deltaClass(dP)}>{fmtDelta(dP, 1)} P</span>
+                    <span className={deltaClass(dG)}>{fmtDelta(dG, 1)} G</span>
+                    <span className={deltaClass(dL)}>{fmtDelta(dL, 1)} L</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )
@@ -287,6 +294,8 @@ export default function MealEditor({
   const [activeMealIdx, setActiveMealIdx] = useState(0)
   // Map meal_index -> variant id active in editor (UI-only, not persisted).
   const [activeVariantIdByMeal, setActiveVariantIdByMeal] = useState<Record<number, string>>({})
+  // Inline-edit state for variant labels: { mealIdx, variantId } | null.
+  const [editingVariantOf, setEditingVariantOf] = useState<{ mealIdx: number; variantId: string } | null>(null)
   const [planName, setPlanName] = useState(initName)
   const [mealType, setMealType] = useState<'training' | 'rest'>(initMealType)
   const [isMacroOnly, setIsMacroOnly] = useState(initMacroOnly || false)
@@ -916,101 +925,144 @@ export default function MealEditor({
 
                   {/* Variant tabs (multi-variant meal) */}
                   {hasVariants(meal) && (
-                    <div className={styles.variantTabs} onClick={(e) => e.stopPropagation()}>
-                      {meal.variants!.map((v) => {
-                        const isActiveVariant = (activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id) === v.id
-                        return (
+                    <>
+                      <div className={styles.variantTabs} onClick={(e) => e.stopPropagation()}>
+                        {meal.variants!.map((v) => {
+                          const isActiveVariant = (activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id) === v.id
+                          const isEditing = editingVariantOf?.mealIdx === mealIdx && editingVariantOf?.variantId === v.id
+                          const canDelete = meal.variants!.length > 1
+                          return (
+                            <span
+                              key={v.id}
+                              className={`${styles.variantTab} ${isActiveVariant ? styles.variantTabActive : ''}`}
+                              onClick={() => {
+                                if (isEditing) return
+                                if (isActiveVariant) {
+                                  // Click on already-active tab → enter edit mode
+                                  setEditingVariantOf({ mealIdx, variantId: v.id })
+                                } else {
+                                  setActiveVariantIdByMeal({ ...activeVariantIdByMeal, [mealIdx]: v.id })
+                                }
+                              }}
+                            >
+                              {isEditing ? (
+                                <input
+                                  type="text"
+                                  className={styles.variantTabEdit}
+                                  defaultValue={v.label}
+                                  autoFocus
+                                  onClick={(e) => e.stopPropagation()}
+                                  onFocus={(e) => e.currentTarget.select()}
+                                  onBlur={(e) => {
+                                    const newLabel = e.currentTarget.value.trim()
+                                    if (newLabel && newLabel !== v.label) {
+                                      const updated = renameVariant(meal, v.id, newLabel)
+                                      const newMeals = [...meals]
+                                      newMeals[mealIdx] = updated
+                                      setMeals(newMeals)
+                                    }
+                                    setEditingVariantOf(null)
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.currentTarget.blur()
+                                    } else if (e.key === 'Escape') {
+                                      // Cancel: reset value and blur without saving
+                                      e.currentTarget.value = v.label
+                                      setEditingVariantOf(null)
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <>
+                                  <span className={styles.variantTabLabel}>{v.label}</span>
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      className={styles.variantTabRemove}
+                                      title="Supprimer cette variante"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (!confirm(`Supprimer la variante "${v.label}" ?`)) return
+                                        const updated = removeVariantFromMeal(meal, v.id)
+                                        const newMeals = [...meals]
+                                        newMeals[mealIdx] = updated
+                                        setMeals(newMeals)
+                                        // If we just deleted the active variant, point to the first remaining.
+                                        const activeId = activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id
+                                        if (activeId === v.id && updated.variants && updated.variants.length > 0) {
+                                          setActiveVariantIdByMeal({ ...activeVariantIdByMeal, [mealIdx]: updated.variants[0].id })
+                                        }
+                                      }}
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </span>
+                          )
+                        })}
+                        {meal.variants!.length < 3 && (
                           <button
-                            key={v.id}
                             type="button"
-                            className={`${styles.variantTab} ${isActiveVariant ? styles.variantTabActive : ''}`}
-                            onClick={() => setActiveVariantIdByMeal({ ...activeVariantIdByMeal, [mealIdx]: v.id })}
+                            className={styles.variantTabAdd}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const nextNum = (meal.variants?.length ?? 0) + 1
+                              const label = `Variante ${nextNum}`
+                              const updated = addVariantToMeal(meal, label)
+                              const newMeals = [...meals]
+                              newMeals[mealIdx] = updated
+                              setMeals(newMeals)
+                              // Switch to the new variant + enter edit mode immediately.
+                              const newVariant = updated.variants?.[updated.variants.length - 1]
+                              if (newVariant) {
+                                setActiveVariantIdByMeal({ ...activeVariantIdByMeal, [mealIdx]: newVariant.id })
+                                setEditingVariantOf({ mealIdx, variantId: newVariant.id })
+                              }
+                            }}
                           >
-                            {v.label}
+                            + Option
                           </button>
-                        )
-                      })}
-                      {meal.variants!.length < 3 && (
-                        <button
-                          type="button"
-                          className={styles.variantTabAdd}
-                          onClick={() => {
-                            const label = prompt('Label de la nouvelle variante (ex: Shake)')
-                            if (!label) return
-                            const updated = addVariantToMeal(meal, label)
-                            const newMeals = [...meals]
-                            newMeals[mealIdx] = updated
-                            setMeals(newMeals)
-                          }}
-                        >
-                          + Option
-                        </button>
-                      )}
-                      <div className={styles.variantActions}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const activeId = activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id
-                            const updated = duplicateVariant(meal, activeId)
-                            if (updated === meal) return // limit hit or src not found
-                            const newMeals = [...meals]
-                            newMeals[mealIdx] = updated
-                            setMeals(newMeals)
-                          }}
-                          disabled={meal.variants!.length >= 3}
-                        >
-                          Dupliquer
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const activeId = activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id
-                            const cur = meal.variants!.find((v) => v.id === activeId)
-                            if (!cur) return
-                            const newLabel = prompt('Nouveau label', cur.label)
-                            if (!newLabel) return
-                            const updated = renameVariant(meal, activeId, newLabel)
-                            const newMeals = [...meals]
-                            newMeals[mealIdx] = updated
-                            setMeals(newMeals)
-                          }}
-                        >
-                          Renommer
-                        </button>
-                        <button
-                          type="button"
-                          disabled={meal.variants!.length <= 1}
-                          onClick={() => {
-                            if (!confirm('Supprimer cette variante ?')) return
-                            const activeId = activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id
-                            const updated = removeVariantFromMeal(meal, activeId)
-                            const newMeals = [...meals]
-                            newMeals[mealIdx] = updated
-                            setMeals(newMeals)
-                            // reset active variant pointer to first remaining
-                            if (updated.variants && updated.variants.length > 0) {
-                              setActiveVariantIdByMeal({ ...activeVariantIdByMeal, [mealIdx]: updated.variants[0].id })
-                            }
-                          }}
-                        >
-                          Supprimer
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!confirm('Convertir en repas simple ? Les autres variantes seront perdues.')) return
-                            const activeId = activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id
-                            const updated = convertToSimpleMeal(meal, activeId)
-                            const newMeals = [...meals]
-                            newMeals[mealIdx] = updated
-                            setMeals(newMeals)
-                          }}
-                        >
-                          Convertir en simple
-                        </button>
+                        )}
+                        <div className={styles.variantActions}>
+                          <button
+                            type="button"
+                            title="Dupliquer la variante active"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const activeId = activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id
+                              const updated = duplicateVariant(meal, activeId)
+                              if (updated === meal) return
+                              const newMeals = [...meals]
+                              newMeals[mealIdx] = updated
+                              setMeals(newMeals)
+                            }}
+                            disabled={meal.variants!.length >= 3}
+                          >
+                            Dupliquer
+                          </button>
+                          <button
+                            type="button"
+                            title="Convertir en repas simple"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!confirm('Convertir en repas simple ? Les autres variantes seront perdues.')) return
+                              const activeId = activeVariantIdByMeal[mealIdx] ?? meal.variants![0].id
+                              const updated = convertToSimpleMeal(meal, activeId)
+                              const newMeals = [...meals]
+                              newMeals[mealIdx] = updated
+                              setMeals(newMeals)
+                            }}
+                          >
+                            Convertir en simple
+                          </button>
+                        </div>
                       </div>
-                      <VariantCompareTable meal={meal} />
-                    </div>
+                      {/* Comparator: full-width row below tabs */}
+                      <VariantCompareCards meal={meal} />
+                    </>
                   )}
 
                   {/* "Add variant" button (simple meal) */}
@@ -1020,15 +1072,16 @@ export default function MealEditor({
                       className={styles.addVariantBtn}
                       onClick={(e) => {
                         e.stopPropagation()
-                        const label = prompt('Label de la 2e variante (ex: Shake)')
-                        if (!label) return
-                        const updated = addVariantToMeal(meal, label)
+                        // Auto-label the new variant. After conversion: existing foods → "Variante 1", new empty → "Variante 2".
+                        const updated = addVariantToMeal(meal, 'Variante 2')
                         const newMeals = [...meals]
                         newMeals[mealIdx] = updated
                         setMeals(newMeals)
-                        // pointer sur la nouvelle variante
+                        // Switch to the new variant + enter edit mode.
                         if (updated.variants && updated.variants.length >= 2) {
-                          setActiveVariantIdByMeal({ ...activeVariantIdByMeal, [mealIdx]: updated.variants[1].id })
+                          const newVariant = updated.variants[updated.variants.length - 1]
+                          setActiveVariantIdByMeal({ ...activeVariantIdByMeal, [mealIdx]: newVariant.id })
+                          setEditingVariantOf({ mealIdx, variantId: newVariant.id })
                         }
                       }}
                     >

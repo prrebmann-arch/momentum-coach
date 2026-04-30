@@ -567,12 +567,14 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 8px 0;
+  margin: 8px 0 0;
   align-items: center;
 }
-.variantTab,
-.variantTabAdd {
-  padding: 4px 10px;
+.variantTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 10px;
   border: 1px solid var(--border, #d4d4d8);
   background: transparent;
   border-radius: 6px;
@@ -580,11 +582,73 @@
   font-size: 13px;
   color: var(--text);
   font-family: inherit;
+  user-select: none;
+  transition: background 0.12s, border-color 0.12s;
+}
+.variantTab:hover {
+  border-color: var(--text3, #a1a1aa);
 }
 .variantTabActive {
   background: var(--primary, #18181b);
   color: white;
   border-color: var(--primary, #18181b);
+}
+.variantTabActive:hover {
+  border-color: var(--primary, #18181b);
+}
+.variantTabLabel {
+  line-height: 1.2;
+}
+.variantTabRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-left: 2px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  font-family: inherit;
+}
+.variantTabRemove:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.12);
+}
+.variantTabActive .variantTabRemove:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.variantTabEdit {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: inherit;
+  padding: 0;
+  width: 110px;
+  min-width: 60px;
+}
+.variantTabAdd {
+  padding: 4px 10px;
+  border: 1px dashed var(--border, #d4d4d8);
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text3);
+  font-family: inherit;
+}
+.variantTabAdd:hover {
+  color: var(--text);
+  border-color: var(--text3);
 }
 .variantActions {
   margin-left: auto;
@@ -592,17 +656,22 @@
   gap: 4px;
 }
 .variantActions button {
-  padding: 2px 8px;
-  font-size: 12px;
-  border: 1px solid var(--border, #d4d4d8);
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid transparent;
   background: transparent;
   border-radius: 4px;
   cursor: pointer;
-  color: var(--text);
+  color: var(--text3, #a1a1aa);
   font-family: inherit;
+  transition: color 0.12s, border-color 0.12s;
+}
+.variantActions button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border, #d4d4d8);
 }
 .variantActions button:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 .addVariantBtn {
@@ -621,9 +690,11 @@
   border-color: var(--text3);
 }
 
+/* ── Comparator (full-width row below tabs) ── */
 .compareWrap {
-  margin: 8px 0;
+  margin: 6px 0 8px;
   font-size: 12px;
+  width: 100%;
 }
 .compareToggle {
   background: transparent;
@@ -634,28 +705,72 @@
   font-size: 12px;
   font-family: inherit;
 }
-.compareTable {
-  margin-top: 4px;
+.compareToggle:hover {
+  color: var(--text);
+}
+.compareCards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
   width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
 }
-.compareTable th,
-.compareTable td {
-  padding: 4px 8px;
-  text-align: right;
+.compareCard {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #d4d4d8);
+  border-radius: 8px;
+  background: var(--bg2, rgba(0, 0, 0, 0.02));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.compareTable th:first-child,
-.compareTable td:first-child {
-  text-align: left;
+.compareCardLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
 }
-.compareTable th {
-  color: var(--muted, #71717a);
+.compareCardRef {
+  font-size: 10px;
   font-weight: 500;
-}
-.compareDelta td {
   color: var(--muted, #71717a);
-  font-style: italic;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.compareCardStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: var(--text);
+}
+.compareCardStats b {
+  font-weight: 600;
+}
+.compareCardDelta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 11px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border, #d4d4d8);
+}
+.compareDeltaUp {
+  color: #c2410c;
+}
+.compareDeltaDown {
+  color: #15803d;
+}
+.compareDeltaNeutral {
+  color: var(--muted, #71717a);
 }
 
 /* ── Day variant tabs (training-1/2, rest-1/2…) ── */
