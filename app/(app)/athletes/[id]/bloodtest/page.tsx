@@ -78,18 +78,28 @@ export default function BloodtestPage() {
     setTracked(next)
   }
 
-  async function uploadPdf(file: File) {
+  async function uploadImages(files: File[]) {
     if (!user) return
+    if (files.length === 0) return
+    if (files.length > 10) { toast('Maximum 10 screenshots par bilan', 'error'); return }
     setUploading(true)
     try {
       const ts = Date.now()
-      const path = `coach/${user.id}/${params.id}/${ts}.pdf`
-      const { error: upErr } = await supabase.storage.from('coach-bloodtest').upload(path, file, { contentType: 'application/pdf', upsert: false })
-      if (upErr) throw upErr
+      const paths: string[] = []
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i]
+        if (!f.type.startsWith('image/')) { throw new Error(`${f.name} n'est pas une image`) }
+        if (f.size > 8 * 1024 * 1024) { throw new Error(`${f.name} dépasse 8 MB`) }
+        const ext = f.type === 'image/png' ? 'png' : 'jpg'
+        const path = `coach/${user.id}/${params.id}/${ts}_${i}.${ext}`
+        const { error: upErr } = await supabase.storage.from('coach-bloodtest').upload(path, f, { contentType: f.type || 'image/jpeg', upsert: false })
+        if (upErr) throw upErr
+        paths.push(path)
+      }
       const res = await fetch('/api/bloodtest/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ athlete_id: params.id, uploaded_by: 'coach', file_path: path }),
+        body: JSON.stringify({ athlete_id: params.id, uploaded_by: 'coach', file_paths: paths }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'upload failed')
@@ -98,7 +108,7 @@ export default function BloodtestPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({ upload_id: json.upload_id }),
       }).then(() => loadData()).catch((e) => console.error('[bloodtest] extract bg', e))
-      toast('Upload OK, extraction en cours...', 'success')
+      toast(`${paths.length} screenshot${paths.length > 1 ? 's' : ''} envoyé${paths.length > 1 ? 's' : ''}, extraction en cours...`, 'success')
       loadData()
     } catch (e: any) {
       console.error('[bloodtest] upload', e)
@@ -131,9 +141,9 @@ export default function BloodtestPage() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 8 }}>
         <Toggle checked={enabled} onChange={toggleEnabled} label="Prise de sang activée" />
-        <input type="file" accept="application/pdf" id="bt-upload" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPdf(f) }} />
+        <input type="file" accept="image/jpeg,image/png" multiple id="bt-upload" hidden onChange={(e) => { const fs = e.target.files; if (fs && fs.length > 0) { uploadImages(Array.from(fs)); e.target.value = '' } }} />
         <button className="btn btn-red btn-sm" disabled={uploading} onClick={() => document.getElementById('bt-upload')?.click()}>
-          <i className="fas fa-upload" /> {uploading ? 'Upload...' : 'Upload PDF'}
+          <i className="fas fa-images" /> {uploading ? 'Upload...' : 'Upload screenshots'}
         </button>
       </div>
 
