@@ -40,6 +40,9 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/athletes/[id]/videos` | technique videos tab | Athlete-uploaded execution videos |
 | `/athletes/[id]/retours` | coach feedback tab | List + send retours (video/loom/audio/msg) |
 | `/athletes/[id]/posing` | posing videos tab | — |
+| `/athletes/[id]/fodmap` | fodmap test tab | FODMAP reintro tracking |
+| `/athletes/[id]/bloodtest` | bloodtest tab | Blood test PDF upload + extraction + validation + history graphs |
+| `/athletes/[id]/bloodtest/validate/[upload_id]` | validation page | Coach split-view PDF / extracted markers |
 | `/athletes/[id]/questionnaires` | quest. assignments | — |
 | `/athletes/[id]/supplements` | suppl. tracking | — |
 | `/athletes/[id]/routine` | morning routine | — |
@@ -84,6 +87,10 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/api/instagram/sync-stories` | POST | Refresh `ig_stories`. |
 | `/api/instagram/webhook` | GET (verify) / POST | Meta webhook (DMs, comments). Triggers `automations`. |
 | `/api/facebook/page-auth` | POST | FB Page OAuth (paired with IG Business). |
+| `/api/bloodtest/upload` | POST | `bloodtest/upload/route.ts` | Validates path + inserts row in `bloodtest_uploads`. |
+| `/api/bloodtest/extract` | POST | `bloodtest/extract/route.ts` | Calls Claude Haiku with PDF, persists `extracted_data`. Server-only ANTHROPIC_API_KEY. |
+| `/api/bloodtest/validate` | POST | `bloodtest/validate/route.ts` | Coach submits validated markers + dated_at. |
+| `/api/bloodtest/signed-url` | GET `?id=` | `bloodtest/signed-url/route.ts` | 1h signed URL for PDF preview. |
 
 All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer JWT -> `supabase.auth.getUser()`).
 
@@ -200,6 +207,11 @@ Source of truth = SQL migrations in `sql/*.sql` + observed SELECTs.
 - `supplements`, `athlete_supplements`, `supplement_logs`, `supplement_dosage_history`.
 - `routine_items`, `routine_logs` — morning routine.
 - `menstrual_logs`.
+- `athlete_fodmap_logs` — FODMAP reintro tracking. Cols: `id, athlete_id, group_key, food_key, portion_size enum (S/M/L), rating, note, logged_at, iso_week_start GENERATED, archived_at`. RPC `update_fodmap_log_with_cascade(log_id, new_rating, new_note)` for athlete edits with cascade-delete of later portions when rating becomes red.
+- `athletes.fodmap_enabled` — boolean toggle (mirror posing). Default false.
+- `bloodtest_uploads` (`id, athlete_id, uploaded_by, file_path, dated_at, uploaded_at, validated_at, validated_by, extracted_data jsonb, validated_data jsonb, ai_extraction_meta jsonb, archived_at`). Workflow extract→validate.
+- `coach_custom_markers` (`coach_id, marker_key, label, unit_canonical, category, zones jsonb`). Per-coach custom markers.
+- `athletes.bloodtest_enabled` (bool toggle), `athletes.bloodtest_tracked_markers` (jsonb array).
 
 ### Notif & push
 - `notifications` — `user_id` (athlete auth uid), `type, title, body, metadata jsonb`.
@@ -238,6 +250,7 @@ Source of truth = SQL migrations in `sql/*.sql` + observed SELECTs.
 | `coach-audio` | `${user.id}/retour_${athleteId}_${ts}.{mp4|webm}` | Used by `useAudioRecorder`. Signed URL 1y. |
 | `athlete-photos` | `${user.id}/${date}_{front|side|back}.jpg` (athlete user_id) | Private. |
 | `content-drafts` | IG drafts. **Public** (`getPublicUrl`). |
+| `coach-bloodtest` | `{user_id}/{ts}.pdf` (athlète) or `coach/{coach_id}/{athlete_id}/{ts}.pdf` (coach) | Private. 10MB max, PDF only. Signed URL via `/api/bloodtest/signed-url`. |
 
 ---
 
@@ -325,9 +338,17 @@ useRefetchOnResume(load, loading)
 | IG content drafts (storage upload) | `components/business/ContentPlanner.tsx` (uses `content-drafts` bucket, public) |
 | Roadmap phases (Seche/Reverse/Masse) | `components/roadmap/*` + `lib/constants.ts` (`PROG_PHASES`) |
 | Onboarding workflow assignment | `app/api/athlete-onboarding/init/route.ts` (server-side insert) |
+| Modify bloodtest coach UI | `app/(app)/athletes/[id]/bloodtest/page.tsx` |
+| Modify bloodtest validation queue | `app/(app)/athletes/[id]/bloodtest/validate/[upload_id]/page.tsx` |
+| Modify bloodtest catalog | `lib/bloodtestCatalog.ts` (mirror in ATHLETE/src/utils/bloodtestCatalog.js) |
+| Modify Claude extraction prompt or model | `app/api/bloodtest/extract/route.ts` |
+| Modify zone classification logic | `lib/bloodtest.ts` (`classifyValue`) |
 | Admin pages (sub-app at `/admin`) | `app/admin/{athletes,coaches,payments,metrics}/page.tsx` |
 | Add a new RLS policy | `sql/rls_*.sql` patterns; remember coach_id = auth.uid() |
 | Migrate DB | Add `sql/<descriptive>.sql`, run manually in Supabase SQL Editor |
+| Modify FODMAP coach UI | `app/(app)/athletes/[id]/fodmap/page.tsx` |
+| Modify FODMAP catalog (8 groups, 24 foods, 72 portions) | `lib/fodmapCatalog.ts` (mirror in ATHLETE/src/utils/fodmapCatalog.js) |
+| Modify FODMAP status derivation / ISO week helpers | `lib/fodmap.ts` |
 
 ---
 
