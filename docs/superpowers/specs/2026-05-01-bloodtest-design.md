@@ -64,74 +64,139 @@ Clé API : `ANTHROPIC_API_KEY` côté Vercel COACH server-only. Jamais exposée 
 
 ### 3.2. Catalogue marqueurs
 
-Table seed côté code (pas DB), mêmes raisons que FODMAP catalog :
+Sources de vérité dupliquées (parité testée en CI, pattern FODMAP) :
 - ATHLETE : `src/utils/bloodtestCatalog.js`
 - COACH : `lib/bloodtestCatalog.ts`
-- Test snapshot CI vérifie parité.
 
-Structure :
+#### 3.2.1. Framework de zones
+
+Deux types de zones selon le marqueur :
+
+**Type `four_zone` — pour micronutriments + métaboliques** (cadre clinique du coach) :
+- `optimal` (au-dessus du seuil de déficience)
+- `deficience` (légère insuffisance)
+- `carence` (insuffisance moyenne)
+- `avitaminose` (insuffisance sévère)
+
+Exemple Vit D `higher_is_better` :
+- `optimal` : ≥ 30 ng/mL
+- `deficience` : 20–30 ng/mL
+- `carence` : 10–20 ng/mL
+- `avitaminose` : < 10 ng/mL
+
+Exemple CRP `lower_is_better` (zones inversées) :
+- `optimal` : ≤ 1 mg/L
+- `deficience` : 1–3 mg/L (équivaut à "légère hausse")
+- `carence` : 3–10 mg/L
+- `avitaminose` : > 10 mg/L
+
+**Type `range` — pour hormones** (plages physiologiques) :
+- `low` : sous la borne basse
+- `normal` : entre les deux bornes
+- `high` : au-dessus de la borne haute
+
+Pour les hormones féminines variables selon le cycle (Œstradiol, Progestérone, LH, FSH), zones `range` exposent une variante par phase (folliculaire / ovulatoire / lutéale / ménopause). Choix de la phase = champ libre lors du log côté coach (pas auto-detecté).
+
+#### 3.2.2. Structure TypeScript
 
 ```ts
 export type BloodtestPreset = 'basic' | 'hormonal_plus' | 'total'
 
+export type BloodtestCategory =
+  | 'hema' | 'iron' | 'vitamin' | 'mineral'
+  | 'hormone_sex' | 'thyroid' | 'inflammation' | 'metabolism' | 'liver' | 'lipid'
+
+export type ZoneConfig =
+  | { type: 'four_zone'; direction: 'higher_is_better' | 'lower_is_better'
+    ; deficience_min: number; carence_min: number; avitaminose_min: number }
+  | { type: 'range'; normal_min: number; normal_max: number; phase?: string }
+
 export type BloodtestMarker = {
-  key: string                  // e.g. 'hemoglobine'
-  label: string                // 'Hémoglobine'
-  unit_canonical: string       // 'g/L'
-  unit_aliases: string[]       // ['g/dL', 'g/dl'] — IA mapping
-  category: 'hema' | 'iron' | 'hormone' | 'vitamin' | 'metabolic' | 'liver' | 'lipid' | 'mineral' | 'other'
-  default_zones: { moyen_max: number; bon_max: number }
-  // moyen = below moyen_max, bon = below bon_max, tres_bon = above bon_max
-  // ou inverse selon le marqueur (cf direction)
-  direction: 'higher_is_better' | 'lower_is_better' | 'range_is_better'
-  presets: BloodtestPreset[]   // dans quels presets ce marqueur apparait par défaut
-}
-
-export const MARKERS: BloodtestMarker[] = [
-  // basic
-  { key: 'hemoglobine', label: 'Hémoglobine', unit_canonical: 'g/L', unit_aliases: ['g/dL'], category: 'hema', default_zones: { moyen_max: 130, bon_max: 145 }, direction: 'higher_is_better', presets: ['basic','hormonal_plus','total'] },
-  { key: 'hematocrite', label: 'Hématocrite', unit_canonical: '%', unit_aliases: [], category: 'hema', default_zones: { moyen_max: 38, bon_max: 45 }, direction: 'range_is_better', presets: ['basic','hormonal_plus','total'] },
-  { key: 'ferritine', label: 'Ferritine', unit_canonical: 'µg/L', unit_aliases: ['ng/mL','µg/l'], category: 'iron', default_zones: { moyen_max: 30, bon_max: 100 }, direction: 'higher_is_better', presets: ['basic','hormonal_plus','total'] },
-  { key: 'fer_serique', label: 'Fer sérique', unit_canonical: 'µmol/L', unit_aliases: [], category: 'iron', default_zones: { moyen_max: 12, bon_max: 25 }, direction: 'higher_is_better', presets: ['basic','hormonal_plus','total'] },
-  { key: 'vitamine_d', label: 'Vitamine D (25-OH-D)', unit_canonical: 'ng/mL', unit_aliases: ['nmol/L'], category: 'vitamin', default_zones: { moyen_max: 30, bon_max: 60 }, direction: 'higher_is_better', presets: ['basic','hormonal_plus','total'] },
-  { key: 'tsh', label: 'TSH', unit_canonical: 'mUI/L', unit_aliases: ['mIU/L'], category: 'hormone', default_zones: { moyen_max: 1.5, bon_max: 3.0 }, direction: 'range_is_better', presets: ['basic','hormonal_plus','total'] },
-  { key: 'crp', label: 'CRP', unit_canonical: 'mg/L', unit_aliases: [], category: 'metabolic', default_zones: { moyen_max: 3, bon_max: 1 }, direction: 'lower_is_better', presets: ['basic','hormonal_plus','total'] },
-  { key: 'creatinine', label: 'Créatinine', unit_canonical: 'µmol/L', unit_aliases: ['mg/L'], category: 'metabolic', default_zones: { moyen_max: 90, bon_max: 110 }, direction: 'range_is_better', presets: ['basic','hormonal_plus','total'] },
-  { key: 'glycemie', label: 'Glycémie à jeun', unit_canonical: 'g/L', unit_aliases: ['mmol/L'], category: 'metabolic', default_zones: { moyen_max: 1.0, bon_max: 0.95 }, direction: 'lower_is_better', presets: ['basic','hormonal_plus','total'] },
-  // hormonal+ (en plus du basic)
-  { key: 'testosterone_totale', label: 'Testostérone totale', unit_canonical: 'ng/mL', unit_aliases: ['nmol/L'], category: 'hormone', default_zones: { moyen_max: 4, bon_max: 6 }, direction: 'higher_is_better', presets: ['hormonal_plus','total'] },
-  { key: 'cortisol', label: 'Cortisol matinal', unit_canonical: 'µg/dL', unit_aliases: ['nmol/L'], category: 'hormone', default_zones: { moyen_max: 10, bon_max: 18 }, direction: 'range_is_better', presets: ['hormonal_plus','total'] },
-  { key: 'oestradiol', label: 'Œstradiol', unit_canonical: 'pg/mL', unit_aliases: ['pmol/L'], category: 'hormone', default_zones: { moyen_max: 50, bon_max: 200 }, direction: 'range_is_better', presets: ['hormonal_plus','total'] },
-  { key: 'igf1', label: 'IGF-1', unit_canonical: 'ng/mL', unit_aliases: [], category: 'hormone', default_zones: { moyen_max: 150, bon_max: 250 }, direction: 'higher_is_better', presets: ['hormonal_plus','total'] },
-  { key: 'lh', label: 'LH', unit_canonical: 'UI/L', unit_aliases: ['IU/L'], category: 'hormone', default_zones: { moyen_max: 4, bon_max: 8 }, direction: 'range_is_better', presets: ['hormonal_plus','total'] },
-  { key: 'fsh', label: 'FSH', unit_canonical: 'UI/L', unit_aliases: ['IU/L'], category: 'hormone', default_zones: { moyen_max: 5, bon_max: 10 }, direction: 'range_is_better', presets: ['hormonal_plus','total'] },
-  { key: 't3_libre', label: 'T3 libre', unit_canonical: 'pg/mL', unit_aliases: ['pmol/L'], category: 'hormone', default_zones: { moyen_max: 3, bon_max: 4.5 }, direction: 'range_is_better', presets: ['hormonal_plus','total'] },
-  { key: 't4_libre', label: 'T4 libre', unit_canonical: 'ng/dL', unit_aliases: ['pmol/L'], category: 'hormone', default_zones: { moyen_max: 1.0, bon_max: 1.6 }, direction: 'range_is_better', presets: ['hormonal_plus','total'] },
-  // total (en plus de hormonal+)
-  { key: 'magnesium', label: 'Magnésium', unit_canonical: 'mmol/L', unit_aliases: ['mg/L'], category: 'mineral', default_zones: { moyen_max: 0.75, bon_max: 0.95 }, direction: 'higher_is_better', presets: ['total'] },
-  { key: 'zinc', label: 'Zinc', unit_canonical: 'µmol/L', unit_aliases: ['µg/dL'], category: 'mineral', default_zones: { moyen_max: 11, bon_max: 16 }, direction: 'higher_is_better', presets: ['total'] },
-  { key: 'b12', label: 'Vitamine B12', unit_canonical: 'pg/mL', unit_aliases: ['pmol/L'], category: 'vitamin', default_zones: { moyen_max: 300, bon_max: 600 }, direction: 'higher_is_better', presets: ['total'] },
-  { key: 'folates', label: 'Folates', unit_canonical: 'ng/mL', unit_aliases: [], category: 'vitamin', default_zones: { moyen_max: 5, bon_max: 12 }, direction: 'higher_is_better', presets: ['total'] },
-  { key: 'transferrine', label: 'Transferrine', unit_canonical: 'g/L', unit_aliases: [], category: 'iron', default_zones: { moyen_max: 2.0, bon_max: 3.5 }, direction: 'range_is_better', presets: ['total'] },
-  { key: 'saturation_transferrine', label: 'Saturation transferrine', unit_canonical: '%', unit_aliases: [], category: 'iron', default_zones: { moyen_max: 20, bon_max: 35 }, direction: 'range_is_better', presets: ['total'] },
-  { key: 'asat', label: 'ASAT', unit_canonical: 'UI/L', unit_aliases: [], category: 'liver', default_zones: { moyen_max: 35, bon_max: 25 }, direction: 'lower_is_better', presets: ['total'] },
-  { key: 'alat', label: 'ALAT', unit_canonical: 'UI/L', unit_aliases: [], category: 'liver', default_zones: { moyen_max: 45, bon_max: 30 }, direction: 'lower_is_better', presets: ['total'] },
-  { key: 'gamma_gt', label: 'Gamma-GT', unit_canonical: 'UI/L', unit_aliases: [], category: 'liver', default_zones: { moyen_max: 60, bon_max: 35 }, direction: 'lower_is_better', presets: ['total'] },
-  { key: 'cholesterol_total', label: 'Cholestérol total', unit_canonical: 'g/L', unit_aliases: ['mmol/L'], category: 'lipid', default_zones: { moyen_max: 2.0, bon_max: 1.8 }, direction: 'lower_is_better', presets: ['total'] },
-  { key: 'hdl', label: 'HDL', unit_canonical: 'g/L', unit_aliases: ['mmol/L'], category: 'lipid', default_zones: { moyen_max: 0.4, bon_max: 0.6 }, direction: 'higher_is_better', presets: ['total'] },
-  { key: 'ldl', label: 'LDL', unit_canonical: 'g/L', unit_aliases: ['mmol/L'], category: 'lipid', default_zones: { moyen_max: 1.6, bon_max: 1.0 }, direction: 'lower_is_better', presets: ['total'] },
-  { key: 'triglycerides', label: 'Triglycérides', unit_canonical: 'g/L', unit_aliases: ['mmol/L'], category: 'lipid', default_zones: { moyen_max: 1.5, bon_max: 1.0 }, direction: 'lower_is_better', presets: ['total'] },
-  { key: 'hba1c', label: 'HbA1c', unit_canonical: '%', unit_aliases: ['mmol/mol'], category: 'metabolic', default_zones: { moyen_max: 5.7, bon_max: 5.4 }, direction: 'lower_is_better', presets: ['total'] },
-]
-
-export const PRESETS: Record<BloodtestPreset, string[]> = {
-  basic:         MARKERS.filter((m) => m.presets.includes('basic')).map((m) => m.key),
-  hormonal_plus: MARKERS.filter((m) => m.presets.includes('hormonal_plus')).map((m) => m.key),
-  total:         MARKERS.filter((m) => m.presets.includes('total')).map((m) => m.key),
+  key: string
+  label: string
+  unit_canonical: string
+  unit_aliases: string[]
+  category: BloodtestCategory
+  zones: ZoneConfig | { sex_specific: { male?: ZoneConfig; female?: ZoneConfig | { phases: ZoneConfig[] } } }
+  presets: BloodtestPreset[]
+  supplementation?: {
+    forms: string[]
+    dosage_general: string
+    timing: string
+  }
+  notes?: string
 }
 ```
 
-> Le catalogue ci-dessus est un **draft** basé sur les marqueurs courants en médecine du sport. À valider/ajuster avec le coach avant freeze.
+#### 3.2.3. Markers — preset `basic` (~10)
+
+Athlète sans soucis particuliers, suivi de routine 2x/an :
+
+| Key | Label | Unit | Zones (higher_is_better) | Presets |
+|---|---|---|---|---|
+| `hemoglobine` | Hémoglobine | g/L | déf < 130, car < 120, avit < 110 (homme : déf < 140, car < 130) | basic, h+, total |
+| `ferritine` | Ferritine | µg/L | déf < 50, car < 30, avit < 15 | basic, h+, total |
+| `fer_serique` | Fer sérique | µmol/L | déf < 12, car < 9, avit < 6 | basic, h+, total |
+| `vitamine_d` | Vitamine D (25-OH-D) | ng/mL | déf < 30, car < 20, avit < 10 | basic, h+, total |
+| `b12` | Vitamine B12 | pmol/L | déf < 250, car < 150, avit < 75 | basic, h+, total |
+| `folates_b9` | Folates (B9) | nmol/L | déf < 1300, car < 800, avit < 300 | basic, h+, total |
+| `magnesium_serique` | Magnésium sérique | mmol/L | déf < 0.75, car < 0.65, avit < 0.55 | basic, h+, total |
+| `tsh_us` | TSH ultrasensible | mUI/L | range 0.4–4.0 | basic, h+, total |
+| `crp_us` | CRP ultrasensible | mg/L | déf > 1, car > 3, avit > 10 (`lower_is_better`) | basic, h+, total |
+
+#### 3.2.4. Markers — preset `hormonal+` ajoute (~15)
+
+Femme avec irrégularités cycle / suspicion hormonale, sportive haute intensité :
+
+| Key | Label | Unit | Zones | Presets |
+|---|---|---|---|---|
+| `estrone_e1` | Estrone (E1) | pg/mL | range 30–200 (femme) | h+, total |
+| `estradiol_e2` | Estradiol (E2) | pg/mL | sex+phase: F-folliculaire 30–120, F-ovulatoire 130–370, F-lutéale 70–250, F-ménopause 5–30, M 10–40 | h+, total |
+| `estriol_e3` | Estriol (E3) | ng/mL | range 0.5–10 (hors grossesse) | h+, total |
+| `progesterone` | Progestérone | ng/mL | sex+phase: F-folliculaire < 1, F-lutéale 5–25, F-ménopause < 1 | h+, total (à doser jour ~21 du cycle) |
+| `lh` | LH | UI/L | sex+phase: F-folliculaire 2–10, F-pic ovu 20–100, F-lutéale 1–10, F-ménopause 15–60, M 1.5–9 | h+, total |
+| `fsh` | FSH | UI/L | sex+phase: F-folliculaire 3–10, F-ménopause > 25, M 1.5–12 | h+, total |
+| `shbg` | SHBG | nmol/L | range F: 18–144, M: 13–71 | h+, total |
+| `testosterone_totale` | Testostérone totale | ng/mL | range F: 0.1–0.7, M: 2.5–9 | h+, total |
+| `testosterone_libre` | Testostérone libre | pg/mL | range F: 0.5–4.5, M: 50–200 | h+, total |
+| `dhea_s` | DHEA-S | µg/dL | range F: 35–430, M: 80–560 (variable âge) | h+, total |
+| `androstenedione` | Androstènedione | ng/mL | range F: 0.4–3.4, M: 0.5–3.0 | h+, total |
+| `oh17_progesterone` | 17-OH-progestérone | ng/mL | range F-folliculaire < 1, F-lutéale < 4, M < 2 | h+, total |
+| `prolactine` | Prolactine | µg/L | range F: 4–25, M: 4–15 | h+, total |
+| `ft4` | T4 libre (FT4) | pmol/L | range 9–22 | h+, total |
+| `ft3` | T3 libre (FT3) | pmol/L | range 3–7 | h+, total |
+| `anti_tpo` | Anti-TPO | UI/mL | range < 35 (`lower_is_better`, four_zone : déf > 35, car > 100, avit > 500) | h+, total |
+| `anti_tg` | Anti-thyroglobuline | UI/mL | range < 40 (idem) | h+, total |
+
+#### 3.2.5. Markers — preset `total` ajoute (~10)
+
+Bilan complet check-up annuel ou si hormonal+ pas concluant :
+
+| Key | Label | Unit | Zones | Presets |
+|---|---|---|---|---|
+| `vitamine_e` | Vitamine E | µmol/L | déf < 20, car < 8, avit < 5 | total |
+| `magnesium_erythrocytaire` | Magnésium érythrocytaire | mmol/L | déf < 1.7, car < 1.5, avit < 1.3 | total (préféré au sérique si dispo) |
+| `zinc` | Zinc | µmol/L | déf < 11, car < 8, avit < 3 | total |
+| `cuivre` | Cuivre | µmol/L | déf < 13, car < 8, avit < 5 | total |
+| `selenium` | Sélénium | µg/L | déf < 80, car < 60, avit < 30 | total |
+| `transferrine` | Transferrine | g/L | range 2.0–3.6 | total |
+| `cft_tibc` | CFT / TIBC (capacité totale fixation fer) | µmol/L | range 45–80 | total |
+| `coef_sat_transferrine` | Coefficient saturation transferrine | % | range 20–40 (déf < 20 = lower_is_better four_zone) | total |
+
+> **Notes catalogue :**
+> - Les zones ci-dessus sont un **draft initial** basé sur la pratique courante de médecine du sport et les standards labos courants. À valider/ajuster avec le coach avant freeze. Les valeurs féminines/masculines ont volontairement des plages distinctes (`sex_specific`).
+> - Les phases du cycle pour les hormones féminines = `folliculaire | ovulatoire | luteale | menopause | postmenopause`. La sélection est manuelle côté coach lors de validation.
+> - Iode (apport quotidien µg/jour), Vit A, Vit C, Omega 3 — **out of scope MVP**, ajoutables en custom marker.
+> - Champ `supplementation` = info éducative pour le coach, surfacée dans la modale de validation marker. Données issues du référentiel coach (Notion). Phase 2 = recommandation auto post-validation.
+
+#### 3.2.6. Helpers exposés par le catalog
+
+```ts
+export function getMarker(key: string): BloodtestMarker | undefined
+export function getPresetMarkers(preset: BloodtestPreset): BloodtestMarker[]
+export function deriveSeverity(marker: BloodtestMarker, value: number, ctx?: { sex?: 'M'|'F'; phase?: string }): 'optimal'|'deficience'|'carence'|'avitaminose'|'low'|'normal'|'high'
+export function severityColor(sev: string): string  // hex code pour la zone
+```
 
 ### 3.3. Database
 
