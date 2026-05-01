@@ -208,6 +208,7 @@ export default function NouveauRetourPanel({ athleteId, onCreated, onAfter, acti
         athleteId,
         preAcquiredCamStream: camHandoff,
         mode: modeAtStart,
+        executionVideoId: videoId,
       })
       onAfter?.()
     } catch (err) {
