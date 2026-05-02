@@ -161,7 +161,7 @@ export default function BloodtestPage() {
         signal: abort.signal,
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
+      if (!res.ok) throw new Error(json.detail || json.error || `HTTP ${res.status}`)
       setAnalyzing(null)
       toast('Analyse terminée', 'success')
       loadData()

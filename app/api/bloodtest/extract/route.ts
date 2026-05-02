@@ -132,10 +132,7 @@ export async function POST(req: NextRequest) {
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 4096,
-      system: [
-        { type: 'text', text: SYSTEM_INSTRUCTIONS },
-        { type: 'text', text: catalogBlock, cache_control: { type: 'ephemeral' } },
-      ],
+      system: `${SYSTEM_INSTRUCTIONS}\n\n${catalogBlock}`,
       messages: [{ role: 'user', content: userContent }],
     })
     aiMeta.duration_ms = Date.now() - startTs
