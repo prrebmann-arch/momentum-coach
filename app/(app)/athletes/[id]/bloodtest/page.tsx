@@ -39,7 +39,7 @@ export default function BloodtestPage() {
   const loadData = useCallback(async () => {
     try {
       const [{ data: ath, error: athErr }, { data: ups }, { data: cms }] = await Promise.all([
-        supabase.from('athletes').select('bloodtest_enabled, bloodtest_tracked_markers, prenom, sexe').eq('id', params.id).single(),
+        supabase.from('athletes').select('bloodtest_enabled, bloodtest_tracked_markers, prenom, genre').eq('id', params.id).single(),
         supabase.from('bloodtest_uploads')
           .select('id, athlete_id, uploaded_by, uploader_user_id, file_path, dated_at, uploaded_at, validated_at, validated_by, extracted_data, validated_data, ai_extraction_meta, archived_at, created_at')
           .eq('athlete_id', params.id).is('archived_at', null)
@@ -52,7 +52,9 @@ export default function BloodtestPage() {
       setTracked(ath?.bloodtest_tracked_markers || [])
       setUploads((ups || []) as BloodtestUploadRow[])
       setCustomMarkers((cms || []) as CustomMarker[])
-      setAthleteInfo({ prenom: (ath as any)?.prenom, sexe: (ath as any)?.sexe })
+      const genre = (ath as any)?.genre
+      const sexe: 'M' | 'F' | undefined = genre === 'homme' ? 'M' : genre === 'femme' ? 'F' : undefined
+      setAthleteInfo({ prenom: (ath as any)?.prenom, sexe })
     } finally {
       setLoading(false)
     }
