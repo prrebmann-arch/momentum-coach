@@ -52,16 +52,24 @@ export default function MenstrualPage() {
   }, [params.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function updateLog(logId: string, patch: { start_date?: string; end_date?: string | null; flow?: string }) {
-    const { error } = await supabase.from('menstrual_logs').update(patch).eq('id', logId)
-    if (error) { toast(`Erreur: ${error.message}`, 'error'); return }
+    const { data, error } = await supabase.from('menstrual_logs').update(patch).eq('id', logId).select('id')
+    if (error) { console.error('[menstrual] update', error); toast(`Erreur: ${error.message}`, 'error'); return }
+    if (!data || data.length === 0) {
+      toast("Modif refusée par la DB (RLS coach UPDATE manquant — exécute sql/2026-05-02-menstrual-coach-edit.sql)", 'error')
+      return
+    }
     toast('Mis à jour', 'success')
     loadData()
   }
 
   async function deleteLog(logId: string) {
     if (!confirm('Supprimer cet enregistrement ?')) return
-    const { error } = await supabase.from('menstrual_logs').delete().eq('id', logId)
-    if (error) { toast(`Erreur: ${error.message}`, 'error'); return }
+    const { data, error } = await supabase.from('menstrual_logs').delete().eq('id', logId).select('id')
+    if (error) { console.error('[menstrual] delete', error); toast(`Erreur: ${error.message}`, 'error'); return }
+    if (!data || data.length === 0) {
+      toast("Suppression refusée par la DB (RLS coach DELETE manquant — exécute sql/2026-05-02-menstrual-coach-edit.sql)", 'error')
+      return
+    }
     toast('Supprimé', 'success')
     loadData()
   }
