@@ -12,6 +12,7 @@ import Skeleton from '@/components/ui/Skeleton'
 import Modal from '@/components/ui/Modal'
 import { MARKERS, PRESETS, type BloodtestPreset } from '@/lib/bloodtestCatalog'
 import { classifyValue, severityColor, type BloodtestUploadRow, type ExtractedData } from '@/lib/bloodtest'
+import BloodtestAnalysisProgress, { ANALYSIS_TIMEOUT_MS } from '@/components/bloodtest/BloodtestAnalysisProgress'
 
 type CustomMarker = { id: string; marker_key: string; label: string; unit_canonical: string; category: string; zones: any }
 
@@ -28,6 +29,7 @@ export default function BloodtestPage() {
   const [customMarkers, setCustomMarkers] = useState<CustomMarker[]>([])
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [analyzing, setAnalyzing] = useState<{ uploadId: string; status: 'running' | 'stale' | 'error'; errorMessage?: string } | null>(null)
 
   const loadData = useCallback(async () => {
     try {
@@ -108,7 +110,7 @@ export default function BloodtestPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
         body: JSON.stringify({ upload_id: json.upload_id }),
       }).then(() => loadData()).catch((e) => console.error('[bloodtest] extract bg', e))
-      toast(`${paths.length} screenshot${paths.length > 1 ? 's' : ''} envoyé${paths.length > 1 ? 's' : ''}, extraction en cours...`, 'success')
+      toast(`${paths.length} screenshot${paths.length > 1 ? 's' : ''} envoyé${paths.length > 1 ? 's' : ''}, analyse IA en cours...`, 'success')
       loadData()
     } catch (e: any) {
       console.error('[bloodtest] upload', e)
@@ -134,20 +136,43 @@ export default function BloodtestPage() {
   const pendingExtraction = uploads.filter((u) => !u.extracted_data && !u.validated_at)
   const validated = uploads.filter((u) => u.validated_at)
 
+  const analysisEtaMs = useMemo(() => {
+    const durations = uploads
+      .map((u) => u.ai_extraction_meta?.duration_ms)
+      .filter((d): d is number => typeof d === 'number' && d > 0)
+      .slice(0, 10)
+    if (durations.length === 0) return 12_000
+    const avg = durations.reduce((a, b) => a + b, 0) / durations.length
+    return Math.max(5_000, Math.min(45_000, avg))
+  }, [uploads])
+
   async function triggerExtract(uploadId: string) {
-    const res = await fetch('/api/bloodtest/extract', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ upload_id: uploadId }),
-    })
-    const json = await res.json()
-    if (!res.ok) {
-      console.error('[bloodtest] extract', json)
-      toast(`Erreur extraction: ${json.error || 'unknown'}`, 'error')
-      return
+    setAnalyzing({ uploadId, status: 'running' })
+    const staleTimer = setTimeout(() => {
+      setAnalyzing((a) => (a && a.uploadId === uploadId && a.status === 'running' ? { ...a, status: 'stale' } : a))
+    }, analysisEtaMs + 1000)
+    const abort = new AbortController()
+    const hardTimer = setTimeout(() => abort.abort(), ANALYSIS_TIMEOUT_MS)
+    try {
+      const res = await fetch('/api/bloodtest/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ upload_id: uploadId }),
+        signal: abort.signal,
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
+      setAnalyzing(null)
+      toast('Analyse terminée', 'success')
+      loadData()
+    } catch (e: any) {
+      console.error('[bloodtest] extract', e)
+      const msg = e.name === 'AbortError' ? 'délai dépassé' : (e.message || 'erreur inconnue')
+      setAnalyzing({ uploadId, status: 'error', errorMessage: msg })
+    } finally {
+      clearTimeout(staleTimer)
+      clearTimeout(hardTimer)
     }
-    toast('Extraction terminée', 'success')
-    loadData()
   }
   const allMarkers = [...MARKERS, ...customMarkers.map((cm) => ({
     key: cm.marker_key, label: cm.label, unit_canonical: cm.unit_canonical, unit_aliases: [],
@@ -187,19 +212,32 @@ export default function BloodtestPage() {
       {pendingExtraction.length > 0 && (
         <>
           <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>
-            <i className="fas fa-cog" style={{ color: 'var(--text3)', marginRight: 6 }} />En attente d'extraction ({pendingExtraction.length})
+            <i className="fas fa-cog" style={{ color: 'var(--text3)', marginRight: 6 }} />En attente d'analyse ({pendingExtraction.length})
           </h3>
           {pendingExtraction.map((u) => {
             const fileCount = (u.file_path || '').split('|').filter((p: string) => p).length
+            const live = analyzing && analyzing.uploadId === u.id ? analyzing : null
             return (
-              <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, background: 'var(--bg2)', borderLeft: '3px solid var(--text3)', borderRadius: 8, marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>Upload {u.uploaded_by} · {new Date(u.uploaded_at).toLocaleDateString('fr-FR')}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text3)' }}>{fileCount} fichier{fileCount > 1 ? 's' : ''} · pas encore analysé{fileCount > 1 ? 's' : ''}</div>
+              <div key={u.id} style={{ padding: 12, background: 'var(--bg2)', borderLeft: '3px solid var(--text3)', borderRadius: 8, marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: live ? 10 : 0 }}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Upload {u.uploaded_by} · {new Date(u.uploaded_at).toLocaleDateString('fr-FR')}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text3)' }}>{fileCount} fichier{fileCount > 1 ? 's' : ''} · pas encore analysé{fileCount > 1 ? 's' : ''}</div>
+                  </div>
+                  {!live && (
+                    <button className="btn btn-red btn-sm" onClick={() => triggerExtract(u.id)}>
+                      <i className="fas fa-wand-magic-sparkles" /> Analyse IA
+                    </button>
+                  )}
                 </div>
-                <button className="btn btn-red btn-sm" onClick={() => triggerExtract(u.id)}>
-                  <i className="fas fa-play" /> Lancer extraction
-                </button>
+                {live && (
+                  <BloodtestAnalysisProgress
+                    etaMs={analysisEtaMs}
+                    status={live.status}
+                    errorMessage={live.errorMessage}
+                    onRetry={() => triggerExtract(u.id)}
+                  />
+                )}
               </div>
             )
           })}
