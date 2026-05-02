@@ -1,6 +1,23 @@
 // COACH/lib/bloodtest.ts
 
-import { type BloodtestMarker, type ZoneBand, type ZoneConfig, type ZoneSeverity } from './bloodtestCatalog'
+import { type BloodtestMarker, type SexSpecificZones, type ZoneBand, type ZoneConfig, type ZoneSeverity } from './bloodtestCatalog'
+
+// Coach-level zone overrides format (stored in coach_profiles.bloodtest_zone_overrides JSONB).
+// Maps catalog marker_key → either a flat ZoneConfig, or sex-specific zones.
+export type ZoneOverride = ZoneConfig | { sex_specific: SexSpecificZones }
+export type ZoneOverrides = Record<string, ZoneOverride>
+
+/**
+ * Returns a marker with effective zones (override applied if present).
+ * For custom markers (coach_custom_markers), pass the marker as-is — its zones
+ * are already coach-edited and shouldn't be overridden by this map.
+ */
+export function applyZoneOverride(marker: BloodtestMarker, overrides?: ZoneOverrides | null): BloodtestMarker {
+  if (!overrides) return marker
+  const ov = overrides[marker.key]
+  if (!ov) return marker
+  return { ...marker, zones: ov as BloodtestMarker['zones'] }
+}
 
 export type ClassifyContext = {
   sex?: 'M' | 'F'

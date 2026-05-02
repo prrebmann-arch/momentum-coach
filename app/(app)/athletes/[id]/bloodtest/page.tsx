@@ -35,10 +35,11 @@ export default function BloodtestPage() {
   const [pdfModal, setPdfModal] = useState<{ uploadId: string; urls: { url: string; mediaType: string }[] } | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [athleteInfo, setAthleteInfo] = useState<{ prenom?: string; sexe?: 'M' | 'F' } | null>(null)
+  const [zoneOverrides, setZoneOverrides] = useState<Record<string, any>>({})
 
   const loadData = useCallback(async () => {
     try {
-      const [{ data: ath, error: athErr }, { data: ups }, { data: cms }] = await Promise.all([
+      const [{ data: ath, error: athErr }, { data: ups }, { data: cms }, { data: cp }] = await Promise.all([
         supabase.from('athletes').select('bloodtest_enabled, bloodtest_tracked_markers, prenom, genre').eq('id', params.id).single(),
         supabase.from('bloodtest_uploads')
           .select('id, athlete_id, uploaded_by, uploader_user_id, file_path, dated_at, uploaded_at, validated_at, validated_by, extracted_data, validated_data, ai_extraction_meta, archived_at, created_at')
@@ -46,7 +47,9 @@ export default function BloodtestPage() {
           .order('dated_at', { ascending: false, nullsFirst: false })
           .order('uploaded_at', { ascending: false }).limit(50),
         supabase.from('coach_custom_markers').select('id, marker_key, label, unit_canonical, category, zones').is('archived_at', null),
+        user?.id ? supabase.from('coach_profiles').select('bloodtest_zone_overrides').eq('user_id', user.id).maybeSingle() : Promise.resolve({ data: null }),
       ])
+      setZoneOverrides(((cp as any)?.bloodtest_zone_overrides as Record<string, any>) || {})
       if (athErr) { console.error('[bloodtest] athlete', athErr); toast(`Erreur: ${athErr.message}`, 'error'); return }
       setEnabled(ath?.bloodtest_enabled || false)
       setTracked(ath?.bloodtest_tracked_markers || [])
@@ -304,6 +307,7 @@ export default function BloodtestPage() {
           onDelete={(uploadId) => { if (confirm('Supprimer ce bilan ? Les valeurs validées seront perdues.')) deleteUpload(uploadId) }}
           onViewPdf={(uploadId) => viewPdf(uploadId)}
           athleteSex={athleteInfo?.sexe}
+          zoneOverrides={zoneOverrides}
         />
       </section>
 

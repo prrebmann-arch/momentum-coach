@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { MARKERS, type BloodtestCategory, type BloodtestMarker, type ZoneConfig } from '@/lib/bloodtestCatalog'
-import { classifyValue, severityColor, type BloodtestUploadRow, type ExtractedData } from '@/lib/bloodtest'
+import { applyZoneOverride, classifyValue, severityColor, type BloodtestUploadRow, type ExtractedData, type ZoneOverrides } from '@/lib/bloodtest'
 
 const CATEGORY_META: Record<BloodtestCategory, { label: string; icon: string; color: string }> = {
   hema: { label: 'Hématologie', icon: 'fa-droplet', color: '#ef4444' },
@@ -34,6 +34,7 @@ export default function BloodtestDashboard({
   onDelete,
   onViewPdf,
   athleteSex,
+  zoneOverrides,
 }: {
   uploads: BloodtestUploadRow[]
   tracked: string[]
@@ -41,13 +42,16 @@ export default function BloodtestDashboard({
   onDelete: (uploadId: string) => void
   onViewPdf: (uploadId: string) => void
   athleteSex?: 'M' | 'F'
+  zoneOverrides?: ZoneOverrides
 }) {
   const [tab, setTab] = useState<'snapshot' | 'trends' | 'bilans'>('snapshot')
   const [filterCat, setFilterCat] = useState<BloodtestCategory | 'all'>('all')
   const [detailMarker, setDetailMarker] = useState<string | null>(null)
 
   const allMarkers: BloodtestMarker[] = useMemo(() => [
-    ...MARKERS,
+    // Catalog markers — apply coach overrides
+    ...MARKERS.map((m) => applyZoneOverride(m, zoneOverrides)),
+    // Custom markers — zones edited directly in coach_custom_markers, no override layer
     ...customMarkers.map((cm) => ({
       key: cm.marker_key,
       label: cm.label,
@@ -57,7 +61,7 @@ export default function BloodtestDashboard({
       zones: cm.zones,
       presets: [],
     })),
-  ], [customMarkers])
+  ], [customMarkers, zoneOverrides])
 
   const markerByKey = useMemo(() => {
     const m = new Map<string, BloodtestMarker>()
