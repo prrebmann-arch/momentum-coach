@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { MARKERS, type BloodtestCategory, type BloodtestMarker, type ZoneConfig } from '@/lib/bloodtestCatalog'
 import { applyZoneOverride, classifyValue, severityColor, type BloodtestUploadRow, type ExtractedData, type ZoneOverrides } from '@/lib/bloodtest'
 
@@ -782,102 +782,242 @@ function TrendsView({
 }
 
 function TrendChart({ marker, series, athleteSex }: { marker: BloodtestMarker; series: ValidatedPoint[]; athleteSex?: 'M' | 'F' }) {
-  const W = 360
-  const H = 140
-  const padX = 36
-  const padY = 16
-  const innerW = W - padX * 2
-  const innerH = H - padY * 2
-
   const last = series[series.length - 1]
-  const lastColor = last?.severity ? severityColor(last.severity) : 'var(--text3)'
+  const first = series[0]
+  const lastColor = last?.severity ? severityColor(last.severity) : 'var(--primary)'
   const zone = useResolveZoneConfig(marker, athleteSex)
+  const uid = useMemo(() => `bt_${marker.key}_${Math.random().toString(36).slice(2, 7)}`, [marker.key])
 
-  let yMin = Number.POSITIVE_INFINITY, yMax = Number.NEGATIVE_INFINITY
+  const diff = first && last && series.length >= 2 ? last.value - first.value : 0
+  const diffColor = diff < 0 ? 'var(--text2)' : diff > 0 ? 'var(--text2)' : 'var(--text3)'
+
+  return (
+    <div style={{
+      background: 'var(--bg2)',
+      border: '1px solid var(--border)',
+      borderRadius: 12,
+      overflow: 'hidden',
+      transition: 'border-color 100ms',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '12px 16px 4px',
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {marker.label}
+        </div>
+        {last && (
+          <>
+            <span style={{ fontSize: 18, fontWeight: 700, color: lastColor, lineHeight: 1, letterSpacing: -0.3 }}>
+              {formatVal(last.value)}
+              <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text3)', marginLeft: 4 }}>{marker.unit_canonical}</span>
+            </span>
+            {series.length >= 2 && (
+              <span style={{ fontSize: 12, color: diffColor }}>
+                {diff > 0 ? '+' : ''}{formatVal(diff)}
+              </span>
+            )}
+          </>
+        )}
+      </div>
+      <div style={{ padding: '4px 16px 12px' }}>
+        {series.length === 0 ? (
+          <div style={{ height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--text3)' }}>
+            Aucune donnée
+          </div>
+        ) : (
+          <TrendMiniChart
+            series={series}
+            zone={zone}
+            uid={uid}
+            color={lastColor}
+            unit={marker.unit_canonical}
+          />
+        )}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          fontSize: 9, color: 'var(--text3)', marginTop: 1,
+        }}>
+          {series.length >= 2 ? (
+            <>
+              <span>{shortDate(series[0].date)}</span>
+              {series.length > 2 && <span>{shortDate(series[Math.floor(series.length / 2)].date)}</span>}
+              <span>{shortDate(series[series.length - 1].date)}</span>
+            </>
+          ) : series.length === 1 ? (
+            <span style={{ width: '100%', textAlign: 'center' }}>{shortDate(series[0].date)}</span>
+          ) : null}
+        </div>
+        {last?.band && (
+          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 9, padding: '2px 7px', background: `${lastColor}26`, color: lastColor, borderRadius: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+              {last.band}
+            </span>
+            <span style={{ fontSize: 10, color: 'var(--text3)' }}>· {series.length} valeur{series.length > 1 ? 's' : ''}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TrendMiniChart({
+  series, zone, uid, color, unit,
+}: {
+  series: ValidatedPoint[]
+  zone: ZoneConfig | null
+  uid: string
+  color: string
+  unit: string
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  // Y domain : englobe les bands + valeurs
+  const values = series.map((s) => s.value)
+  let yMin = Math.min(...values)
+  let yMax = Math.max(...values)
   if (zone) {
     for (const b of zone.bands) {
       if (b.min != null && b.min < yMin) yMin = b.min
       if (b.max != null && b.max > yMax) yMax = b.max
     }
   }
-  for (const s of series) {
-    if (s.value < yMin) yMin = s.value
-    if (s.value > yMax) yMax = s.value
-  }
-  if (!isFinite(yMin) || !isFinite(yMax)) { yMin = 0; yMax = 1 }
   if (yMax === yMin) yMax = yMin + 1
-  const yPad = (yMax - yMin) * 0.05
-  yMin -= yPad
-  yMax += yPad
+  const range = yMax - yMin
+  const pad = 0.08
+  const yScale = (v: number) => 100 - ((v - yMin) / range) * (100 * (1 - 2 * pad)) - 100 * pad
 
-  function yToPx(v: number) {
-    return padY + innerH - ((v - yMin) / (yMax - yMin)) * innerH
+  const VB_X = -12
+  const VB_W = 116
+
+  const pts = series.map((s, i) => {
+    const x = series.length === 1 ? 50 : (i / (series.length - 1)) * 100
+    const y = yScale(s.value)
+    return { xf: x.toFixed(2), yf: y.toFixed(2), x, y, value: s.value, date: s.date, severity: s.severity }
+  })
+
+  const lineStr = pts.map((p) => `${p.xf},${p.yf}`).join(' ')
+  const fillStr = pts.length >= 2
+    ? lineStr + ` ${pts[pts.length - 1].xf},104 ${pts[0].xf},104`
+    : ''
+
+  // Y-axis labels
+  const yLabels: { y: number; val: number }[] = []
+  const step = range > 100 ? Math.ceil(range / 3 / 10) * 10 : range > 4 ? Math.ceil(range / 3) : range > 1 ? 1 : 0.5
+  const startVal = Math.ceil(yMin / step) * step
+  for (let v = startVal; v <= yMax; v += step) {
+    if (v >= yMin && v <= yMax) yLabels.push({ y: yScale(v), val: v })
+    if (yLabels.length >= 4) break
   }
 
-  let chart: React.ReactNode
-  if (series.length === 0) {
-    chart = (
-      <div style={{ height: H, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--text3)' }}>
-        Aucune donnée
-      </div>
-    )
-  } else {
-    const xs = series.map((_, i) => (series.length === 1 ? padX + innerW / 2 : padX + (i / (series.length - 1)) * innerW))
-    const ys = series.map((s) => yToPx(s.value))
-    const pathD = series.length >= 2 ? series.map((_, i) => `${i === 0 ? 'M' : 'L'} ${xs[i]},${ys[i]}`).join(' ') : ''
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    const wrap = wrapRef.current
+    if (!wrap || pts.length === 0) return
+    const rect = wrap.getBoundingClientRect()
+    const crosshair = wrap.querySelector<HTMLDivElement>('[data-crosshair]')
+    const tooltip = wrap.querySelector<HTMLDivElement>('[data-tooltip]')
+    if (!crosshair || !tooltip) return
 
-    chart = (
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
-        {zone && zone.bands.map((b, i) => {
-          const top = yToPx(b.max ?? yMax)
-          const bottom = yToPx(b.min ?? yMin)
-          if (top >= bottom) return null
-          return <rect key={i} x={padX} y={top} width={innerW} height={bottom - top} fill={severityColor(b.severity)} opacity={0.13} />
-        })}
-        <text x={padX - 6} y={padY + 4} fill="var(--text3)" fontSize={9} textAnchor="end">{formatVal(yMax)}</text>
-        <text x={padX - 6} y={H - padY + 4} fill="var(--text3)" fontSize={9} textAnchor="end">{formatVal(yMin)}</text>
-        {pathD && <path d={pathD} fill="none" stroke="var(--primary)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />}
-        {series.map((s, i) => {
-          const c = s.severity ? severityColor(s.severity) : 'var(--primary)'
-          return (
-            <g key={i}>
-              <circle cx={xs[i]} cy={ys[i]} r={i === series.length - 1 ? 4.5 : 3} fill={c} stroke="var(--bg2)" strokeWidth={2} />
-              {i === series.length - 1 && (
-                <text x={xs[i]} y={ys[i] - 9} fill={c} fontSize={10} fontWeight={700} textAnchor="middle">
-                  {formatVal(s.value)}
-                </text>
-              )}
-            </g>
-          )
-        })}
-        {series.length >= 2 && (
-          <>
-            <text x={padX} y={H - 2} fill="var(--text3)" fontSize={9} textAnchor="start">{shortDate(series[0].date)}</text>
-            <text x={W - padX} y={H - 2} fill="var(--text3)" fontSize={9} textAnchor="end">{shortDate(series[series.length - 1].date)}</text>
-          </>
-        )}
-        {series.length === 1 && (
-          <text x={xs[0]} y={H - 2} fill="var(--text3)" fontSize={9} textAnchor="middle">{shortDate(series[0].date)}</text>
-        )}
-      </svg>
-    )
-  }
+    const mouseDataX = ((e.clientX - rect.left) / rect.width) * VB_W + VB_X
+    let nearest = pts[0]
+    let minDist = Infinity
+    for (const p of pts) {
+      const dist = Math.abs(p.x - mouseDataX)
+      if (dist < minDist) { minDist = dist; nearest = p }
+    }
+    const leftPx = ((nearest.x - VB_X) / VB_W) * rect.width
+    crosshair.style.left = leftPx + 'px'
+    crosshair.style.display = 'block'
+    const dateLbl = (() => { try { return new Date(nearest.date + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) } catch { return nearest.date } })()
+    tooltip.textContent = `${formatVal(nearest.value)} ${unit} \u2014 ${dateLbl}`
+    tooltip.style.display = 'block'
+    tooltip.style.left = Math.min(Math.max(leftPx, 60), rect.width - 60) + 'px'
+  }, [pts, unit])
+
+  const handleMouseLeave = useCallback(() => {
+    const wrap = wrapRef.current
+    if (!wrap) return
+    const crosshair = wrap.querySelector<HTMLDivElement>('[data-crosshair]')
+    const tooltip = wrap.querySelector<HTMLDivElement>('[data-tooltip]')
+    if (crosshair) crosshair.style.display = 'none'
+    if (tooltip) tooltip.style.display = 'none'
+  }, [])
 
   return (
-    <div style={{ padding: 14, background: 'var(--bg2)', borderRadius: 12, border: '1px solid var(--border)' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>{marker.label}</div>
-        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{marker.unit_canonical}</div>
-      </div>
-      {chart}
-      {last?.band && (
-        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 10, padding: '2px 7px', background: `${lastColor}26`, color: lastColor, borderRadius: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>
-            {last.band}
-          </span>
-          <span style={{ fontSize: 11, color: 'var(--text3)' }}>· {series.length} valeur{series.length > 1 ? 's' : ''}</span>
-        </div>
-      )}
+    <div
+      ref={wrapRef}
+      style={{ position: 'relative', cursor: 'crosshair', marginTop: 2 }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
+      <svg
+        viewBox={`${VB_X} -4 ${VB_W} 108`}
+        style={{ width: '100%', height: 90 }}
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <linearGradient id={uid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        {/* Reference bands */}
+        {zone && zone.bands.map((b, i) => {
+          const yTop = yScale(b.max ?? yMax)
+          const yBot = yScale(b.min ?? yMin)
+          if (yBot <= yTop) return null
+          return (
+            <rect
+              key={i}
+              x={0}
+              y={yTop}
+              width={100}
+              height={yBot - yTop}
+              fill={severityColor(b.severity)}
+              opacity={0.10}
+            />
+          )
+        })}
+        {/* Y grid + labels */}
+        {yLabels.map((yl, i) => (
+          <g key={i}>
+            <line x1={0} y1={yl.y} x2={100} y2={yl.y} stroke="rgba(255,255,255,0.05)" strokeWidth={0.5} vectorEffect="non-scaling-stroke" />
+            <text x={-2} y={yl.y} fill="var(--text3)" fontSize={3.5} textAnchor="end" dominantBaseline="middle">{formatVal(yl.val)}</text>
+          </g>
+        ))}
+        {/* Fill area */}
+        {fillStr && <polygon points={fillStr} fill={`url(#${uid})`} />}
+        {/* Line */}
+        {pts.length >= 2 && (
+          <polyline
+            points={lineStr}
+            fill="none" stroke={color}
+            strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+        {/* Points (severity-colored) */}
+        {pts.map((p, i) => {
+          const c = p.severity ? severityColor(p.severity) : color
+          const r = i === pts.length - 1 ? 1.6 : 1.1
+          return (
+            <circle
+              key={i}
+              cx={p.x} cy={p.y} r={r}
+              fill={c}
+              stroke="var(--bg2)"
+              strokeWidth={0.5}
+              vectorEffect="non-scaling-stroke"
+            />
+          )
+        })}
+      </svg>
+      <div data-crosshair className="ap-weight-crosshair" style={{ display: 'none' }} />
+      <div
+        data-tooltip
+        className="ap-weight-tooltip"
+        style={{ display: 'none', background: color, boxShadow: `0 2px 8px ${color}66` }}
+      />
     </div>
   )
 }
