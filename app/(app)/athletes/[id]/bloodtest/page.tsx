@@ -146,7 +146,7 @@ export default function BloodtestPage() {
   const pendingExtraction = uploads.filter((u) => !u.extracted_data && !u.validated_at)
   const validated = uploads.filter((u) => u.validated_at)
 
-  async function triggerExtract(uploadId: string) {
+  async function triggerExtract(uploadId: string, force = false) {
     setAnalyzing({ uploadId, status: 'running' })
     const staleTimer = setTimeout(() => {
       setAnalyzing((a) => (a && a.uploadId === uploadId && a.status === 'running' ? { ...a, status: 'stale' } : a))
@@ -157,7 +157,7 @@ export default function BloodtestPage() {
       const res = await fetch('/api/bloodtest/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ upload_id: uploadId }),
+        body: JSON.stringify({ upload_id: uploadId, force }),
         signal: abort.signal,
       })
       const json = await res.json()
@@ -249,14 +249,40 @@ export default function BloodtestPage() {
           <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 10, marginTop: 16 }}>
             <i className="fas fa-hourglass-half" style={{ color: 'var(--warning)', marginRight: 6 }} />À valider ({pendingValidation.length})
           </h3>
-          {pendingValidation.map((u) => (
-            <Link key={u.id} href={`/athletes/${params.id}/bloodtest/validate/${u.id}`} style={{ display: 'block', padding: 12, background: 'var(--bg2)', borderLeft: '3px solid var(--warning)', borderRadius: 8, marginBottom: 8, textDecoration: 'none', color: 'var(--text)' }}>
-              <div style={{ fontWeight: 600 }}>Upload {u.uploaded_by} · {new Date(u.uploaded_at).toLocaleDateString('fr-FR')}</div>
-              <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-                {u.extracted_data ? `${(u.extracted_data as ExtractedData).markers.length} markers extraits — clique pour valider` : 'Extraction en cours...'}
+          {pendingValidation.map((u) => {
+            const live = analyzing && analyzing.uploadId === u.id ? analyzing : null
+            return (
+              <div key={u.id} style={{ padding: 12, background: 'var(--bg2)', borderLeft: '3px solid var(--warning)', borderRadius: 8, marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                  <Link href={`/athletes/${params.id}/bloodtest/validate/${u.id}`} style={{ textDecoration: 'none', color: 'var(--text)', flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>Upload {u.uploaded_by} · {new Date(u.uploaded_at).toLocaleDateString('fr-FR')}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+                      {u.extracted_data ? `${(u.extracted_data as ExtractedData).markers.length} markers extraits — clique pour valider` : 'Extraction en cours...'}
+                    </div>
+                  </Link>
+                  {!live && (
+                    <button
+                      className="btn btn-outline btn-sm"
+                      onClick={(e) => { e.stopPropagation(); if (confirm('Relancer l\'analyse IA ? Les markers extraits seront remplacés.')) triggerExtract(u.id, true) }}
+                      title="Relance l'extraction IA avec le PDF d'origine (les corrections manuelles non sauvegardées seront perdues)"
+                    >
+                      <i className="fas fa-rotate" /> Réanalyser
+                    </button>
+                  )}
+                </div>
+                {live && (
+                  <div style={{ marginTop: 10 }}>
+                    <BloodtestAnalysisProgress
+                      etaMs={analysisEtaMs}
+                      status={live.status}
+                      errorMessage={live.errorMessage}
+                      onRetry={() => triggerExtract(u.id, true)}
+                    />
+                  </div>
+                )}
               </div>
-            </Link>
-          ))}
+            )
+          })}
         </>
       )}
 

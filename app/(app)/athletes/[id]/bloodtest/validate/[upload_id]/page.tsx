@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import Skeleton from '@/components/ui/Skeleton'
 import { MARKERS } from '@/lib/bloodtestCatalog'
-import { splitMarkers, type BloodtestUploadRow, type ExtractedData, type ExtractedMarker } from '@/lib/bloodtest'
+import { splitMarkers, classifyValue, severityColor, type BloodtestUploadRow, type ExtractedData, type ExtractedMarker } from '@/lib/bloodtest'
 
 type CustomMarkerOpt = { key: string; label: string; unit_canonical: string }
 type SignedFile = { path: string; url: string; mediaType: string }
@@ -28,6 +28,7 @@ export default function BloodtestValidatePage() {
   const [loading, setLoading] = useState(true)
   const [customMarkers, setCustomMarkers] = useState<CustomMarkerOpt[]>([])
   const [showUnidentified, setShowUnidentified] = useState(false)
+  const [collapsePdf, setCollapsePdf] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -62,11 +63,30 @@ export default function BloodtestValidatePage() {
     for (const o of allMarkerOptions) m.set(o.key, o.label)
     return m
   }, [allMarkerOptions])
+  const markerByKey = useMemo(() => {
+    const m = new Map<string, any>()
+    for (const mk of MARKERS) m.set(mk.key, mk)
+    return m
+  }, [])
 
   const split = useMemo(() => splitMarkers(editedMarkers, tracked), [editedMarkers, tracked])
 
   function updateMarkerByRef(target: ExtractedMarker, patch: Partial<ExtractedMarker>) {
     setEditedMarkers((prev) => prev.map((m) => (m === target ? { ...m, ...patch } : m)))
+  }
+
+  function bulkConfirmExtras() {
+    setEditedMarkers((prev) => prev.map((m) => {
+      if (!m.marker_key) return m
+      const isExtra = !tracked.includes(m.marker_key)
+      if (!isExtra) return m
+      if (m.confirmed_by_coach) return m
+      return { ...m, confirmed_by_coach: true }
+    }))
+  }
+
+  function bulkIgnoreUnidentified() {
+    setEditedMarkers((prev) => prev.map((m) => (m.marker_key ? m : { ...m, ignored: true })))
   }
 
   async function submit() {
@@ -75,7 +95,6 @@ export default function BloodtestValidatePage() {
       if (!m.marker_key) return false
       if (m.value == null) return false
       if (m.ignored) return false
-      // Pour les extras, on n'inclut QUE ceux explicitement confirmés par le coach.
       const isExtra = m.marker_key && !tracked.includes(m.marker_key)
       if (isExtra && !m.confirmed_by_coach) return false
       return true
@@ -108,97 +127,126 @@ export default function BloodtestValidatePage() {
   if (loading) return <Skeleton height={400} />
   if (!upload) return <div>Upload introuvable</div>
 
+  const totalIncluded = editedMarkers.filter((m) => m.marker_key && m.value != null && !m.ignored && (tracked.includes(m.marker_key) || m.confirmed_by_coach)).length
+
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <button className="btn btn-outline btn-sm" onClick={() => router.back()}><i className="fas fa-arrow-left" /> Retour</button>
         <h2 style={{ fontSize: 18, fontWeight: 700 }}>Valider le bilan</h2>
-        <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 'auto' }}>{signedFiles.length} fichier{signedFiles.length > 1 ? 's' : ''}</span>
+        <span style={{ fontSize: 12, color: 'var(--text3)' }}>· {signedFiles.length} fichier{signedFiles.length > 1 ? 's' : ''}</span>
+        <span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 'auto' }}>{totalIncluded} marker{totalIncluded > 1 ? 's' : ''} sera{totalIncluded > 1 ? 'ont' : ''} validé{totalIncluded > 1 ? 's' : ''}</span>
+        <button className="btn btn-outline btn-sm" onClick={() => setCollapsePdf((v) => !v)}>
+          <i className={`fas fa-${collapsePdf ? 'expand' : 'compress'}`} /> {collapsePdf ? 'Voir PDF' : 'Plein écran tableau'}
+        </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(360px, 480px)', gap: 16, alignItems: 'start' }}>
-        <div style={{ maxHeight: '85vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 8, padding: 8, background: 'var(--bg2)', borderRadius: 8 }}>
-          {signedFiles.length === 0 && <div style={{ color: 'var(--text3)' }}>Chargement des fichiers...</div>}
-          {signedFiles.map((f, i) => (
-            f.mediaType === 'application/pdf' ? (
-              <iframe key={i} src={f.url} style={{ width: '100%', height: '80vh', border: '1px solid var(--border)', borderRadius: 6 }} title={`PDF ${i + 1}`} />
-            ) : (
-              <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
-                <img src={f.url} alt={`Screenshot ${i + 1}`} style={{ width: '100%', borderRadius: 6, border: '1px solid var(--border)', display: 'block' }} />
-              </a>
-            )
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div>
-            <label style={{ fontSize: 12, color: 'var(--text3)' }}>Date du bilan</label>
-            <input type="date" className="form-control" value={datedAt} onChange={(e) => setDatedAt(e.target.value)} />
-          </div>
-
-          {/* SECTION ATTENDUS */}
-          <SectionHeader icon="fa-bullseye" label={`Attendus (${split.expected.length})`} subLabel="markers suivis pour cet athlète" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {split.expected.map((row) => (
-              <ExpectedMarkerRow
-                key={row.tracked_key}
-                trackedKey={row.tracked_key}
-                marker={row.marker}
-                label={labelByKey.get(row.tracked_key) || row.tracked_key}
-                onUpdate={(patch) => row.marker && updateMarkerByRef(row.marker, patch)}
-                allOptions={allMarkerOptions}
-              />
+      <div style={{ display: 'grid', gridTemplateColumns: collapsePdf ? '1fr' : 'minmax(0, 1fr) minmax(560px, 720px)', gap: 16, alignItems: 'start' }}>
+        {!collapsePdf && (
+          <div style={{ position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 8, padding: 8, background: 'var(--bg2)', borderRadius: 8 }}>
+            {signedFiles.length === 0 && <div style={{ color: 'var(--text3)' }}>Chargement des fichiers...</div>}
+            {signedFiles.map((f, i) => (
+              f.mediaType === 'application/pdf' ? (
+                <iframe key={i} src={f.url} style={{ width: '100%', height: '85vh', border: '1px solid var(--border)', borderRadius: 6 }} title={`PDF ${i + 1}`} />
+              ) : (
+                <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
+                  <img src={f.url} alt={`Screenshot ${i + 1}`} style={{ width: '100%', borderRadius: 6, border: '1px solid var(--border)', display: 'block' }} />
+                </a>
+              )
             ))}
-            {split.expected.length === 0 && <div style={{ fontSize: 12, color: 'var(--text3)' }}>Aucun marker suivi configuré.</div>}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>Date du bilan :</label>
+            <input type="date" className="form-control" value={datedAt} onChange={(e) => setDatedAt(e.target.value)} style={{ maxWidth: 200 }} />
           </div>
 
-          {/* SECTION EXTRAS */}
+          <SectionCard
+            icon="fa-bullseye"
+            color="var(--primary)"
+            title="Attendus"
+            count={split.expected.length}
+            subtitle="markers suivis pour cet athlète — pré-validés automatiquement"
+          >
+            <MarkerTable
+              rows={split.expected.map((row) => ({
+                kind: 'expected' as const,
+                trackedKey: row.tracked_key,
+                marker: row.marker,
+                label: labelByKey.get(row.tracked_key) || row.tracked_key,
+                catalogMarker: markerByKey.get(row.tracked_key),
+              }))}
+              tracked={tracked}
+              allOptions={allMarkerOptions}
+              onUpdate={updateMarkerByRef}
+            />
+          </SectionCard>
+
           {split.extras.length > 0 && (
-            <>
-              <SectionHeader icon="fa-plus" label={`Extras détectés (${split.extras.length})`} subLabel="hors suivi — clique pour valider individuellement" />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {split.extras.map((m, i) => (
-                  <ExtraMarkerRow
-                    key={`${m.marker_key}_${i}`}
-                    marker={m}
-                    label={labelByKey.get(m.marker_key!) || m.marker_key!}
-                    onUpdate={(patch) => updateMarkerByRef(m, patch)}
-                    allOptions={allMarkerOptions}
-                  />
-                ))}
-              </div>
-            </>
+            <SectionCard
+              icon="fa-plus"
+              color="var(--green)"
+              title="Extras détectés"
+              count={split.extras.length}
+              subtitle="markers hors suivi — clique 'Inclure' pour les ajouter à ce bilan"
+              action={
+                <button className="btn btn-outline btn-sm" onClick={bulkConfirmExtras}>
+                  <i className="fas fa-check-double" /> Tout inclure
+                </button>
+              }
+            >
+              <MarkerTable
+                rows={split.extras.map((m) => ({
+                  kind: 'extra' as const,
+                  marker: m,
+                  label: labelByKey.get(m.marker_key!) || m.marker_key!,
+                  catalogMarker: markerByKey.get(m.marker_key!),
+                }))}
+                tracked={tracked}
+                allOptions={allMarkerOptions}
+                onUpdate={updateMarkerByRef}
+              />
+            </SectionCard>
           )}
 
-          {/* SECTION NON IDENTIFIÉS */}
           {split.unidentified.length > 0 && (
-            <>
-              <button
-                className="btn btn-outline btn-sm"
-                style={{ alignSelf: 'flex-start' }}
-                onClick={() => setShowUnidentified((v) => !v)}
-              >
-                <i className={`fas fa-chevron-${showUnidentified ? 'down' : 'right'}`} />
-                {' '}Non identifiés ({split.unidentified.length})
-              </button>
+            <SectionCard
+              icon="fa-circle-question"
+              color="var(--text3)"
+              title="Non identifiés"
+              count={split.unidentified.length}
+              subtitle="lignes que l'IA n'a pas su mapper — ignorées par défaut"
+              collapsed={!showUnidentified}
+              onToggle={() => setShowUnidentified((v) => !v)}
+              action={showUnidentified ? (
+                <button className="btn btn-outline btn-sm" onClick={(e) => { e.stopPropagation(); bulkIgnoreUnidentified() }}>
+                  <i className="fas fa-eye-slash" /> Tout ignorer
+                </button>
+              ) : undefined}
+            >
               {showUnidentified && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {split.unidentified.map((m, i) => (
-                    <UnidentifiedRow
-                      key={`u_${i}`}
-                      marker={m}
-                      onUpdate={(patch) => updateMarkerByRef(m, patch)}
-                      allOptions={allMarkerOptions}
-                    />
-                  ))}
-                </div>
+                <MarkerTable
+                  rows={split.unidentified.map((m) => ({
+                    kind: 'unidentified' as const,
+                    marker: m,
+                    label: m.raw_label,
+                    catalogMarker: undefined,
+                  }))}
+                  tracked={tracked}
+                  allOptions={allMarkerOptions}
+                  onUpdate={updateMarkerByRef}
+                />
               )}
-            </>
+            </SectionCard>
           )}
 
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 8, position: 'sticky', bottom: 0, padding: 12, background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)' }}>
             <button className="btn btn-outline" onClick={rejectUpload}>Rejeter le bilan</button>
-            <button className="btn btn-red" onClick={submit} disabled={saving} style={{ flex: 1 }}>{saving ? 'Validation...' : 'Valider et publier'}</button>
+            <button className="btn btn-red" onClick={submit} disabled={saving} style={{ flex: 1 }}>
+              {saving ? 'Validation...' : `Valider et publier (${totalIncluded} marker${totalIncluded > 1 ? 's' : ''})`}
+            </button>
           </div>
         </div>
       </div>
@@ -206,168 +254,260 @@ export default function BloodtestValidatePage() {
   )
 }
 
-function SectionHeader({ icon, label, subLabel }: { icon: string; label: string; subLabel?: string }) {
+function SectionCard({
+  icon, color, title, count, subtitle, children, action, collapsed, onToggle,
+}: {
+  icon: string
+  color: string
+  title: string
+  count: number
+  subtitle?: string
+  children: React.ReactNode
+  action?: React.ReactNode
+  collapsed?: boolean
+  onToggle?: () => void
+}) {
   return (
-    <div style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <i className={`fas ${icon}`} style={{ color: 'var(--primary)' }} />{label}
+    <div style={{ background: 'var(--bg2)', borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden' }}>
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 14px', background: 'var(--bg3)',
+          cursor: onToggle ? 'pointer' : 'default',
+          borderBottom: collapsed ? 'none' : '1px solid var(--border)',
+        }}
+        onClick={onToggle}
+      >
+        <i className={`fas ${icon}`} style={{ color }} />
+        <div style={{ fontSize: 14, fontWeight: 700 }}>{title}</div>
+        <span style={{ fontSize: 11, padding: '2px 8px', background: color, color: 'white', borderRadius: 99, fontWeight: 700 }}>{count}</span>
+        {subtitle && <div style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 6 }}>{subtitle}</div>}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {action}
+          {onToggle && <i className={`fas fa-chevron-${collapsed ? 'right' : 'down'}`} style={{ fontSize: 11, color: 'var(--text3)' }} />}
+        </div>
       </div>
-      {subLabel && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{subLabel}</div>}
+      {!collapsed && children}
     </div>
   )
 }
 
-function AiBadge() {
+type Row =
+  | { kind: 'expected'; trackedKey: string; marker?: ExtractedMarker; label: string; catalogMarker?: any }
+  | { kind: 'extra'; marker: ExtractedMarker; label: string; catalogMarker?: any }
+  | { kind: 'unidentified'; marker: ExtractedMarker; label: string; catalogMarker?: any }
+
+function MarkerTable({
+  rows, tracked, allOptions, onUpdate,
+}: {
+  rows: Row[]
+  tracked: string[]
+  allOptions: { key: string; label: string; unit_canonical: string }[]
+  onUpdate: (target: ExtractedMarker, patch: Partial<ExtractedMarker>) => void
+}) {
   return (
-    <span style={{ fontSize: 10, padding: '2px 6px', background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', borderRadius: 4, fontWeight: 600 }}>
-      <i className="fas fa-wand-magic-sparkles" /> auto IA
-    </span>
+    <div style={{ overflow: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead>
+          <tr style={{ background: 'var(--bg)' }}>
+            <th style={th}>Marker</th>
+            <th style={{ ...th, textAlign: 'right' }}>Valeur</th>
+            <th style={th}>Unité</th>
+            <th style={th}>Plage labo</th>
+            <th style={{ ...th, textAlign: 'center' }}>État</th>
+            <th style={{ ...th, textAlign: 'right' }}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <MarkerRow key={i} row={row} tracked={tracked} allOptions={allOptions} onUpdate={onUpdate} />
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
-function ExpectedMarkerRow({
-  trackedKey, marker, label, onUpdate, allOptions,
+const th: React.CSSProperties = {
+  padding: '8px 10px',
+  textAlign: 'left',
+  fontSize: 11,
+  fontWeight: 700,
+  color: 'var(--text3)',
+  textTransform: 'uppercase',
+  letterSpacing: 0.4,
+  borderBottom: '1px solid var(--border)',
+}
+
+const td: React.CSSProperties = {
+  padding: '8px 10px',
+  borderBottom: '1px solid var(--border)',
+  verticalAlign: 'middle',
+}
+
+function MarkerRow({
+  row, tracked, allOptions, onUpdate,
 }: {
-  trackedKey: string
-  marker?: ExtractedMarker
-  label: string
-  onUpdate: (patch: Partial<ExtractedMarker>) => void
+  row: Row
+  tracked: string[]
   allOptions: { key: string; label: string; unit_canonical: string }[]
+  onUpdate: (target: ExtractedMarker, patch: Partial<ExtractedMarker>) => void
 }) {
-  const [editing, setEditing] = useState(false)
-  if (!marker) {
+  const [editingKey, setEditingKey] = useState(false)
+  const [editingValue, setEditingValue] = useState(false)
+
+  if (row.kind === 'expected' && !row.marker) {
     return (
-      <div style={{ padding: 10, background: 'var(--bg3)', opacity: 0.6, borderRadius: 8, border: '1px dashed var(--border)' }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{label}</div>
-        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Non trouvé dans ce PDF</div>
-      </div>
+      <tr style={{ opacity: 0.5 }}>
+        <td style={td}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <i className="fas fa-bullseye" style={{ color: 'var(--text3)', fontSize: 10 }} />
+            <span style={{ fontWeight: 600 }}>{row.label}</span>
+          </div>
+        </td>
+        <td style={{ ...td, textAlign: 'right', color: 'var(--text3)' }}>—</td>
+        <td style={td}>—</td>
+        <td style={td}>—</td>
+        <td style={{ ...td, textAlign: 'center' }}>
+          <span style={{ fontSize: 10, padding: '2px 6px', background: 'var(--bg3)', borderRadius: 4, color: 'var(--text3)', whiteSpace: 'nowrap' }}>NON TROUVÉ</span>
+        </td>
+        <td style={td}></td>
+      </tr>
     )
   }
-  const value = marker.value_canonical ?? marker.value
-  const unit = marker.unit_canonical || marker.unit
-  return (
-    <div style={{ padding: 10, background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)', opacity: marker.ignored ? 0.5 : 1 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{label}</div>
-        {marker.matched_by_ai && !editing && <AiBadge />}
-      </div>
-      {!editing ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>{value ?? '—'} <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 400 }}>{unit}</span></div>
-          <button className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setEditing(true)}>
-            <i className="fas fa-pen" /> Modifier
-          </button>
-          <button className="btn btn-outline btn-sm" onClick={() => onUpdate({ ignored: !marker.ignored })}>
-            {marker.ignored ? 'Ré-inclure' : 'Ignorer'}
-          </button>
-        </div>
-      ) : (
-        <EditFields marker={marker} onUpdate={onUpdate} allOptions={allOptions} onDone={() => setEditing(false)} />
-      )}
-      {marker.lab_reference_range && <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Plage labo : {marker.lab_reference_range}</div>}
-    </div>
-  )
-}
 
-function ExtraMarkerRow({
-  marker, label, onUpdate, allOptions,
-}: {
-  marker: ExtractedMarker
-  label: string
-  onUpdate: (patch: Partial<ExtractedMarker>) => void
-  allOptions: { key: string; label: string; unit_canonical: string }[]
-}) {
-  const [editing, setEditing] = useState(false)
-  const value = marker.value_canonical ?? marker.value
-  const unit = marker.unit_canonical || marker.unit
-  const confirmed = !!marker.confirmed_by_coach
+  const m = row.marker!
+  const value = m.value_canonical ?? m.value
+  const unit = m.unit_canonical || m.unit
+  const isExtra = row.kind === 'extra'
+  const isExpected = row.kind === 'expected'
+  const isUnidentified = row.kind === 'unidentified'
+  const confirmed = !!m.confirmed_by_coach
+  const ignored = !!m.ignored
+  const includedInValidation = isExpected ? !ignored : (isExtra ? confirmed && !ignored : !!m.marker_key && !ignored)
+
+  let zoneColor: string | undefined
+  let zoneLabel: string | undefined
+  if (row.catalogMarker && value != null) {
+    try {
+      const cls = classifyValue(row.catalogMarker, value, { sex: 'F', phase: 'folliculaire' })
+      if (cls.ok) {
+        zoneColor = severityColor(cls.band.severity)
+        zoneLabel = cls.band.label
+      }
+    } catch {}
+  }
+
   return (
-    <div style={{ padding: 10, background: 'var(--bg2)', borderRadius: 8, border: confirmed ? '1px solid var(--green)' : '1px solid var(--border)', opacity: marker.ignored ? 0.5 : 1 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{label}</div>
-        {marker.matched_by_ai && !editing && <AiBadge />}
-      </div>
-      {!editing ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>{value ?? '—'} <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 400 }}>{unit}</span></div>
-          <button className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setEditing(true)}>
-            <i className="fas fa-pen" /> Modifier
-          </button>
-          <button
-            className={confirmed ? 'btn btn-outline btn-sm' : 'btn btn-red btn-sm'}
-            onClick={() => onUpdate({ confirmed_by_coach: !confirmed })}
+    <tr style={{ background: ignored ? 'var(--bg)' : 'transparent', opacity: ignored ? 0.4 : 1 }}>
+      <td style={td}>
+        {editingKey ? (
+          <select
+            className="form-control"
+            autoFocus
+            value={m.marker_key || ''}
+            onChange={(e) => { onUpdate(m, { marker_key: e.target.value || null, matched_by_ai: false }); setEditingKey(false) }}
+            onBlur={() => setEditingKey(false)}
+            style={{ minWidth: 200, fontSize: 12 }}
           >
-            {confirmed ? <><i className="fas fa-check" /> Inclus</> : 'Valider'}
+            <option value="">—</option>
+            {allOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 24 }}>
+            <span style={{ fontWeight: 600 }}>{row.label}</span>
+            {isUnidentified && <span style={{ fontSize: 10, color: 'var(--text3)' }}>(brut)</span>}
+            {m.matched_by_ai && <span title="Auto-matché par l'IA" style={{ fontSize: 9, padding: '1px 4px', background: 'rgba(99, 102, 241, 0.18)', color: '#a5b4fc', borderRadius: 3, fontWeight: 700 }}>IA</span>}
+            <button
+              onClick={() => setEditingKey(true)}
+              style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', padding: 2, fontSize: 10 }}
+              title="Changer le marker"
+            >
+              <i className="fas fa-pen" />
+            </button>
+          </div>
+        )}
+        {isUnidentified && m.raw_label && !editingKey && (
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>raw: {m.raw_label}</div>
+        )}
+      </td>
+
+      <td style={{ ...td, textAlign: 'right' }}>
+        {editingValue ? (
+          <input
+            autoFocus
+            type="number"
+            step="any"
+            className="form-control"
+            value={m.value_canonical ?? m.value ?? ''}
+            onChange={(e) => {
+              const v = e.target.value ? parseFloat(e.target.value) : null
+              onUpdate(m, { value_canonical: v, value: v })
+            }}
+            onBlur={() => setEditingValue(false)}
+            onKeyDown={(e) => { if (e.key === 'Enter') setEditingValue(false) }}
+            style={{ width: 90, textAlign: 'right', fontSize: 13 }}
+          />
+        ) : (
+          <span
+            onClick={() => setEditingValue(true)}
+            style={{
+              cursor: 'pointer',
+              fontWeight: 700,
+              color: zoneColor || 'var(--text)',
+              padding: '2px 6px',
+              borderRadius: 4,
+              borderBottom: '1px dashed transparent',
+              whiteSpace: 'nowrap',
+            }}
+            title="Clic pour éditer"
+          >
+            {m.below_detection && '<'}
+            {m.above_detection && '>'}
+            {value ?? '—'}
+          </span>
+        )}
+      </td>
+
+      <td style={{ ...td, color: 'var(--text3)', fontSize: 12, whiteSpace: 'nowrap' }}>{unit || '—'}</td>
+
+      <td style={{ ...td, color: 'var(--text3)', fontSize: 11, whiteSpace: 'nowrap' }}>{m.lab_reference_range || '—'}</td>
+
+      <td style={{ ...td, textAlign: 'center' }}>
+        {ignored ? (
+          <span style={{ fontSize: 10, padding: '2px 6px', background: 'var(--bg3)', borderRadius: 4, color: 'var(--text3)' }}>IGNORÉ</span>
+        ) : zoneLabel ? (
+          <span style={{ fontSize: 10, padding: '2px 6px', background: `${zoneColor}33`, color: zoneColor, borderRadius: 4, fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {zoneLabel}
+          </span>
+        ) : isExtra && !confirmed ? (
+          <span style={{ fontSize: 10, padding: '2px 6px', background: 'var(--bg3)', borderRadius: 4, color: 'var(--warning)' }}>À VALIDER</span>
+        ) : includedInValidation ? (
+          <i className="fas fa-check-circle" style={{ color: 'var(--green)', fontSize: 14 }} title="Inclus dans le bilan validé" />
+        ) : (
+          <span style={{ fontSize: 10, padding: '2px 6px', background: 'var(--bg3)', borderRadius: 4, color: 'var(--text3)' }}>—</span>
+        )}
+      </td>
+
+      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+        {isExtra && !confirmed && !ignored && (
+          <button className="btn btn-red btn-sm" onClick={() => onUpdate(m, { confirmed_by_coach: true })} style={{ padding: '2px 8px', fontSize: 11 }}>
+            Inclure
           </button>
-        </div>
-      ) : (
-        <EditFields marker={marker} onUpdate={onUpdate} allOptions={allOptions} onDone={() => setEditing(false)} />
-      )}
-      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
-        {confirmed ? 'Inclus dans ce bilan (one-shot, n\'ajoute pas au suivi permanent)' : 'À valider explicitement pour être inclus'}
-      </div>
-    </div>
-  )
-}
-
-function UnidentifiedRow({
-  marker, onUpdate, allOptions,
-}: {
-  marker: ExtractedMarker
-  onUpdate: (patch: Partial<ExtractedMarker>) => void
-  allOptions: { key: string; label: string; unit_canonical: string }[]
-}) {
-  return (
-    <div style={{ padding: 10, background: 'var(--bg3)', borderRadius: 8, border: '1px solid var(--border)', opacity: marker.ignored ? 0.5 : 1 }}>
-      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Raw : {marker.raw_label}</div>
-      <select className="form-control" style={{ marginBottom: 6 }} value={marker.marker_key || ''} onChange={(e) => onUpdate({ marker_key: e.target.value || null, matched_by_ai: false })}>
-        <option value="">-- Choisir un marker --</option>
-        {allOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-      </select>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <input className="form-control" type="number" step="any" placeholder="Valeur" value={marker.value ?? ''} onChange={(e) => onUpdate({ value: e.target.value ? parseFloat(e.target.value) : null })} />
-        <input className="form-control" placeholder="Unité" value={marker.unit || ''} onChange={(e) => onUpdate({ unit: e.target.value })} style={{ maxWidth: 100 }} />
-      </div>
-      {marker.lab_reference_range && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text3)' }}>Plage labo : {marker.lab_reference_range}</div>}
-      <button className="btn btn-outline btn-sm" style={{ marginTop: 6 }} onClick={() => onUpdate({ ignored: !marker.ignored })}>
-        {marker.ignored ? 'Ré-inclure' : 'Ignorer cette ligne'}
-      </button>
-    </div>
-  )
-}
-
-function EditFields({
-  marker, onUpdate, allOptions, onDone,
-}: {
-  marker: ExtractedMarker
-  onUpdate: (patch: Partial<ExtractedMarker>) => void
-  allOptions: { key: string; label: string; unit_canonical: string }[]
-  onDone: () => void
-}) {
-  return (
-    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <select
-        className="form-control"
-        value={marker.marker_key || ''}
-        onChange={(e) => onUpdate({ marker_key: e.target.value || null, matched_by_ai: false })}
-      >
-        <option value="">-- Choisir un marker --</option>
-        {allOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-      </select>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <input
-          className="form-control" type="number" step="any" placeholder="Valeur (canonique)"
-          value={marker.value_canonical ?? marker.value ?? ''}
-          onChange={(e) => onUpdate({ value_canonical: e.target.value ? parseFloat(e.target.value) : null, value: e.target.value ? parseFloat(e.target.value) : null })}
-        />
-        <input
-          className="form-control" placeholder="Unité"
-          value={marker.unit_canonical || marker.unit || ''}
-          onChange={(e) => onUpdate({ unit_canonical: e.target.value, unit: e.target.value })}
-          style={{ maxWidth: 120 }}
-        />
-      </div>
-      <button className="btn btn-outline btn-sm" style={{ alignSelf: 'flex-end' }} onClick={onDone}>OK</button>
-    </div>
+        )}
+        {isExtra && confirmed && !ignored && (
+          <button className="btn btn-outline btn-sm" onClick={() => onUpdate(m, { confirmed_by_coach: false })} style={{ padding: '2px 8px', fontSize: 11 }}>
+            Retirer
+          </button>
+        )}
+        <button
+          onClick={() => onUpdate(m, { ignored: !ignored })}
+          style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', padding: 4, marginLeft: 4, fontSize: 11 }}
+          title={ignored ? 'Ré-inclure' : 'Ignorer'}
+        >
+          <i className={`fas fa-${ignored ? 'eye' : 'eye-slash'}`} />
+        </button>
+      </td>
+    </tr>
   )
 }

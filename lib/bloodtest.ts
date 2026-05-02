@@ -69,6 +69,10 @@ export type ExtractedMarker = {
   unit_canonical?: string | null
   matched_by_ai?: boolean
   confirmed_by_coach?: boolean
+  // True si la valeur source était de la forme "<X" ou ">X" (sous/au-dessus du seuil de détection).
+  // value contient alors X (ex: "<0.2 mUI/ml" → value=0.2, below_detection=true).
+  below_detection?: boolean
+  above_detection?: boolean
 }
 
 export type ExtractedData = {
