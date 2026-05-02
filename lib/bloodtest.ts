@@ -64,6 +64,11 @@ export type ExtractedMarker = {
   lab_reference_range?: string
   ignored?: boolean
   notes?: string
+  // IA mapping (alimenté par /api/bloodtest/extract, optionnel pour rétro-compat)
+  value_canonical?: number | null
+  unit_canonical?: string | null
+  matched_by_ai?: boolean
+  confirmed_by_coach?: boolean
 }
 
 export type ExtractedData = {
