@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
@@ -34,6 +34,7 @@ type Editable = {
 }
 
 export default function BloodtestZonesPage() {
+  const router = useRouter()
   const { user } = useAuth()
   const { toast } = useToast()
   const supabase = createClient()
@@ -143,9 +144,9 @@ export default function BloodtestZonesPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <Link href="/profile" className="btn btn-outline btn-sm">
-          <i className="fas fa-arrow-left" /> Profile
-        </Link>
+        <button onClick={() => router.back()} className="btn btn-outline btn-sm">
+          <i className="fas fa-arrow-left" /> Retour
+        </button>
         <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: -0.4 }}>
           <i className="fas fa-flask-vial" style={{ color: '#ef4444', marginRight: 10 }} />
           Plages cliniques des marqueurs
