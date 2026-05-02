@@ -18,6 +18,12 @@ const CATEGORY_META: Record<BloodtestCategory, { label: string; icon: string; co
 
 const CATEGORY_ORDER: BloodtestCategory[] = ['hema', 'iron', 'vitamin', 'mineral', 'hormone_sex', 'thyroid', 'metabolism', 'liver', 'lipid', 'inflammation']
 
+const PRESET_META: Record<BloodtestPreset, { label: string; icon: string; subtitle: string }> = {
+  basic: { label: 'Basic', icon: 'fa-circle-check', subtitle: '~9 marqueurs' },
+  hormonal_plus: { label: 'Hormonal+', icon: 'fa-dna', subtitle: '~18 marqueurs' },
+  total: { label: 'Total', icon: 'fa-layer-group', subtitle: 'tous les marqueurs' },
+}
+
 export default function PanelSuivi({
   tracked,
   customMarkers,
@@ -35,6 +41,7 @@ export default function PanelSuivi({
 }) {
   const [collapsed, setCollapsed] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [search, setSearch] = useState('')
 
   const allMarkers: BloodtestMarker[] = useMemo(() => [
     ...MARKERS,
@@ -49,17 +56,23 @@ export default function PanelSuivi({
     })),
   ], [customMarkers])
 
+  const filteredMarkers = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return allMarkers
+    return allMarkers.filter((m) => m.label.toLowerCase().includes(q) || m.key.toLowerCase().includes(q))
+  }, [allMarkers, search])
+
   const grouped = useMemo(() => {
     const map = new Map<BloodtestCategory, BloodtestMarker[]>()
-    for (const m of allMarkers) {
+    for (const m of filteredMarkers) {
       const arr = map.get(m.category) || []
       arr.push(m)
       map.set(m.category, arr)
     }
     return map
-  }, [allMarkers])
+  }, [filteredMarkers])
 
-  const trackedSet = new Set(tracked)
+  const trackedSet = useMemo(() => new Set(tracked), [tracked])
 
   const trackedMarkers = useMemo(
     () => tracked.map((k) => allMarkers.find((m) => m.key === k)).filter(Boolean) as BloodtestMarker[],
@@ -94,127 +107,322 @@ export default function PanelSuivi({
   const present = CATEGORY_ORDER.filter((c) => grouped.has(c))
 
   return (
-    <div style={{ background: 'var(--bg2)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
+    <div style={{
+      background: 'var(--bg2)',
+      borderRadius: 16,
+      border: '1px solid var(--border)',
+      overflow: 'hidden',
+      boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+    }}>
+      {/* Header bar */}
       <div
-        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', cursor: 'pointer', background: 'var(--bg3)' }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 14,
+          padding: '14px 18px',
+          background: collapsed
+            ? 'linear-gradient(135deg, rgba(239,68,68,0.06) 0%, rgba(168,85,247,0.04) 100%)'
+            : 'var(--bg3)',
+          cursor: 'pointer',
+          transition: 'background 200ms',
+          borderBottom: collapsed ? 'none' : '1px solid var(--border)',
+        }}
         onClick={() => setCollapsed((v) => !v)}
       >
-        <i className="fas fa-list-check" style={{ color: 'var(--primary)' }} />
-        <div style={{ flex: 1 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>Panel suivi</h3>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-            {tracked.length} marker{tracked.length > 1 ? 's' : ''} sélectionné{tracked.length > 1 ? 's' : ''} · clique pour {collapsed ? 'modifier' : 'replier'}
+        <div style={{
+          width: 38, height: 38, borderRadius: 10,
+          background: 'linear-gradient(135deg, #ef4444 0%, #a855f7 100%)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+          boxShadow: '0 2px 8px rgba(239,68,68,0.25)',
+        }}>
+          <i className="fas fa-flask-vial" style={{ color: 'white', fontSize: 15 }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, letterSpacing: -0.2 }}>Marqueurs à demander</h3>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 3 }}>
+            {tracked.length === 0
+              ? 'Aucun marqueur sélectionné'
+              : <><strong style={{ color: 'var(--text)' }}>{tracked.length}</strong> sélectionné{tracked.length > 1 ? 's' : ''} · clique pour {collapsed ? 'modifier la sélection' : 'replier'}</>
+            }
           </div>
         </div>
         <button
-          className="btn btn-red btn-sm"
+          className="btn btn-sm"
           onClick={(e) => { e.stopPropagation(); copyForWhatsApp() }}
           disabled={trackedMarkers.length === 0}
           title="Copie la liste formatée pour WhatsApp"
+          style={{
+            background: copied ? '#22c55e' : 'linear-gradient(135deg, #ef4444 0%, #c026d3 100%)',
+            color: 'white',
+            border: 'none',
+            fontWeight: 600,
+            padding: '8px 14px',
+            opacity: trackedMarkers.length === 0 ? 0.4 : 1,
+            transition: 'background 200ms, transform 100ms',
+            display: 'flex', alignItems: 'center', gap: 6,
+            boxShadow: trackedMarkers.length === 0 ? 'none' : '0 2px 8px rgba(239,68,68,0.3)',
+          }}
         >
-          <i className={`fas ${copied ? 'fa-check' : 'fa-copy'}`} /> {copied ? 'Copié !' : 'Copier liste'}
+          <i className={`fab fa-whatsapp`} style={{ fontSize: 14 }} />
+          {copied ? 'Copié !' : 'Copier pour WhatsApp'}
         </button>
-        <i className={`fas fa-chevron-${collapsed ? 'right' : 'down'}`} style={{ color: 'var(--text3)', fontSize: 11 }} />
+        <i className={`fas fa-chevron-${collapsed ? 'down' : 'up'}`} style={{ color: 'var(--text3)', fontSize: 12 }} />
       </div>
 
       {!collapsed && (
-        <div style={{ padding: 16 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11, color: 'var(--text3)', alignSelf: 'center', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700, marginRight: 4 }}>Presets :</span>
-            <button className="btn btn-outline btn-sm" onClick={() => onApplyPreset('basic')}>
-              <i className="fas fa-circle-check" /> Basic
-            </button>
-            <button className="btn btn-outline btn-sm" onClick={() => onApplyPreset('hormonal_plus')}>
-              <i className="fas fa-dna" /> Hormonal+
-            </button>
-            <button className="btn btn-outline btn-sm" onClick={() => onApplyPreset('total')}>
-              <i className="fas fa-layer-group" /> Total
-            </button>
-            <button className="btn btn-outline btn-sm" onClick={onOpenCustomModal} style={{ marginLeft: 'auto' }}>
-              <i className="fas fa-plus" /> Marker custom
+        <div style={{ padding: 18, background: 'var(--bg2)' }}>
+          {/* Search + presets bar */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
+              <i className="fas fa-search" style={{
+                position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+                color: 'var(--text3)', fontSize: 12,
+              }} />
+              <input
+                type="text"
+                placeholder="Rechercher un marqueur..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px 9px 34px',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  fontSize: 13,
+                  color: 'var(--text)',
+                  outline: 'none',
+                  transition: 'border 100ms',
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--primary)' }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border)' }}
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  style={{
+                    position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', color: 'var(--text3)',
+                    cursor: 'pointer', padding: 4,
+                  }}
+                >
+                  <i className="fas fa-times" style={{ fontSize: 11 }} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Presets */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 22, flexWrap: 'wrap' }}>
+            {(['basic', 'hormonal_plus', 'total'] as BloodtestPreset[]).map((p) => {
+              const meta = PRESET_META[p]
+              return (
+                <button
+                  key={p}
+                  onClick={() => onApplyPreset(p)}
+                  style={{
+                    flex: '1 1 130px',
+                    padding: '10px 14px',
+                    background: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 10,
+                    cursor: 'pointer',
+                    transition: 'all 120ms',
+                    textAlign: 'left',
+                    color: 'var(--text)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'translateY(0)' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <i className={`fas ${meta.icon}`} style={{ fontSize: 12, color: 'var(--primary)' }} />
+                    <span style={{ fontSize: 13, fontWeight: 700 }}>{meta.label}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{meta.subtitle}</div>
+                </button>
+              )
+            })}
+            <button
+              onClick={onOpenCustomModal}
+              style={{
+                padding: '10px 14px',
+                background: 'transparent',
+                border: '1px dashed var(--border)',
+                borderRadius: 10,
+                cursor: 'pointer',
+                color: 'var(--text3)',
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 12, fontWeight: 600,
+                transition: 'all 120ms',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text3)' }}
+            >
+              <i className="fas fa-plus" style={{ fontSize: 11 }} />
+              Marker custom
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Categories */}
+          {present.length === 0 && (
+            <div style={{
+              textAlign: 'center', padding: 32,
+              background: 'var(--bg)', borderRadius: 10,
+              color: 'var(--text3)', fontSize: 13,
+            }}>
+              <i className="fas fa-search" style={{ fontSize: 24, marginBottom: 8, display: 'block', opacity: 0.4 }} />
+              Aucun marqueur ne correspond à <strong>« {search} »</strong>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {present.map((cat) => {
               const meta = CATEGORY_META[cat]
               const ms = grouped.get(cat)!
               const onCount = ms.filter((m) => trackedSet.has(m.key)).length
-              const allOn = onCount === ms.length
+              const allOn = onCount === ms.length && ms.length > 0
               return (
-                <div key={cat}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <div style={{ width: 26, height: 26, borderRadius: 6, background: `${meta.color}1f`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <i className={`fas ${meta.icon}`} style={{ color: meta.color, fontSize: 11 }} />
-                    </div>
-                    <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.3 }}>{meta.label.toUpperCase()}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>{onCount}/{ms.length}</div>
-                    <button
-                      onClick={() => {
-                        // Toggle bulk : si tous on, off all ; sinon on all
-                        const targets = ms.map((m) => m.key)
-                        if (allOn) targets.forEach((k) => trackedSet.has(k) && onToggleMarker(k))
-                        else targets.forEach((k) => !trackedSet.has(k) && onToggleMarker(k))
-                      }}
-                      style={{
-                        marginLeft: 'auto',
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--text3)',
-                        cursor: 'pointer',
-                        fontSize: 11,
-                        padding: '2px 6px',
-                      }}
-                    >
-                      {allOn ? 'Décocher tout' : 'Cocher tout'}
-                    </button>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 4 }}>
-                    {ms.map((m) => {
-                      const on = trackedSet.has(m.key)
-                      return (
-                        <button
-                          key={m.key}
-                          onClick={() => onToggleMarker(m.key)}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            padding: '6px 10px',
-                            background: on ? `${meta.color}1a` : 'var(--bg)',
-                            border: on ? `1px solid ${meta.color}66` : '1px solid var(--border)',
-                            borderRadius: 6,
-                            fontSize: 12,
-                            cursor: 'pointer',
-                            color: 'var(--text)',
-                            textAlign: 'left',
-                            transition: 'all 100ms',
-                          }}
-                        >
-                          <span style={{
-                            width: 14,
-                            height: 14,
-                            borderRadius: 3,
-                            border: on ? `1.5px solid ${meta.color}` : '1.5px solid var(--text3)',
-                            background: on ? meta.color : 'transparent',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                          }}>
-                            {on && <i className="fas fa-check" style={{ color: 'white', fontSize: 8 }} />}
-                          </span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
+                <CategorySection
+                  key={cat}
+                  category={cat}
+                  meta={meta}
+                  markers={ms}
+                  trackedSet={trackedSet}
+                  onCount={onCount}
+                  allOn={allOn}
+                  onToggle={onToggleMarker}
+                />
               )
             })}
           </div>
         </div>
       )}
     </div>
+  )
+}
+
+function CategorySection({
+  meta, markers, trackedSet, onCount, allOn, onToggle,
+}: {
+  category: BloodtestCategory
+  meta: { label: string; icon: string; color: string }
+  markers: BloodtestMarker[]
+  trackedSet: Set<string>
+  onCount: number
+  allOn: boolean
+  onToggle: (key: string) => void
+}) {
+  function bulkToggle() {
+    if (allOn) {
+      markers.forEach((m) => trackedSet.has(m.key) && onToggle(m.key))
+    } else {
+      markers.forEach((m) => !trackedSet.has(m.key) && onToggle(m.key))
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <div style={{
+          width: 30, height: 30, borderRadius: 8,
+          background: `${meta.color}1f`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <i className={`fas ${meta.icon}`} style={{ color: meta.color, fontSize: 12 }} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.2 }}>{meta.label}</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>
+            {onCount} sur {markers.length} sélectionné{onCount > 1 ? 's' : ''}
+          </div>
+        </div>
+        <button
+          onClick={bulkToggle}
+          style={{
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
+            color: 'var(--text2)',
+            cursor: 'pointer',
+            fontSize: 11, fontWeight: 600,
+            padding: '5px 10px',
+            borderRadius: 6,
+            transition: 'all 100ms',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg3)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg)' }}
+        >
+          {allOn ? 'Tout décocher' : 'Tout cocher'}
+        </button>
+      </div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+        gap: 6,
+      }}>
+        {markers.map((m) => (
+          <MarkerChip
+            key={m.key}
+            marker={m}
+            on={trackedSet.has(m.key)}
+            color={meta.color}
+            onClick={() => onToggle(m.key)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function MarkerChip({ marker, on, color, onClick }: {
+  marker: BloodtestMarker
+  on: boolean
+  color: string
+  onClick: () => void
+}) {
+  const [hover, setHover] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 9,
+        padding: '9px 11px',
+        background: on
+          ? `${color}1a`
+          : hover ? 'var(--bg3)' : 'var(--bg)',
+        border: on
+          ? `1.5px solid ${color}80`
+          : `1px solid var(--border)`,
+        borderRadius: 8,
+        fontSize: 12,
+        cursor: 'pointer',
+        color: 'var(--text)',
+        textAlign: 'left',
+        transition: 'all 100ms',
+        transform: hover ? 'translateY(-1px)' : 'translateY(0)',
+      }}
+    >
+      <span style={{
+        width: 16, height: 16, borderRadius: 4,
+        border: on ? `1.5px solid ${color}` : '1.5px solid var(--text3)',
+        background: on ? color : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0,
+        transition: 'all 100ms',
+      }}>
+        {on && <i className="fas fa-check" style={{ color: 'white', fontSize: 9 }} />}
+      </span>
+      <span style={{
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        flex: 1,
+        fontWeight: on ? 600 : 500,
+      }}>{marker.label}</span>
+      <span style={{ fontSize: 10, color: 'var(--text3)', flexShrink: 0 }}>{marker.unit_canonical}</span>
+    </button>
   )
 }

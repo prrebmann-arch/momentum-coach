@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { MARKERS, type BloodtestCategory, type BloodtestMarker, type ZoneConfig, type ZoneBand } from '@/lib/bloodtestCatalog'
+import { MARKERS, type BloodtestCategory, type BloodtestMarker, type ZoneConfig } from '@/lib/bloodtestCatalog'
 import { classifyValue, severityColor, type BloodtestUploadRow, type ExtractedData } from '@/lib/bloodtest'
 
 const CATEGORY_META: Record<BloodtestCategory, { label: string; icon: string; color: string }> = {
@@ -43,6 +43,8 @@ export default function BloodtestDashboard({
   athleteSex?: 'M' | 'F'
 }) {
   const [tab, setTab] = useState<'snapshot' | 'trends' | 'bilans'>('snapshot')
+  const [filterCat, setFilterCat] = useState<BloodtestCategory | 'all'>('all')
+  const [detailMarker, setDetailMarker] = useState<string | null>(null)
 
   const allMarkers: BloodtestMarker[] = useMemo(() => [
     ...MARKERS,
@@ -63,7 +65,6 @@ export default function BloodtestDashboard({
     return m
   }, [allMarkers])
 
-  // Toutes les séries chronologiques par marker_key
   const seriesByKey = useMemo(() => {
     const map = new Map<string, ValidatedPoint[]>()
     const sortedUps = [...uploads].sort((a, b) => {
@@ -101,7 +102,6 @@ export default function BloodtestDashboard({
     return map
   }, [uploads, markerByKey, athleteSex])
 
-  // Markers à afficher : tracked + tout marker avec ≥1 data point
   const displayedKeys = useMemo(() => {
     const set = new Set<string>(tracked)
     for (const [key] of seriesByKey) set.add(key)
@@ -120,7 +120,6 @@ export default function BloodtestDashboard({
     return map
   }, [displayedKeys, markerByKey])
 
-  // Score par catégorie : nb optimal / total avec data
   const categoryScores = useMemo(() => {
     const scores = new Map<BloodtestCategory, { optimal: number; outOfRange: number; total: number }>()
     for (const [cat, keys] of grouped) {
@@ -143,7 +142,6 @@ export default function BloodtestDashboard({
   const lastUpload = uploads[0]
   const lastDate = lastUpload ? (lastUpload.dated_at || lastUpload.uploaded_at.slice(0, 10)) : null
 
-  // Stats globales pour le bandeau de tête
   const globalStats = useMemo(() => {
     let optimal = 0, attention = 0, outOfRange = 0, totalWithBand = 0
     for (const [, keys] of grouped) {
@@ -161,42 +159,59 @@ export default function BloodtestDashboard({
     return { optimal, attention, outOfRange, totalWithBand }
   }, [grouped, seriesByKey])
 
+  const presentCategories = CATEGORY_ORDER.filter((c) => grouped.has(c))
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Bandeau de tête : stats globales */}
-      {totalValidated > 0 && globalStats.totalWithBand > 0 && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          padding: 16,
-          background: 'linear-gradient(135deg, var(--bg2) 0%, var(--bg3) 100%)',
-          borderRadius: 14,
-          border: '1px solid var(--border)',
-          flexWrap: 'wrap',
-        }}>
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>Dernier bilan</div>
-            <div style={{ fontSize: 18, fontWeight: 800, marginTop: 2 }}>
-              {lastDate ? new Date(lastDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-            </div>
-          </div>
-          <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border)' }} />
-          <StatPill icon="fa-circle-check" color="#22c55e" value={globalStats.optimal} label="Optimal" />
-          <StatPill icon="fa-circle-exclamation" color="#eab308" value={globalStats.attention} label="Surveiller" />
-          <StatPill icon="fa-triangle-exclamation" color="#ef4444" value={globalStats.outOfRange} label="Hors zone" />
-          <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text3)' }}>
-            {globalStats.totalWithBand} marker{globalStats.totalWithBand > 1 ? 's' : ''} évalué{globalStats.totalWithBand > 1 ? 's' : ''} · {totalValidated} bilan{totalValidated > 1 ? 's' : ''}
-          </div>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {/* Hero */}
+      {totalValidated > 0 && (
+        <Hero
+          lastDate={lastDate}
+          lastUpload={lastUpload}
+          totalValidated={totalValidated}
+          globalStats={globalStats}
+          onDelete={onDelete}
+          onViewPdf={onViewPdf}
+        />
       )}
 
       {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 4, padding: 4, background: 'var(--bg2)', borderRadius: 10, alignSelf: 'flex-start' }}>
-        <TabBtn active={tab === 'snapshot'} onClick={() => setTab('snapshot')} icon="fa-th-large" label="Snapshot" />
+      <div style={{
+        display: 'flex',
+        gap: 4, padding: 4,
+        background: 'var(--bg2)',
+        borderRadius: 12,
+        alignSelf: 'flex-start',
+        border: '1px solid var(--border)',
+      }}>
+        <TabBtn active={tab === 'snapshot'} onClick={() => setTab('snapshot')} icon="fa-th-large" label="Vue d'ensemble" />
         <TabBtn active={tab === 'trends'} onClick={() => setTab('trends')} icon="fa-chart-line" label="Tendances" />
         <TabBtn active={tab === 'bilans'} onClick={() => setTab('bilans')} icon="fa-folder-open" label={`Bilans (${totalValidated})`} />
       </div>
+
+      {/* Category filter chips (snapshot + trends) */}
+      {(tab === 'snapshot' || tab === 'trends') && presentCategories.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700, marginRight: 4 }}>
+            Filtrer :
+          </span>
+          <FilterChip label="Tout" active={filterCat === 'all'} onClick={() => setFilterCat('all')} count={displayedKeys.length} />
+          {presentCategories.map((c) => {
+            const meta = CATEGORY_META[c]
+            return (
+              <FilterChip
+                key={c}
+                label={meta.label}
+                color={meta.color}
+                active={filterCat === c}
+                onClick={() => setFilterCat(c)}
+                count={grouped.get(c)?.length || 0}
+                icon={meta.icon}
+              />
+            )
+          })}
+        </div>
+      )}
 
       {tab === 'snapshot' && (
         <SnapshotView
@@ -206,6 +221,8 @@ export default function BloodtestDashboard({
           tracked={tracked}
           categoryScores={categoryScores}
           athleteSex={athleteSex}
+          filterCat={filterCat}
+          onMarkerClick={(k) => setDetailMarker(k)}
         />
       )}
 
@@ -215,27 +232,192 @@ export default function BloodtestDashboard({
           markerByKey={markerByKey}
           seriesByKey={seriesByKey}
           athleteSex={athleteSex}
+          filterCat={filterCat}
         />
       )}
 
       {tab === 'bilans' && (
         <BilansListView uploads={uploads} onDelete={onDelete} onViewPdf={onViewPdf} />
       )}
+
+      {/* Marker detail modal */}
+      {detailMarker && markerByKey.get(detailMarker) && (
+        <MarkerDetailModal
+          marker={markerByKey.get(detailMarker)!}
+          series={seriesByKey.get(detailMarker) || []}
+          athleteSex={athleteSex}
+          onClose={() => setDetailMarker(null)}
+        />
+      )}
     </div>
   )
 }
 
-function StatPill({ icon, color, value, label }: { icon: string; color: string; value: number; label: string }) {
+function Hero({
+  lastDate, lastUpload, totalValidated, globalStats, onDelete, onViewPdf,
+}: {
+  lastDate: string | null
+  lastUpload: BloodtestUploadRow | undefined
+  totalValidated: number
+  globalStats: { optimal: number; attention: number; outOfRange: number; totalWithBand: number }
+  onDelete: (uploadId: string) => void
+  onViewPdf: (uploadId: string) => void
+}) {
+  const total = globalStats.totalWithBand
+  const pctOptimal = total > 0 ? Math.round((globalStats.optimal / total) * 100) : 0
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ width: 32, height: 32, borderRadius: 8, background: `${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <i className={`fas ${icon}`} style={{ color, fontSize: 13 }} />
-      </div>
-      <div>
-        <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1, color }}>{value}</div>
-        <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2 }}>{label}</div>
+    <div style={{
+      position: 'relative',
+      padding: 20,
+      borderRadius: 16,
+      background: 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(168,85,247,0.06) 50%, rgba(59,130,246,0.05) 100%)',
+      border: '1px solid var(--border)',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        position: 'absolute', top: -50, right: -50, width: 200, height: 200,
+        borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(239,68,68,0.08) 0%, transparent 70%)',
+        pointerEvents: 'none',
+      }} />
+
+      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap', position: 'relative' }}>
+        {/* Left: latest bilan info */}
+        <div style={{ flex: '1 1 280px', minWidth: 0 }}>
+          <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700, marginBottom: 4 }}>
+            Dernier bilan
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <h2 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: -0.5 }}>
+              {lastDate ? new Date(lastDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'}
+            </h2>
+            <span style={{ fontSize: 13, color: 'var(--text3)' }}>
+              · {totalValidated} bilan{totalValidated > 1 ? 's' : ''} au total
+            </span>
+          </div>
+          {lastUpload && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-sm"
+                onClick={() => onViewPdf(lastUpload.id)}
+                style={{
+                  background: 'var(--bg2)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
+                  padding: '7px 12px',
+                  fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <i className="fas fa-eye" style={{ fontSize: 11 }} />
+                Voir le document
+              </button>
+              <button
+                className="btn btn-sm"
+                onClick={() => { if (confirm('Supprimer ce bilan ? Les valeurs validées seront perdues.')) onDelete(lastUpload.id) }}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--border)',
+                  color: '#ef4444',
+                  padding: '7px 12px',
+                  fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <i className="fas fa-trash-can" style={{ fontSize: 11 }} />
+                Supprimer
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right: score ring + stats */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <BigScoreRing pctOptimal={pctOptimal} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <StatRow color="#22c55e" label="Optimal" value={globalStats.optimal} />
+            <StatRow color="#eab308" label="Surveiller" value={globalStats.attention} />
+            <StatRow color="#ef4444" label="Hors zone" value={globalStats.outOfRange} />
+          </div>
+        </div>
       </div>
     </div>
+  )
+}
+
+function BigScoreRing({ pctOptimal }: { pctOptimal: number }) {
+  const radius = 32
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference - (pctOptimal / 100) * circumference
+  const color = pctOptimal >= 70 ? '#22c55e' : pctOptimal >= 40 ? '#eab308' : '#ef4444'
+
+  return (
+    <div style={{ position: 'relative', width: 84, height: 84 }}>
+      <svg width={84} height={84} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={42} cy={42} r={radius} stroke="var(--bg3)" strokeWidth={6} fill="none" />
+        <circle
+          cx={42} cy={42} r={radius}
+          stroke={color}
+          strokeWidth={6}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dashoffset 600ms ease-out' }}
+        />
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color, lineHeight: 1 }}>{pctOptimal}%</div>
+        <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700, marginTop: 2 }}>optimal</div>
+      </div>
+    </div>
+  )
+}
+
+function StatRow({ color, label, value }: { color: string; label: string; value: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      <span style={{ color: 'var(--text2)', flex: 1 }}>{label}</span>
+      <strong style={{ fontSize: 14, color, fontWeight: 800 }}>{value}</strong>
+    </div>
+  )
+}
+
+function FilterChip({ label, active, onClick, count, color, icon }: {
+  label: string
+  active: boolean
+  onClick: () => void
+  count: number
+  color?: string
+  icon?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '6px 10px',
+        background: active ? (color || 'var(--primary)') : 'var(--bg2)',
+        border: active ? `1px solid ${color || 'var(--primary)'}` : '1px solid var(--border)',
+        borderRadius: 8,
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: 'pointer',
+        color: active ? 'white' : 'var(--text)',
+        display: 'flex', alignItems: 'center', gap: 6,
+        transition: 'all 100ms',
+      }}
+    >
+      {icon && <i className={`fas ${icon}`} style={{ fontSize: 10 }} />}
+      {label}
+      <span style={{
+        fontSize: 10, fontWeight: 700,
+        padding: '1px 6px', borderRadius: 8,
+        background: active ? 'rgba(255,255,255,0.2)' : 'var(--bg3)',
+        color: active ? 'white' : 'var(--text3)',
+      }}>{count}</span>
+    </button>
   )
 }
 
@@ -246,7 +428,7 @@ function TabBtn({ active, onClick, icon, label }: { active: boolean; onClick: ()
       style={{
         padding: '8px 14px',
         border: 'none',
-        background: active ? 'var(--bg3)' : 'transparent',
+        background: active ? 'var(--bg)' : 'transparent',
         color: active ? 'var(--text)' : 'var(--text3)',
         borderRadius: 8,
         cursor: 'pointer',
@@ -255,6 +437,7 @@ function TabBtn({ active, onClick, icon, label }: { active: boolean; onClick: ()
         display: 'flex',
         alignItems: 'center',
         gap: 6,
+        boxShadow: active ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
       }}
     >
       <i className={`fas ${icon}`} style={{ fontSize: 11 }} />{label}
@@ -263,7 +446,7 @@ function TabBtn({ active, onClick, icon, label }: { active: boolean; onClick: ()
 }
 
 function SnapshotView({
-  grouped, markerByKey, seriesByKey, tracked, categoryScores, athleteSex,
+  grouped, markerByKey, seriesByKey, tracked, categoryScores, athleteSex, filterCat, onMarkerClick,
 }: {
   grouped: Map<BloodtestCategory, string[]>
   markerByKey: Map<string, BloodtestMarker>
@@ -271,32 +454,45 @@ function SnapshotView({
   tracked: string[]
   categoryScores: Map<BloodtestCategory, { optimal: number; outOfRange: number; total: number }>
   athleteSex?: 'M' | 'F'
+  filterCat: BloodtestCategory | 'all'
+  onMarkerClick: (key: string) => void
 }) {
-  const present = CATEGORY_ORDER.filter((c) => grouped.has(c))
+  const present = CATEGORY_ORDER.filter((c) => grouped.has(c) && (filterCat === 'all' || filterCat === c))
   if (present.length === 0) return <EmptyState icon="fa-droplet" text="Aucun bilan validé pour le moment" />
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       {present.map((cat) => {
         const meta = CATEGORY_META[cat]
         const keys = grouped.get(cat)!
         const score = categoryScores.get(cat)
         return (
           <section key={cat}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: `${meta.color}1f`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <i className={`fas ${meta.icon}`} style={{ color: meta.color, fontSize: 13 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: 10,
+                background: `${meta.color}1f`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: `1px solid ${meta.color}33`,
+              }}>
+                <i className={`fas ${meta.icon}`} style={{ color: meta.color, fontSize: 15 }} />
               </div>
               <div style={{ flex: 1 }}>
-                <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0, letterSpacing: 0.3 }}>{meta.label}</h4>
+                <h4 style={{ fontSize: 16, fontWeight: 700, margin: 0, letterSpacing: -0.2 }}>{meta.label}</h4>
                 {score && score.total > 0 && (
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-                    {score.optimal} optimal · {score.outOfRange > 0 && <span style={{ color: '#ef4444' }}>{score.outOfRange} hors zone · </span>}{keys.length} marker{keys.length > 1 ? 's' : ''} suivi{keys.length > 1 ? 's' : ''}
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+                    <strong style={{ color: '#22c55e' }}>{score.optimal} optimal</strong>
+                    {score.outOfRange > 0 && <> · <strong style={{ color: '#ef4444' }}>{score.outOfRange} hors zone</strong></>}
+                    {' · '}{keys.length} marqueur{keys.length > 1 ? 's' : ''}
                   </div>
                 )}
               </div>
               {score && score.total > 0 && <ScoreRing optimal={score.optimal} total={score.total} color={meta.color} />}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
+              gap: 12,
+            }}>
               {keys.map((key) => (
                 <MarkerSnapshotCard
                   key={key}
@@ -304,6 +500,7 @@ function SnapshotView({
                   series={seriesByKey.get(key) || []}
                   isTracked={tracked.includes(key)}
                   athleteSex={athleteSex}
+                  onClick={() => onMarkerClick(key)}
                 />
               ))}
             </div>
@@ -334,7 +531,7 @@ function ScoreRing({ optimal, total, color }: { optimal: number; total: number; 
           style={{ transition: 'stroke-dashoffset 400ms' }}
         />
       </svg>
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
         {optimal}/{total}
       </div>
     </div>
@@ -342,23 +539,26 @@ function ScoreRing({ optimal, total, color }: { optimal: number; total: number; 
 }
 
 function MarkerSnapshotCard({
-  marker, series, isTracked, athleteSex,
+  marker, series, isTracked, athleteSex, onClick,
 }: {
   marker: BloodtestMarker
   series: ValidatedPoint[]
   isTracked: boolean
   athleteSex?: 'M' | 'F'
+  onClick: () => void
 }) {
+  const [hover, setHover] = useState(false)
   const last = series[series.length - 1]
   const prev = series.length >= 2 ? series[series.length - 2] : undefined
   const color = last?.severity ? severityColor(last.severity) : 'var(--text3)'
   const trend = prev && last ? last.value - prev.value : 0
-
-  // Récupère la zone config pour la barre de range
   const zoneConfig = useResolveZoneConfig(marker, athleteSex)
 
   return (
-    <div
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
         padding: 14,
         background: 'var(--bg2)',
@@ -368,12 +568,18 @@ function MarkerSnapshotCard({
         display: 'flex',
         flexDirection: 'column',
         gap: 8,
+        cursor: 'pointer',
+        textAlign: 'left',
+        transition: 'all 150ms',
+        transform: hover ? 'translateY(-2px)' : 'translateY(0)',
+        boxShadow: hover ? '0 6px 20px rgba(0,0,0,0.08)' : 'none',
+        color: 'var(--text)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', lineHeight: 1.2 }}>{marker.label}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', lineHeight: 1.2 }}>{marker.label}</div>
         {!isTracked && (
-          <span style={{ fontSize: 9, padding: '1px 5px', background: 'var(--bg3)', borderRadius: 3, color: 'var(--text3)', fontWeight: 700 }}>EXTRA</span>
+          <span style={{ fontSize: 9, padding: '1px 6px', background: 'var(--bg3)', borderRadius: 3, color: 'var(--text3)', fontWeight: 700, letterSpacing: 0.3 }}>EXTRA</span>
         )}
       </div>
 
@@ -383,39 +589,48 @@ function MarkerSnapshotCard({
         <>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-              <span style={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1 }}>{formatVal(last.value)}</span>
-              <span style={{ fontSize: 11, color: 'var(--text3)' }}>{marker.unit_canonical}</span>
+              <span style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1, letterSpacing: -0.5 }}>{formatVal(last.value)}</span>
+              <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 500 }}>{marker.unit_canonical}</span>
             </div>
             {prev && trend !== 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--text3)' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 3,
+                fontSize: 11, fontWeight: 600,
+                color: 'var(--text2)',
+                padding: '2px 6px',
+                background: 'var(--bg3)',
+                borderRadius: 4,
+              }}>
                 <i className={`fas fa-arrow-${trend > 0 ? 'up' : 'down'}`} style={{ fontSize: 9 }} />
                 {trend > 0 ? '+' : ''}{formatVal(trend)}
               </div>
             )}
           </div>
 
-          {/* Reference range bar */}
-          {zoneConfig && (
-            <RangeBar zone={zoneConfig} value={last.value} unit={marker.unit_canonical} />
-          )}
+          {zoneConfig && <RangeBar zone={zoneConfig} value={last.value} unit={marker.unit_canonical} />}
 
-          {last.band && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', background: `${color}26`, color, borderRadius: 4, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+            {last.band ? (
+              <span style={{
+                fontSize: 10, fontWeight: 700,
+                padding: '2px 8px',
+                background: `${color}26`, color, borderRadius: 4,
+                textTransform: 'uppercase', letterSpacing: 0.3,
+              }}>
                 {last.band}
               </span>
-              {series.length >= 2 && (
-                <span style={{ fontSize: 10, color: 'var(--text3)' }}>
-                  {series.length} valeur{series.length > 1 ? 's' : ''}
-                </span>
-              )}
-            </div>
-          )}
+            ) : <span />}
+            {series.length >= 2 && (
+              <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 500 }}>
+                {series.length} valeur{series.length > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
 
           {series.length >= 2 && <Sparkline series={series} color={color} />}
         </>
       )}
-    </div>
+    </button>
   )
 }
 
@@ -431,54 +646,41 @@ function useResolveZoneConfig(marker: BloodtestMarker, sex?: 'M' | 'F'): ZoneCon
 }
 
 function RangeBar({ zone, value, unit }: { zone: ZoneConfig; value: number; unit: string }) {
-  // Détermine min/max visuel
   const explicitMins = zone.bands.map((b) => b.min).filter((v): v is number => typeof v === 'number')
   const explicitMaxs = zone.bands.map((b) => b.max).filter((v): v is number => typeof v === 'number')
   if (explicitMins.length === 0 || explicitMaxs.length === 0) return null
 
   const overallMin = Math.min(...explicitMins)
   const overallMax = Math.max(...explicitMaxs)
-  // padding visuel pour values qui dépassent
   const visualMin = Math.min(overallMin, value) - (overallMax - overallMin) * 0.05
   const visualMax = Math.max(overallMax, value) + (overallMax - overallMin) * 0.05
   const range = visualMax - visualMin || 1
 
-  const W = 100 // pourcentage
+  const W = 100
   const segments = zone.bands.map((b) => {
     const start = b.min ?? visualMin
     const end = b.max ?? visualMax
     const startPct = ((start - visualMin) / range) * W
     const endPct = ((end - visualMin) / range) * W
-    return {
-      band: b,
-      startPct,
-      width: endPct - startPct,
-      color: severityColor(b.severity),
-    }
+    return { band: b, startPct, width: endPct - startPct, color: severityColor(b.severity) }
   })
 
   const cursorPct = ((value - visualMin) / range) * W
 
   return (
     <div style={{ position: 'relative', height: 14, marginTop: 2 }}>
-      {/* Reference bands */}
       <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', position: 'absolute', top: 4, left: 0, right: 0 }}>
         {segments.map((s, i) => (
-          <div key={i} style={{
-            width: `${s.width}%`,
-            background: `${s.color}88`,
-            position: 'relative',
-          }} title={`${s.band.label}: ${s.band.min ?? '–'} à ${s.band.max ?? '+'} ${unit}`} />
+          <div key={i} style={{ width: `${s.width}%`, background: `${s.color}88` }}
+            title={`${s.band.label}: ${s.band.min ?? '–'} à ${s.band.max ?? '+'} ${unit}`} />
         ))}
       </div>
-      {/* Cursor */}
       <div style={{
         position: 'absolute',
         left: `${Math.max(0, Math.min(100, cursorPct))}%`,
         top: 0,
         transform: 'translateX(-50%)',
-        width: 3,
-        height: 14,
+        width: 3, height: 14,
         background: 'var(--text)',
         borderRadius: 2,
         boxShadow: '0 0 0 2px var(--bg2)',
@@ -513,34 +715,30 @@ function Sparkline({ series, color }: { series: ValidatedPoint[]; color: string 
 }
 
 function TrendsView({
-  grouped, markerByKey, seriesByKey, athleteSex,
+  grouped, markerByKey, seriesByKey, athleteSex, filterCat,
 }: {
   grouped: Map<BloodtestCategory, string[]>
   markerByKey: Map<string, BloodtestMarker>
   seriesByKey: Map<string, ValidatedPoint[]>
   athleteSex?: 'M' | 'F'
+  filterCat: BloodtestCategory | 'all'
 }) {
-  const present = CATEGORY_ORDER.filter((c) => grouped.has(c))
+  const present = CATEGORY_ORDER.filter((c) => grouped.has(c) && (filterCat === 'all' || filterCat === c))
   if (present.length === 0) return <EmptyState icon="fa-chart-line" text="Aucune tendance — ajoute au moins un bilan validé" />
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       {present.map((cat) => {
         const meta = CATEGORY_META[cat]
         const keys = grouped.get(cat)!
         return (
           <section key={cat}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
               <i className={`fas ${meta.icon}`} style={{ color: meta.color }} />
-              <h4 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>{meta.label}</h4>
+              <h4 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>{meta.label}</h4>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
               {keys.map((key) => (
-                <TrendChart
-                  key={key}
-                  marker={markerByKey.get(key)!}
-                  series={seriesByKey.get(key) || []}
-                  athleteSex={athleteSex}
-                />
+                <TrendChart key={key} marker={markerByKey.get(key)!} series={seriesByKey.get(key) || []} athleteSex={athleteSex} />
               ))}
             </div>
           </section>
@@ -562,7 +760,6 @@ function TrendChart({ marker, series, athleteSex }: { marker: BloodtestMarker; s
   const lastColor = last?.severity ? severityColor(last.severity) : 'var(--text3)'
   const zone = useResolveZoneConfig(marker, athleteSex)
 
-  // Calcul du domain Y : englobe les bands + valeurs
   let yMin = Number.POSITIVE_INFINITY, yMax = Number.NEGATIVE_INFINITY
   if (zone) {
     for (const b of zone.bands) {
@@ -592,35 +789,21 @@ function TrendChart({ marker, series, athleteSex }: { marker: BloodtestMarker; s
       </div>
     )
   } else {
-    const xs = series.map((s, i) => (series.length === 1 ? padX + innerW / 2 : padX + (i / (series.length - 1)) * innerW))
+    const xs = series.map((_, i) => (series.length === 1 ? padX + innerW / 2 : padX + (i / (series.length - 1)) * innerW))
     const ys = series.map((s) => yToPx(s.value))
     const pathD = series.length >= 2 ? series.map((_, i) => `${i === 0 ? 'M' : 'L'} ${xs[i]},${ys[i]}`).join(' ') : ''
 
     chart = (
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H, display: 'block' }}>
-        {/* Reference bands */}
         {zone && zone.bands.map((b, i) => {
           const top = yToPx(b.max ?? yMax)
           const bottom = yToPx(b.min ?? yMin)
           if (top >= bottom) return null
-          return (
-            <rect
-              key={i}
-              x={padX}
-              y={top}
-              width={innerW}
-              height={bottom - top}
-              fill={severityColor(b.severity)}
-              opacity={0.13}
-            />
-          )
+          return <rect key={i} x={padX} y={top} width={innerW} height={bottom - top} fill={severityColor(b.severity)} opacity={0.13} />
         })}
-        {/* Y axis labels */}
         <text x={padX - 6} y={padY + 4} fill="var(--text3)" fontSize={9} textAnchor="end">{formatVal(yMax)}</text>
         <text x={padX - 6} y={H - padY + 4} fill="var(--text3)" fontSize={9} textAnchor="end">{formatVal(yMin)}</text>
-        {/* Path */}
         {pathD && <path d={pathD} fill="none" stroke="var(--primary)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />}
-        {/* Points */}
         {series.map((s, i) => {
           const c = s.severity ? severityColor(s.severity) : 'var(--primary)'
           return (
@@ -634,7 +817,6 @@ function TrendChart({ marker, series, athleteSex }: { marker: BloodtestMarker; s
             </g>
           )
         })}
-        {/* X axis dates */}
         {series.length >= 2 && (
           <>
             <text x={padX} y={H - 2} fill="var(--text3)" fontSize={9} textAnchor="start">{shortDate(series[0].date)}</text>
@@ -649,18 +831,18 @@ function TrendChart({ marker, series, athleteSex }: { marker: BloodtestMarker; s
   }
 
   return (
-    <div style={{ padding: 12, background: 'var(--bg2)', borderRadius: 10, border: '1px solid var(--border)' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>{marker.label}</div>
-        <div style={{ fontSize: 10, color: 'var(--text3)' }}>{marker.unit_canonical}</div>
+    <div style={{ padding: 14, background: 'var(--bg2)', borderRadius: 12, border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>{marker.label}</div>
+        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{marker.unit_canonical}</div>
       </div>
       {chart}
       {last?.band && (
-        <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 9, padding: '1px 6px', background: `${lastColor}26`, color: lastColor, borderRadius: 3, fontWeight: 700, textTransform: 'uppercase' }}>
+        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, padding: '2px 7px', background: `${lastColor}26`, color: lastColor, borderRadius: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>
             {last.band}
           </span>
-          <span style={{ fontSize: 10, color: 'var(--text3)' }}>· {series.length} valeur{series.length > 1 ? 's' : ''}</span>
+          <span style={{ fontSize: 11, color: 'var(--text3)' }}>· {series.length} valeur{series.length > 1 ? 's' : ''}</span>
         </div>
       )}
     </div>
@@ -676,40 +858,272 @@ function BilansListView({
 }) {
   if (uploads.length === 0) return <EmptyState icon="fa-folder-open" text="Aucun bilan validé" />
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+      gap: 12,
+    }}>
       {uploads.map((u) => {
         const data = u.validated_data as ExtractedData | null
         const date = u.dated_at || u.uploaded_at.slice(0, 10)
         const fileCount = (u.file_path || '').split('|').filter((p: string) => p).length
-        const markersCount = data?.markers?.length || 0
+        const markersCount = data?.markers?.filter((m) => !m.ignored).length || 0
         return (
-          <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--bg2)', borderRadius: 10, border: '1px solid var(--border)' }}>
-            <div style={{ width: 38, height: 38, borderRadius: 8, background: 'var(--bg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <i className="fas fa-file-medical" style={{ color: 'var(--primary)' }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>
-                Bilan du {new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                {markersCount} marker{markersCount > 1 ? 's' : ''} · {fileCount} fichier{fileCount > 1 ? 's' : ''}
-                {u.validated_at && ` · validé ${new Date(u.validated_at).toLocaleDateString('fr-FR')}`}
-              </div>
-            </div>
-            <button className="btn btn-outline btn-sm" onClick={() => onViewPdf(u.id)} title="Voir le PDF d'origine">
-              <i className="fas fa-eye" /> PDF
-            </button>
-            <button
-              className="btn btn-outline btn-sm"
-              onClick={() => { if (confirm('Supprimer ce bilan ? Les valeurs validées seront perdues.')) onDelete(u.id) }}
-              title="Supprimer"
-              style={{ color: 'var(--red)' }}
-            >
-              <i className="fas fa-trash" />
-            </button>
-          </div>
+          <BilanCard
+            key={u.id}
+            uploadId={u.id}
+            date={date}
+            fileCount={fileCount}
+            markersCount={markersCount}
+            validatedAt={u.validated_at}
+            onDelete={() => onDelete(u.id)}
+            onViewPdf={() => onViewPdf(u.id)}
+          />
         )
       })}
+    </div>
+  )
+}
+
+function BilanCard({
+  uploadId, date, fileCount, markersCount, validatedAt, onDelete, onViewPdf,
+}: {
+  uploadId: string
+  date: string
+  fileCount: number
+  markersCount: number
+  validatedAt?: string | null
+  onDelete: () => void
+  onViewPdf: () => void
+}) {
+  const [hover, setHover] = useState(false)
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        padding: 16,
+        background: 'var(--bg2)',
+        borderRadius: 12,
+        border: '1px solid var(--border)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 14,
+        transition: 'all 150ms',
+        transform: hover ? 'translateY(-2px)' : 'translateY(0)',
+        boxShadow: hover ? '0 6px 20px rgba(0,0,0,0.06)' : 'none',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: 10,
+          background: 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(168,85,247,0.10) 100%)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+          border: '1px solid var(--border)',
+        }}>
+          <i className="fas fa-file-medical" style={{ color: '#ef4444', fontSize: 18 }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.2 }}>
+            {new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+            <strong style={{ color: 'var(--text2)' }}>{markersCount}</strong> marqueur{markersCount > 1 ? 's' : ''}
+            {' · '}{fileCount} fichier{fileCount > 1 ? 's' : ''}
+          </div>
+          {validatedAt && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              fontSize: 10, fontWeight: 600,
+              marginTop: 6,
+              padding: '2px 7px',
+              background: 'rgba(34,197,94,0.12)',
+              color: '#22c55e',
+              borderRadius: 4,
+              textTransform: 'uppercase', letterSpacing: 0.3,
+            }}>
+              <i className="fas fa-check" style={{ fontSize: 8 }} />
+              Validé {new Date(validatedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <button
+          onClick={onViewPdf}
+          style={{
+            flex: '1 1 auto',
+            padding: '8px 12px',
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            fontSize: 12, fontWeight: 600,
+            cursor: 'pointer', color: 'var(--text)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            transition: 'background 100ms',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg3)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg)' }}
+        >
+          <i className="fas fa-eye" style={{ fontSize: 11 }} />
+          Voir le document
+        </button>
+        <button
+          onClick={() => { if (confirm('Supprimer ce bilan ? Les valeurs validées seront perdues.')) onDelete() }}
+          title="Supprimer"
+          style={{
+            padding: '8px 12px',
+            background: 'transparent',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            cursor: 'pointer',
+            color: '#ef4444',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 100ms',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; e.currentTarget.style.borderColor = '#ef4444' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)' }}
+        >
+          <i className="fas fa-trash-can" style={{ fontSize: 12 }} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function MarkerDetailModal({
+  marker, series, athleteSex, onClose,
+}: {
+  marker: BloodtestMarker
+  series: ValidatedPoint[]
+  athleteSex?: 'M' | 'F'
+  onClose: () => void
+}) {
+  const last = series[series.length - 1]
+  const color = last?.severity ? severityColor(last.severity) : 'var(--text3)'
+  const meta = CATEGORY_META[marker.category]
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.6)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16,
+        backdropFilter: 'blur(4px)',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--bg)',
+          borderRadius: 16,
+          maxWidth: 540, width: '100%',
+          maxHeight: '85vh', overflow: 'auto',
+          border: '1px solid var(--border)',
+          boxShadow: '0 25px 50px rgba(0,0,0,0.4)',
+        }}
+      >
+        <div style={{
+          padding: 20,
+          borderBottom: '1px solid var(--border)',
+          background: `linear-gradient(135deg, ${meta.color}10 0%, transparent 100%)`,
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 10,
+            background: `${meta.color}1f`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <i className={`fas ${meta.icon}`} style={{ color: meta.color, fontSize: 16 }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>{marker.label}</h3>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+              {meta.label} · {marker.unit_canonical}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 32, height: 32, borderRadius: 8,
+              background: 'var(--bg2)', border: '1px solid var(--border)',
+              cursor: 'pointer', color: 'var(--text)',
+            }}
+          >
+            <i className="fas fa-times" />
+          </button>
+        </div>
+
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {!last ? (
+            <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>Aucune donnée</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 42, fontWeight: 800, color, lineHeight: 1, letterSpacing: -1 }}>{formatVal(last.value)}</span>
+                <span style={{ fontSize: 14, color: 'var(--text3)' }}>{marker.unit_canonical}</span>
+                {last.band && (
+                  <span style={{
+                    marginLeft: 'auto',
+                    fontSize: 11, fontWeight: 700,
+                    padding: '4px 10px',
+                    background: `${color}20`, color, borderRadius: 6,
+                    textTransform: 'uppercase', letterSpacing: 0.3,
+                  }}>
+                    {last.band}
+                  </span>
+                )}
+              </div>
+
+              <TrendChart marker={marker} series={series} athleteSex={athleteSex} />
+
+              {series.length > 1 && (
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700, marginBottom: 8 }}>
+                    Historique ({series.length} valeurs)
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {[...series].reverse().map((p, i) => {
+                      const pColor = p.severity ? severityColor(p.severity) : 'var(--text3)'
+                      return (
+                        <div key={i} style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '8px 12px',
+                          background: i === 0 ? 'var(--bg2)' : 'transparent',
+                          borderRadius: 8,
+                          fontSize: 13,
+                        }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: pColor, flexShrink: 0 }} />
+                          <span style={{ color: 'var(--text2)', flex: 1 }}>
+                            {new Date(p.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </span>
+                          <strong style={{ color: pColor, fontWeight: 700 }}>
+                            {formatVal(p.value)} {marker.unit_canonical}
+                          </strong>
+                          {p.band && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700,
+                              padding: '1px 6px',
+                              background: `${pColor}20`, color: pColor, borderRadius: 3,
+                              textTransform: 'uppercase', letterSpacing: 0.3,
+                            }}>
+                              {p.band}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
