@@ -211,7 +211,9 @@ export default function SupplementsPage() {
       }
       setMealCount(detectedMealCount)
       if (assignsErr) console.error('[supplements.loadData] assigns query error:', assignsErr)
+      console.log('[supplements.loadData] athlete_id:', params.id, 'rows from query:', assigns?.length, 'first row:', assigns?.[0])
       const filteredAssigns = (assigns || []).filter((a: any) => a.actif !== false)
+      console.log('[supplements.loadData] after actif filter:', filteredAssigns.length)
       const unlockedVal = ath?.supplementation_unlocked || false
       setAssignments(filteredAssigns)
       setUnlocked(unlockedVal)
@@ -472,6 +474,9 @@ export default function SupplementsPage() {
   if (loading) return <Skeleton height={300} borderRadius={12} />
 
   const assigned = assignments.filter((a: any) => a.supplements?.type === tab)
+  if (typeof window !== 'undefined') {
+    console.log('[supplements.render] tab:', tab, 'assignments total:', assignments.length, 'assigned (filtered by tab):', assigned.length, 'sample assignment.supplements:', assignments[0]?.supplements)
+  }
   const today = new Date().toISOString().slice(0, 10)
 
   // Build per-assignment history for 14 days + delay detection
