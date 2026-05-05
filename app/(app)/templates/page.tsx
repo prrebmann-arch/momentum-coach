@@ -20,10 +20,13 @@ const MealEditor = dynamic(() => import('@/components/nutrition/MealEditor'), {
 import NutritionTemplatesList from '@/components/templates/NutritionTemplatesList'
 import WorkflowsList from '@/components/templates/WorkflowsList'
 import QuestionnaireTemplatesList from '@/components/templates/QuestionnaireTemplatesList'
+import SupplementTemplatesList, { type SupplementTemplate } from '@/components/templates/SupplementTemplatesList'
+import SupplementTemplateEditor from '@/components/templates/SupplementTemplateEditor'
 
 const TABS = [
   { id: 'training', label: 'Training' },
   { id: 'nutrition', label: 'Nutrition' },
+  { id: 'supplements', label: 'Compléments' },
   { id: 'workflow', label: 'Workflows' },
   { id: 'questionnaires', label: 'Questionnaires' },
 ]
@@ -80,6 +83,12 @@ export default function TemplatesPage() {
   // Questionnaires
   const [questionnaireTemplates, setQuestionnaireTemplates] = useState<Array<Record<string, unknown>>>([])
 
+  // Supplements
+  const [supplementTemplates, setSupplementTemplates] = useState<SupplementTemplate[]>([])
+  const [editingSupplement, setEditingSupplement] = useState<string | null>(null)
+  const [creatingSupplement, setCreatingSupplement] = useState(false)
+  const [supplementType, setSupplementType] = useState<'complement' | 'supplementation'>('complement')
+
   const loadData = useCallback(async () => {
     if (!user) return
     // Only show skeleton on first load — background refresh keeps existing data visible
@@ -123,6 +132,15 @@ export default function TemplatesPage() {
           .order('created_at', { ascending: false })
           .limit(100)
         setQuestionnaireTemplates(data || [])
+      } else if (activeTab === 'supplements') {
+        const { data, error } = await supabase
+          .from('supplement_templates')
+          .select('id, nom, description, category, type, items, created_at')
+          .eq('coach_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(100)
+        if (error) console.error('[templates/supplements] select error:', error)
+        setSupplementTemplates((data || []) as SupplementTemplate[])
       }
     } finally {
       setLoading(false)
@@ -142,7 +160,38 @@ export default function TemplatesPage() {
     setCreatingTraining(false)
     setEditingNutrition(null)
     setCreatingNutrition(false)
+    setEditingSupplement(null)
+    setCreatingSupplement(false)
   }
+
+  // ── Supplement template handlers ──
+  const handleSupplementEdit = (id: string) => {
+    const tpl = supplementTemplates.find((t) => t.id === id)
+    if (tpl) setSupplementType(tpl.type)
+    setEditingSupplement(id)
+    setCreatingSupplement(false)
+  }
+  const handleSupplementCreate = (type: 'complement' | 'supplementation') => {
+    setSupplementType(type)
+    setEditingSupplement(null)
+    setCreatingSupplement(true)
+  }
+  const handleSupplementSaved = () => {
+    setEditingSupplement(null)
+    setCreatingSupplement(false)
+    loadData()
+  }
+  const handleSupplementCancel = () => {
+    setEditingSupplement(null)
+    setCreatingSupplement(false)
+  }
+  const editedSupplementTemplate = editingSupplement
+    ? supplementTemplates.find((t) => t.id === editingSupplement) || null
+    : null
+  const existingSupplementCategories = useMemo(
+    () => [...new Set(supplementTemplates.map((t) => t.category).filter(Boolean))] as string[],
+    [supplementTemplates]
+  )
 
   // ── Training handlers ──
   const handleTrainingEdit = (id: string) => {
@@ -373,6 +422,22 @@ export default function TemplatesPage() {
     )
   }
 
+  // ── Supplement template editor ──
+  if (activeTab === 'supplements' && (editingSupplement || creatingSupplement)) {
+    return (
+      <div>
+        <h1 className="page-title">Templates</h1>
+        <SupplementTemplateEditor
+          template={editedSupplementTemplate}
+          type={supplementType}
+          existingCategories={existingSupplementCategories}
+          onSaved={handleSupplementSaved}
+          onCancel={handleSupplementCancel}
+        />
+      </div>
+    )
+  }
+
   // ── Nutrition editor view (MealEditor in template mode) ──
   if (activeTab === 'nutrition' && (editingNutrition || creatingNutrition)) {
     const tpl = editedNutritionTemplate
@@ -445,6 +510,15 @@ export default function TemplatesPage() {
               <QuestionnaireTemplatesList
                 templates={questionnaireTemplates as never[]}
                 onRefresh={loadData}
+              />
+            )}
+
+            {activeTab === 'supplements' && (
+              <SupplementTemplatesList
+                templates={supplementTemplates}
+                onRefresh={loadData}
+                onEdit={handleSupplementEdit}
+                onCreate={handleSupplementCreate}
               />
             )}
           </>
