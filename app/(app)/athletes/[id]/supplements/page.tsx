@@ -162,6 +162,10 @@ export default function SupplementsPage() {
   const [unlocked, setUnlocked] = useState(cached?.unlocked ?? false)
   const [logs, setLogs] = useState<any[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importTemplates, setImportTemplates] = useState<any[]>([])
+  const [importLoading, setImportLoading] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -380,6 +384,82 @@ export default function SupplementsPage() {
     }
   }
 
+  async function openImportModal() {
+    if (!user?.id) return
+    setShowImportModal(true)
+    setImportLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('supplement_templates')
+        .select('id, nom, description, category, type, items, created_at')
+        .eq('coach_id', user.id)
+        .eq('type', tab)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (error) {
+        console.error('[supplements] template fetch error:', error)
+        toast('Erreur chargement templates', 'error')
+      }
+      setImportTemplates(data || [])
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
+  async function importTemplate(tpl: any) {
+    if (!user?.id) return
+    if (!Array.isArray(tpl.items) || tpl.items.length === 0) {
+      toast('Template vide', 'error'); return
+    }
+    setImporting(true)
+    try {
+      // 1. Insert supplements (one row per item)
+      const supplementsRows = tpl.items.map((it: any) => ({
+        coach_id: user.id,
+        type: tpl.type,
+        nom: it.nom,
+        marque: it.marque || null,
+        lien_achat: it.lien_achat || null,
+      }))
+      const { data: insertedSupps, error: supErr } = await supabase
+        .from('supplements')
+        .insert(supplementsRows)
+        .select('id')
+      if (supErr || !insertedSupps) {
+        console.error('[supplements] template import - supplements insert:', supErr)
+        toast('Erreur création suppléments', 'error'); return
+      }
+      // 2. Insert athlete_supplements (one row per item, paired by index)
+      const intervalMap: Record<string, number> = {
+        '1x/jour': 1, '2x/jour': 1, '3x/jour': 1,
+        'tous les 2 jours': 2, 'tous les 3 jours': 3,
+        '2x/semaine': 3.5, '3x/semaine': 2.333, '1x/semaine': 7, 'au besoin': 0,
+      }
+      const assignmentRows = tpl.items.map((it: any, idx: number) => ({
+        athlete_id: params.id,
+        supplement_id: insertedSupps[idx].id,
+        dosage: it.dosage || '',
+        unite: it.unite || 'mg',
+        frequence: it.frequence || '1x/jour',
+        intervalle_jours: it.intervalle_jours ?? intervalMap[it.frequence || '1x/jour'] ?? 1,
+        moment_prise: it.moment_prise || null,
+        concentration_mg_ml: it.concentration_mg_ml ?? null,
+        notes: it.notes || null,
+        actif: true,
+      }))
+      const { error: assignErr } = await supabase.from('athlete_supplements').insert(assignmentRows)
+      if (assignErr) {
+        console.error('[supplements] template import - assignments insert:', assignErr)
+        toast('Erreur assignation', 'error'); return
+      }
+      toast(`Template importé (${tpl.items.length} compléments)`, 'success')
+      setShowImportModal(false)
+      loadData()
+    } finally {
+      setImporting(false)
+    }
+  }
+
   async function removeAssignment(id: string) {
     if (!confirm('Retirer ce supplement ?')) return
     const { error } = await supabase.from('athlete_supplements').update({ actif: false }).eq('id', id)
@@ -540,6 +620,9 @@ export default function SupplementsPage() {
 
       {/* Actions bar */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
+        <button className="btn btn-outline btn-sm" onClick={openImportModal}>
+          <i className="fas fa-file-import" /> Depuis un template
+        </button>
         <button className="btn btn-red btn-sm" onClick={() => { resetForm(); setShowAddModal(true) }}>
           <i className="fas fa-plus" /> Ajouter
         </button>
@@ -698,6 +781,44 @@ export default function SupplementsPage() {
           </div>
         )
       })()}
+
+      {/* Import template modal */}
+      <Modal isOpen={showImportModal} onClose={() => setShowImportModal(false)} title={`Importer un template ${tab === 'complement' ? 'complément' : 'supplémentation'}`}>
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '60vh', overflowY: 'auto' }}>
+          {importLoading ? (
+            <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>Chargement…</div>
+          ) : importTemplates.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 24 }}>
+              <p>Aucun template {tab === 'complement' ? 'complément' : 'supplémentation'}</p>
+              <p style={{ fontSize: 12, marginTop: 4 }}>Créez des templates dans la section Templates</p>
+            </div>
+          ) : (
+            importTemplates.map((tpl) => {
+              const itemCount = Array.isArray(tpl.items) ? tpl.items.length : 0
+              return (
+                <button
+                  key={tpl.id}
+                  onClick={() => importTemplate(tpl)}
+                  disabled={importing}
+                  style={{
+                    textAlign: 'left', padding: 12,
+                    background: 'var(--bg2)', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)', cursor: importing ? 'wait' : 'pointer',
+                    color: 'var(--text)', display: 'block', width: '100%',
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{tpl.nom}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
+                    {itemCount} {itemCount > 1 ? 'compléments' : 'complément'}
+                    {tpl.category ? ` · ${tpl.category}` : ''}
+                    {tpl.description ? ` · ${tpl.description}` : ''}
+                  </div>
+                </button>
+              )
+            })
+          )}
+        </div>
+      </Modal>
 
       {/* Add supplement modal */}
       <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingId(null); resetForm() }} title={editingId ? 'Modifier le supplement' : `Ajouter un ${tab === 'complement' ? 'complement' : 'supplement'}`}>
