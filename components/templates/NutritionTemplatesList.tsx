@@ -115,6 +115,31 @@ export default function NutritionTemplatesList({ templates, onRefresh, onEdit, o
     onRefresh()
   }
 
+  const handleDuplicate = async (t: NutritionTemplate) => {
+    // Fetch the full row (the list view doesn't carry coach_id but it's needed for the insert).
+    const { data: full, error: fetchErr } = await supabase
+      .from('nutrition_templates')
+      .select('*')
+      .eq('id', t.id)
+      .single()
+    if (fetchErr || !full) {
+      toast('Erreur lecture template', 'error')
+      return
+    }
+    const { id: _id, created_at: _ca, updated_at: _ua, ...rest } = full as Record<string, unknown>
+    void _id; void _ca; void _ua
+    const baseNom = (full as { nom?: string }).nom || 'Template'
+    const { error: insErr } = await supabase
+      .from('nutrition_templates')
+      .insert({ ...rest, nom: `${baseNom} (copie)` })
+    if (insErr) {
+      toast('Erreur duplication: ' + insErr.message, 'error')
+      return
+    }
+    toast('Template duplique')
+    onRefresh()
+  }
+
   const subTabLabel = TYPE_LABELS[subTab]
 
   return (
@@ -202,10 +227,13 @@ export default function NutritionTemplatesList({ templates, onRefresh, onEdit, o
                             <div style={{ color: 'var(--text2)', fontSize: 11, marginTop: 3 }}>{subtitle}</div>
                           </div>
                           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                            <Button variant="outline" size="sm" onClick={() => onEdit?.(t.id)}>
+                            <Button variant="outline" size="sm" onClick={() => onEdit?.(t.id)} title="Modifier">
                               <i className="fas fa-pen" />
                             </Button>
-                            <Button variant="outline" size="sm" className="btn-danger" onClick={() => handleDelete(t.id)}>
+                            <Button variant="outline" size="sm" onClick={() => handleDuplicate(t)} title="Dupliquer">
+                              <i className="fas fa-copy" />
+                            </Button>
+                            <Button variant="outline" size="sm" className="btn-danger" onClick={() => handleDelete(t.id)} title="Supprimer">
                               <i className="fas fa-trash" />
                             </Button>
                           </div>

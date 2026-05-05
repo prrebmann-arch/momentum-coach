@@ -455,7 +455,7 @@ export default function SupplementsPage() {
       }
       toast(`Template importé (${tpl.items.length} compléments)`, 'success')
       setShowImportModal(false)
-      loadData()
+      await loadData()
     } finally {
       setImporting(false)
     }
