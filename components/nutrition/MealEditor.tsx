@@ -404,6 +404,68 @@ export default function MealEditor({
     setActiveMealIdx(meals.length)
   }
 
+  // ── Drag-and-drop state ──
+  const [draggingMeal, setDraggingMeal] = useState<number | null>(null)
+  const [draggingFood, setDraggingFood] = useState<{ mealIdx: number; foodIdx: number } | null>(null)
+  const [dropOverMeal, setDropOverMeal] = useState<number | null>(null)
+  const [dropOverFood, setDropOverFood] = useState<{ mealIdx: number; foodIdx: number } | null>(null)
+
+  // Reorder meals (move from one index to another, preserving the activeVariantIdByMeal mapping)
+  function moveMeal(from: number, to: number) {
+    if (from === to || from < 0 || to < 0) return
+    setMeals((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
+    // Re-key activeVariantIdByMeal to the new positions
+    setActiveVariantIdByMeal((prev) => {
+      const entries = Object.entries(prev).map(([k, v]) => [parseInt(k), v] as [number, string])
+      const remap = (i: number): number => {
+        if (i === from) return to
+        if (from < to && i > from && i <= to) return i - 1
+        if (from > to && i >= to && i < from) return i + 1
+        return i
+      }
+      const next: Record<number, string> = {}
+      entries.forEach(([k, v]) => { next[remap(k)] = v })
+      return next
+    })
+    setActiveMealIdx((idx) => {
+      if (idx === from) return to
+      if (from < to && idx > from && idx <= to) return idx - 1
+      if (from > to && idx >= to && idx < from) return idx + 1
+      return idx
+    })
+  }
+
+  // Move food from one position to another (within same meal or across meals).
+  function moveFood(fromMealIdx: number, fromFoodIdx: number, toMealIdx: number, toFoodIdx: number) {
+    if (fromMealIdx === toMealIdx && fromFoodIdx === toFoodIdx) return
+    setMeals((prev) => {
+      const fromFoods = getEditableFoods(prev[fromMealIdx], activeVariantIdByMeal[fromMealIdx])
+      if (fromFoodIdx >= fromFoods.length) return prev
+      const moved = fromFoods[fromFoodIdx]
+
+      let next = [...prev]
+      // Remove from source
+      const newFromFoods = fromFoods.filter((_, i) => i !== fromFoodIdx)
+      next[fromMealIdx] = setEditableFoods(prev[fromMealIdx], activeVariantIdByMeal[fromMealIdx], newFromFoods)
+
+      // If moving within same meal, the food list we just produced is the one we insert into.
+      const targetMeal = next[toMealIdx]
+      const targetFoods = getEditableFoods(targetMeal, activeVariantIdByMeal[toMealIdx])
+      // Adjust insertion index when moving down within the same meal (because we removed an earlier item)
+      let insertAt = toFoodIdx
+      if (fromMealIdx === toMealIdx && fromFoodIdx < toFoodIdx) insertAt = toFoodIdx - 1
+      if (insertAt > targetFoods.length) insertAt = targetFoods.length
+      const newTargetFoods = [...targetFoods.slice(0, insertAt), moved, ...targetFoods.slice(insertAt)]
+      next[toMealIdx] = setEditableFoods(next[toMealIdx], activeVariantIdByMeal[toMealIdx], newTargetFoods)
+      return next
+    })
+  }
+
   // ── Import-from-template state ──
   const [importPickerType, setImportPickerType] = useState<'jour' | 'repas' | null>(null)
   const [importTemplates, setImportTemplates] = useState<Array<{ id: string; nom: string; meals_data: unknown; calories_objectif: number | null }>>([])
@@ -1023,9 +1085,38 @@ export default function MealEditor({
                   key={mealIdx}
                   className={`${styles.mealBlock} ${isActive ? styles.mealBlockActive : ''}`}
                   onClick={() => setActiveMealIdx(mealIdx)}
+                  onDragOver={(e) => {
+                    if (draggingMeal !== null && draggingMeal !== mealIdx) {
+                      e.preventDefault()
+                      setDropOverMeal(mealIdx)
+                    }
+                  }}
+                  onDragLeave={() => { if (dropOverMeal === mealIdx) setDropOverMeal(null) }}
+                  onDrop={(e) => {
+                    if (draggingMeal !== null && draggingMeal !== mealIdx) {
+                      e.preventDefault()
+                      moveMeal(draggingMeal, mealIdx)
+                    }
+                    setDraggingMeal(null); setDropOverMeal(null)
+                  }}
+                  style={dropOverMeal === mealIdx ? { outline: '2px dashed var(--primary)', outlineOffset: 2 } : undefined}
                 >
                   <div className={styles.mealHead}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggingMeal(mealIdx)
+                          e.dataTransfer.effectAllowed = 'move'
+                          e.stopPropagation()
+                        }}
+                        onDragEnd={() => { setDraggingMeal(null); setDropOverMeal(null) }}
+                        title="Glisser pour réordonner"
+                        style={{ cursor: 'grab', color: 'var(--text3)', userSelect: 'none', padding: '0 4px' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <i className="fa-solid fa-grip-vertical" />
+                      </span>
                       <span className={styles.mealTitle}>R{mealIdx + 1}</span>
                       {meal.pre_workout && <span className={styles.pwBadge}>Pre training</span>}
                       {mealFoods.length > 0 && (
@@ -1254,8 +1345,42 @@ export default function MealEditor({
                   <div>
                     {mealFoods.map((food, foodIdx) => {
                       const fm = calcFoodMacros(food)
+                      const isDropOver = dropOverFood?.mealIdx === mealIdx && dropOverFood?.foodIdx === foodIdx
                       return (
-                        <div key={foodIdx} className={styles.foodRow}>
+                        <div
+                          key={foodIdx}
+                          className={styles.foodRow}
+                          onDragOver={(e) => {
+                            if (draggingFood) {
+                              e.preventDefault()
+                              setDropOverFood({ mealIdx, foodIdx })
+                            }
+                          }}
+                          onDragLeave={() => { if (isDropOver) setDropOverFood(null) }}
+                          onDrop={(e) => {
+                            if (draggingFood) {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              moveFood(draggingFood.mealIdx, draggingFood.foodIdx, mealIdx, foodIdx)
+                            }
+                            setDraggingFood(null); setDropOverFood(null)
+                          }}
+                          style={isDropOver ? { background: 'rgba(179,8,8,0.08)', borderTop: '2px solid var(--primary)' } : undefined}
+                        >
+                          <span
+                            draggable
+                            onDragStart={(e) => {
+                              setDraggingFood({ mealIdx, foodIdx })
+                              e.dataTransfer.effectAllowed = 'move'
+                              e.stopPropagation()
+                            }}
+                            onDragEnd={() => { setDraggingFood(null); setDropOverFood(null) }}
+                            title="Glisser pour réordonner ou changer de repas"
+                            style={{ cursor: 'grab', color: 'var(--text3)', userSelect: 'none', marginRight: 6 }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <i className="fa-solid fa-grip-vertical" />
+                          </span>
                           <span className={styles.foodName}>{food.aliment || '—'}</span>
                           <input
                             type="number"
