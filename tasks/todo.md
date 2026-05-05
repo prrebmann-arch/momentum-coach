@@ -333,3 +333,33 @@ Test: build COACH ok, /videos detail s'ouvre + edit panel render, NutritionScree
 
 ## Verification
 - [x] TypeScript check passes (0 errors in modified files)
+
+---
+
+## Feature: Supplement Templates (2026-05-05)
+
+### Goal
+Coach crée des templates de compléments/supplémentation, peut les importer en 1 clic sur la page suppléments d'un athlète (au lieu de créer chaque ligne à la main).
+
+### Audit existing
+- Tab "Compléments" : `app/(app)/athletes/[id]/supplements/page.tsx` (859 l)
+  - Tables : `supplements` (coach DB) + `athlete_supplements` (assignment per athlete)
+  - 2 sub-tabs : `complement` | `supplementation`
+  - Champs supplement : nom, marque, type, lien_achat, forme
+  - Champs assignment : dosage, unite, frequence, intervalle_jours, moment_prise, concentration_mg_ml, notes
+- Page Templates : `app/(app)/templates/page.tsx` (4 onglets : training/nutrition/workflows/questionnaires)
+- Pattern référence : NutritionTemplatesList → import depuis MealEditor button "Depuis un template"
+
+### Data model
+Nouvelle table `supplement_templates` :
+- id, coach_id, nom, description?, category?, type ('complement'|'supplementation')
+- items jsonb : array d'entrées avec champs supplément + assignment
+- created_at
+
+### Implementation
+1. **SQL** : `sql/supplement_templates.sql` (CREATE TABLE + RLS coach_id=auth.uid)
+2. **COACH templates page** : ajouter 5e tab "Complements"
+3. **Composant** : `components/templates/SupplementTemplatesList.tsx` (liste + sub-tabs comp/supp)
+4. **Composant** : `components/templates/SupplementTemplateEditor.tsx` (form : nom, items[], add/remove)
+5. **Athlete supplements page** : bouton "Depuis un template" + modal de sélection + import handler (insert N supplements + N athlete_supplements)
+6. **ARCHITECTURE.md** : ajouter section + entries

@@ -49,7 +49,7 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/athletes/[id]/menstrual` | cycle logs | — |
 | `/bilans` | `app/(app)/bilans/page.tsx` -> `components/bilans/BilansOverview.tsx` | Cross-athlete bilans review |
 | `/videos` | `app/(app)/videos/page.tsx` | Cross-athlete technique videos to review |
-| `/templates` | `app/(app)/templates/page.tsx` (439 lines) | Training/Nutrition/Workflows/Questionnaires tabs |
+| `/templates` | `app/(app)/templates/page.tsx` | Training/Nutrition/**Compléments**/Workflows/Questionnaires tabs |
 | `/aliments` | `app/(app)/aliments/page.tsx` (464 lines) | Coach's food DB CRUD |
 | `/exercices` | `app/(app)/exercices/page.tsx` | Coach's exercises DB CRUD |
 | `/formations` | `app/(app)/formations/page.tsx` -> `FormationsPage.tsx` | Course content |
@@ -131,6 +131,7 @@ All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer 
 
 ### `templates/`
 - `TrainingTemplatesList.tsx`, `NutritionTemplatesList.tsx`, `WorkflowsList.tsx`, `QuestionnaireTemplatesList.tsx`.
+- `SupplementTemplatesList.tsx`, `SupplementTemplateEditor.tsx` — packs de compléments réutilisables (sub-tabs complement/supplementation).
 - `TrainingTemplateEditor.tsx` (legacy — `ProgramEditor` is preferred).
 
 ### `business/`
@@ -208,6 +209,7 @@ Source of truth = SQL migrations in `sql/*.sql` + observed SELECTs.
 ### Health / Posing / Suppl.
 - `posing_retours`, `posing_videos` (audio col added).
 - `supplements`, `athlete_supplements`, `supplement_logs`, `supplement_dosage_history`.
+- `supplement_templates` (`coach_id, nom, description, category, type ('complement'|'supplementation'), items jsonb`) — packs réutilisables. Items = array de {nom, marque, lien_achat, dosage, unite, frequence, intervalle_jours, moment_prise, concentration_mg_ml, notes}. Importé sur `/athletes/[id]/supplements` via bouton "Depuis un template".
 - `routine_items`, `routine_logs` — morning routine.
 - `menstrual_logs`.
 - `athlete_fodmap_logs` — FODMAP reintro tracking. Cols: `id, athlete_id, group_key, food_key, portion_size enum (S/M/L), rating, note, logged_at, iso_week_start GENERATED, archived_at`. RPC `update_fodmap_log_with_cascade(log_id, new_rating, new_note)` for athlete edits with cascade-delete of later portions when rating becomes red.
@@ -331,7 +333,9 @@ useRefetchOnResume(load, loading)
 | Modify nutrition meal editor | `components/nutrition/MealEditor.tsx` |
 | Modify food DB CRUD | `app/(app)/aliments/page.tsx` |
 | Modify exercise DB CRUD | `app/(app)/exercices/page.tsx` |
-| Modify the Templates page (4 sub-tabs) | `app/(app)/templates/page.tsx` (439 l) |
+| Modify the Templates page (5 sub-tabs) | `app/(app)/templates/page.tsx` |
+| Modify supplement templates list / editor | `components/templates/SupplementTemplatesList.tsx`, `components/templates/SupplementTemplateEditor.tsx` |
+| Modify supplement template import on athlete page | `app/(app)/athletes/[id]/supplements/page.tsx` (`openImportModal`, `importTemplate`) |
 | Stripe Connect onboarding | `app/api/stripe/route.ts` (action `connect-start`/`connect-status`/`connect-complete`) |
 | Stripe payment / cancel | `app/api/stripe/route.ts` (action `create-checkout`, `cancel`, `cancellation-request`) |
 | Stripe webhook handlers | `app/api/stripe/webhook/route.ts` |
