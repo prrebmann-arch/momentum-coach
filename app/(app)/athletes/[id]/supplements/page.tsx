@@ -183,7 +183,21 @@ export default function SupplementsPage() {
   const [formMomentCategory, setFormMomentCategory] = useState('')
   const [formMomentMealNum, setFormMomentMealNum] = useState('')
   const [formMomentTiming, setFormMomentTiming] = useState('')
+  // Extra moments for multi-dose frequencies (2x/jour, 3x/jour)
+  const [formExtraMoments, setFormExtraMoments] = useState<string[]>([])
   const [mealCount, setMealCount] = useState(5) // default 5 meals if no diet found
+
+  // How many separate doses per day this freq implies (1, 2, or 3).
+  const dosesPerDay = formFreq === '3x/jour' ? 3 : formFreq === '2x/jour' ? 2 : 1
+  // Resize formExtraMoments when freq changes
+  useEffect(() => {
+    setFormExtraMoments((prev) => {
+      const target = dosesPerDay - 1
+      if (prev.length === target) return prev
+      if (prev.length > target) return prev.slice(0, target)
+      return [...prev, ...Array(target - prev.length).fill('')]
+    })
+  }, [dosesPerDay])
 
   const loadData = useCallback(async () => {
     if (!assignments.length) setLoading(true)
@@ -258,21 +272,30 @@ export default function SupplementsPage() {
         '2x/semaine': 3.5, '3x/semaine': 2.333, '1x/semaine': 7, 'au besoin': 0,
       }
 
-      const { error: e2 } = await supabase.from('athlete_supplements').insert({
+      // Build the list of moments to assign. For 2x/3x per day, create one row
+      // per dose so each prise has its own moment + own log entry.
+      const allMoments: (string | null)[] = [formMoment.trim() || null]
+      for (const extra of formExtraMoments) {
+        const v = (extra || '').trim()
+        if (v) allMoments.push(v)
+      }
+
+      const baseRow = {
         athlete_id: params.id,
         supplement_id: supp.id,
         dosage: formDosage.trim(),
         unite: formUnite,
         frequence: formFreq,
         intervalle_jours: intervalMap[formFreq] || 1,
-        moment_prise: formMoment.trim() || null,
         concentration_mg_ml: parseFloat(formConcentration) || null,
         notes: formNotes.trim() || null,
         actif: true,
-      })
+      }
+      const rows = allMoments.map((m) => ({ ...baseRow, moment_prise: m }))
+      const { error: e2 } = await supabase.from('athlete_supplements').insert(rows)
       if (e2) { toast('Erreur assignation', 'error'); return }
 
-      toast('Supplement ajoute', 'success')
+      toast(rows.length > 1 ? `Supplément ajouté (${rows.length} prises)` : 'Supplement ajoute', 'success')
       setShowAddModal(false)
       resetForm()
       loadData()
@@ -288,6 +311,7 @@ export default function SupplementsPage() {
     setFormNom(''); setFormMarque(''); setFormDosage(''); setFormUnite('mg')
     setFormFreq('1x/jour'); setFormMoment(''); setFormLien(''); setFormNotes(''); setFormConcentration('')
     setFormMomentCustom(false); setFormMomentCategory(''); setFormMomentMealNum(''); setFormMomentTiming('')
+    setFormExtraMoments([])
   }
 
   function openEditModal(a: any) {
@@ -966,6 +990,54 @@ export default function SupplementsPage() {
               <input type="text" className="form-control" placeholder="Ex: Apres-midi, Matin..." value={formMoment} onChange={(e) => setFormMoment(e.target.value)} />
             )}
           </div>
+
+          {/* Extra moments for multi-dose frequencies (creates 1 row per moment on save) */}
+          {dosesPerDay > 1 && !editingId && (
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 4, display: 'block' }}>
+                Autres prises du jour ({dosesPerDay - 1} {dosesPerDay - 1 > 1 ? 'restantes' : 'restante'})
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {formExtraMoments.map((m, i) => (
+                  <select
+                    key={i}
+                    className="form-control"
+                    value={m}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setFormExtraMoments((prev) => prev.map((x, idx) => (idx === i ? v : x)))
+                    }}
+                  >
+                    <option value="">— Choisir le moment de la prise {i + 2} —</option>
+                    <option value="a_jeun">A jeun</option>
+                    <option value="R1_avant">Avant repas 1</option>
+                    <option value="R1_pendant">Pendant repas 1</option>
+                    <option value="R1_apres">Après repas 1</option>
+                    <option value="R2_avant">Avant repas 2</option>
+                    <option value="R2_pendant">Pendant repas 2</option>
+                    <option value="R2_apres">Après repas 2</option>
+                    <option value="R3_avant">Avant repas 3</option>
+                    <option value="R3_pendant">Pendant repas 3</option>
+                    <option value="R3_apres">Après repas 3</option>
+                    <option value="R4_avant">Avant repas 4</option>
+                    <option value="R4_pendant">Pendant repas 4</option>
+                    <option value="R4_apres">Après repas 4</option>
+                    <option value="R5_avant">Avant repas 5</option>
+                    <option value="R5_pendant">Pendant repas 5</option>
+                    <option value="R5_apres">Après repas 5</option>
+                    <option value="pre_training">Pre-training</option>
+                    <option value="intra_training">Intra-training</option>
+                    <option value="post_training">Post-training</option>
+                    <option value="coucher">Coucher</option>
+                  </select>
+                ))}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+                Une ligne distincte sera créée pour chaque moment (suivi indépendant).
+              </div>
+            </div>
+          )}
+
           <input type="url" className="form-control" placeholder="Lien d'achat (optionnel)" value={formLien} onChange={(e) => setFormLien(e.target.value)} />
           <textarea className="form-control" placeholder="Notes" rows={2} value={formNotes} onChange={(e) => setFormNotes(e.target.value)} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
