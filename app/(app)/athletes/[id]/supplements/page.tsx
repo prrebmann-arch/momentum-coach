@@ -147,6 +147,137 @@ function isDueDate(startDate: string | null, intervalDays: number, checkDate: st
 
 const HISTORY_DAYS = 14
 
+// Parse a moment_prise value into picker UI state.
+function parseMomentValue(value: string): { category: string; mealNum: string; timing: string; custom: boolean } {
+  if (!value) return { category: '', mealNum: '', timing: '', custom: false }
+  if (value === 'a_jeun') return { category: 'a_jeun', mealNum: '', timing: '', custom: false }
+  if (value === 'coucher') return { category: 'coucher', mealNum: '', timing: '', custom: false }
+  if (value === 'pre_training' || value === 'intra_training' || value === 'post_training') {
+    return { category: 'training', mealNum: '', timing: value, custom: false }
+  }
+  const m = value.match(/^R(\d+)_(avant|pendant|apres)$/)
+  if (m) return { category: 'repas', mealNum: m[1], timing: m[2], custom: false }
+  return { category: '', mealNum: '', timing: '', custom: true }
+}
+
+interface MomentPickerProps {
+  value: string
+  onChange: (val: string) => void
+  mealCount: number
+  label?: string
+}
+
+function MomentPicker({ value, onChange, mealCount, label }: MomentPickerProps) {
+  const initial = parseMomentValue(value)
+  const [category, setCategory] = useState(initial.category)
+  const [mealNum, setMealNum] = useState(initial.mealNum)
+  const [timing, setTiming] = useState(initial.timing)
+  const [custom, setCustom] = useState(initial.custom)
+
+  useEffect(() => {
+    const p = parseMomentValue(value)
+    setCategory(p.category); setMealNum(p.mealNum); setTiming(p.timing); setCustom(p.custom)
+  }, [value])
+
+  return (
+    <div>
+      {label && (
+        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 4, display: 'block' }}>
+          {label}
+        </label>
+      )}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+        {MOMENT_CATEGORIES.map((cat) => (
+          <button
+            key={cat.key}
+            type="button"
+            className={category === cat.key ? 'btn btn-red btn-sm' : 'btn btn-outline btn-sm'}
+            style={{ fontSize: 11 }}
+            onClick={() => {
+              setCustom(false)
+              if (cat.key === 'a_jeun') { setCategory('a_jeun'); setMealNum(''); setTiming(''); onChange('a_jeun') }
+              else if (cat.key === 'coucher') { setCategory('coucher'); setMealNum(''); setTiming(''); onChange('coucher') }
+              else if (cat.key === 'training') { setCategory('training'); setMealNum(''); setTiming(''); onChange('') }
+              else if (cat.key === 'repas') { setCategory('repas'); setMealNum(''); setTiming(''); onChange('') }
+            }}
+          >
+            <i className={cat.icon} style={{ marginRight: 4 }} />{cat.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className={custom ? 'btn btn-red btn-sm' : 'btn btn-outline btn-sm'}
+          style={{ fontSize: 11 }}
+          onClick={() => { setCustom(true); setCategory(''); setMealNum(''); setTiming(''); onChange('') }}
+        >
+          <i className="fas fa-pen" style={{ marginRight: 4 }} />Autre
+        </button>
+      </div>
+
+      {category === 'training' && (
+        <div style={{ display: 'flex', gap: 6 }}>
+          {TRAINING_TIMINGS.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              className={value === t.value ? 'btn btn-red btn-sm' : 'btn btn-outline btn-sm'}
+              style={{ fontSize: 11, flex: 1 }}
+              onClick={() => { setTiming(t.value); onChange(t.value) }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {category === 'repas' && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select
+            className="form-control"
+            value={mealNum}
+            onChange={(e) => {
+              setMealNum(e.target.value)
+              if (e.target.value && timing) onChange(`R${e.target.value}_${timing}`)
+              else onChange('')
+            }}
+            style={{ flex: 1 }}
+          >
+            <option value="">-- Repas --</option>
+            {Array.from({ length: mealCount }, (_, i) => (
+              <option key={i + 1} value={String(i + 1)}>Repas {i + 1}</option>
+            ))}
+          </select>
+          <select
+            className="form-control"
+            value={timing}
+            onChange={(e) => {
+              setTiming(e.target.value)
+              if (mealNum && e.target.value) onChange(`R${mealNum}_${e.target.value}`)
+              else onChange('')
+            }}
+            style={{ flex: 1 }}
+          >
+            <option value="">-- Timing --</option>
+            {MEAL_TIMINGS.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {custom && (
+        <input
+          type="text"
+          className="form-control"
+          placeholder="Ex: Apres-midi, Matin..."
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </div>
+  )
+}
+
 export default function SupplementsPage() {
   const params = useParams<{ id: string }>()
   const { user } = useAuth()
@@ -179,10 +310,6 @@ export default function SupplementsPage() {
   const [formLien, setFormLien] = useState('')
   const [formNotes, setFormNotes] = useState('')
   const [formConcentration, setFormConcentration] = useState('')
-  const [formMomentCustom, setFormMomentCustom] = useState(false)
-  const [formMomentCategory, setFormMomentCategory] = useState('')
-  const [formMomentMealNum, setFormMomentMealNum] = useState('')
-  const [formMomentTiming, setFormMomentTiming] = useState('')
   // Extra moments for multi-dose frequencies (2x/jour, 3x/jour)
   const [formExtraMoments, setFormExtraMoments] = useState<string[]>([])
   const [mealCount, setMealCount] = useState(5) // default 5 meals if no diet found
@@ -310,7 +437,6 @@ export default function SupplementsPage() {
   function resetForm() {
     setFormNom(''); setFormMarque(''); setFormDosage(''); setFormUnite('mg')
     setFormFreq('1x/jour'); setFormMoment(''); setFormLien(''); setFormNotes(''); setFormConcentration('')
-    setFormMomentCustom(false); setFormMomentCategory(''); setFormMomentMealNum(''); setFormMomentTiming('')
     setFormExtraMoments([])
   }
 
@@ -322,31 +448,8 @@ export default function SupplementsPage() {
     setFormDosage(a.dosage || '')
     setFormUnite(a.unite || 'mg')
     setFormFreq(a.frequence || '1x/jour')
-    const moment = a.moment_prise || ''
-    setFormMoment(moment)
-    // Parse existing moment into category/timing for the new picker
-    if (moment === 'a_jeun') {
-      setFormMomentCategory('a_jeun'); setFormMomentMealNum(''); setFormMomentTiming('')
-    } else if (moment === 'coucher') {
-      setFormMomentCategory('coucher'); setFormMomentMealNum(''); setFormMomentTiming('')
-    } else if (moment === 'pre_training' || moment === 'intra_training' || moment === 'post_training') {
-      setFormMomentCategory('training'); setFormMomentMealNum(''); setFormMomentTiming(moment)
-    } else {
-      const mealMatch = moment.match(/^R(\d+)_(avant|pendant|apres)$/)
-      if (mealMatch) {
-        setFormMomentCategory('repas'); setFormMomentMealNum(mealMatch[1]); setFormMomentTiming(mealMatch[2])
-      } else if (moment && LEGACY_MOMENT_OPTIONS.includes(moment)) {
-        // Legacy value: show as custom
-        setFormMomentCategory(''); setFormMomentMealNum(''); setFormMomentTiming('')
-        setFormMomentCustom(true)
-      } else if (moment) {
-        setFormMomentCategory(''); setFormMomentMealNum(''); setFormMomentTiming('')
-        setFormMomentCustom(true)
-      } else {
-        setFormMomentCategory(''); setFormMomentMealNum(''); setFormMomentTiming('')
-        setFormMomentCustom(false)
-      }
-    }
+    setFormMoment(a.moment_prise || '')
+    setFormExtraMoments([])
     setFormLien(s.lien_achat || '')
     setFormNotes(a.notes || '')
     setFormConcentration(a.concentration_mg_ml ? String(a.concentration_mg_ml) : '')
@@ -396,7 +499,29 @@ export default function SupplementsPage() {
         if (histErr) console.warn('supplement_dosage_history insert failed:', histErr.message)
       }
 
-      toast('Supplement modifie', 'success')
+      // Insert any extra moments as new athlete_supplements rows (same supplement_id, different moment_prise)
+      const extras = formExtraMoments.map((m) => (m || '').trim()).filter(Boolean)
+      if (extras.length > 0 && oldAssignment?.supplement_id) {
+        const newRows = extras.map((m) => ({
+          athlete_id: params.id,
+          supplement_id: oldAssignment.supplement_id,
+          dosage: formDosage.trim(),
+          unite: formUnite,
+          frequence: formFreq,
+          intervalle_jours: intervalMap[formFreq] || 1,
+          moment_prise: m,
+          concentration_mg_ml: parseFloat(formConcentration) || null,
+          notes: formNotes.trim() || null,
+          actif: true,
+        }))
+        const { error: extraErr } = await supabase.from('athlete_supplements').insert(newRows)
+        if (extraErr) {
+          console.error('[supplements] insert extra moments error:', extraErr)
+          toast(`Modifié, mais ${extras.length} prise(s) supplémentaire(s) non créée(s)`, 'error')
+        }
+      }
+
+      toast(extras.length > 0 ? `Modifié + ${extras.length} prise(s) ajoutée(s)` : 'Supplement modifie', 'success')
       setShowAddModal(false)
       setEditingId(null)
       resetForm()
@@ -883,159 +1008,32 @@ export default function SupplementsPage() {
           {tab === 'supplementation' && (
             <input type="number" className="form-control" placeholder="Concentration (mg/ml)" value={formConcentration} onChange={(e) => setFormConcentration(e.target.value)} step="any" />
           )}
-          {/* Moment de prise - structured picker */}
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 4, display: 'block' }}>Moment de prise</label>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-              {MOMENT_CATEGORIES.map((cat) => (
-                <button
-                  key={cat.key}
-                  type="button"
-                  className={formMomentCategory === cat.key ? 'btn btn-red btn-sm' : 'btn btn-outline btn-sm'}
-                  style={{ fontSize: 11 }}
-                  onClick={() => {
-                    setFormMomentCustom(false)
-                    if (cat.key === 'a_jeun') {
-                      setFormMomentCategory('a_jeun'); setFormMomentMealNum(''); setFormMomentTiming('')
-                      setFormMoment('a_jeun')
-                    } else if (cat.key === 'coucher') {
-                      setFormMomentCategory('coucher'); setFormMomentMealNum(''); setFormMomentTiming('')
-                      setFormMoment('coucher')
-                    } else if (cat.key === 'training') {
-                      setFormMomentCategory('training'); setFormMomentMealNum(''); setFormMomentTiming('')
-                      setFormMoment('')
-                    } else if (cat.key === 'repas') {
-                      setFormMomentCategory('repas'); setFormMomentMealNum(''); setFormMomentTiming('')
-                      setFormMoment('')
-                    }
-                  }}
-                >
-                  <i className={cat.icon} style={{ marginRight: 4 }} />{cat.label}
-                </button>
+          {/* Moment de prise — picker structuré (réutilisable) */}
+          <MomentPicker
+            value={formMoment}
+            onChange={setFormMoment}
+            mealCount={mealCount}
+            label={dosesPerDay > 1 ? 'Moment de la prise 1' : 'Moment de prise'}
+          />
+
+          {/* Extra moments for multi-dose frequencies (creates 1 row per extra moment on save) */}
+          {dosesPerDay > 1 && (
+            <>
+              {formExtraMoments.map((m, i) => (
+                <MomentPicker
+                  key={i}
+                  value={m}
+                  onChange={(v) => setFormExtraMoments((prev) => prev.map((x, idx) => (idx === i ? v : x)))}
+                  mealCount={mealCount}
+                  label={`Moment de la prise ${i + 2}`}
+                />
               ))}
-              <button
-                type="button"
-                className={formMomentCustom ? 'btn btn-red btn-sm' : 'btn btn-outline btn-sm'}
-                style={{ fontSize: 11 }}
-                onClick={() => {
-                  setFormMomentCustom(true); setFormMomentCategory(''); setFormMomentMealNum(''); setFormMomentTiming('')
-                  setFormMoment('')
-                }}
-              >
-                <i className="fas fa-pen" style={{ marginRight: 4 }} />Autre
-              </button>
-            </div>
-
-            {/* Step 2: Training timing */}
-            {formMomentCategory === 'training' && (
-              <div style={{ display: 'flex', gap: 6 }}>
-                {TRAINING_TIMINGS.map((t) => (
-                  <button
-                    key={t.value}
-                    type="button"
-                    className={formMoment === t.value ? 'btn btn-red btn-sm' : 'btn btn-outline btn-sm'}
-                    style={{ fontSize: 11, flex: 1 }}
-                    onClick={() => { setFormMomentTiming(t.value); setFormMoment(t.value) }}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: -4 }}>
+                {editingId
+                  ? 'Les nouveaux moments créeront une ligne distincte par prise.'
+                  : 'Une ligne distincte sera créée pour chaque moment (suivi indépendant).'}
               </div>
-            )}
-
-            {/* Step 2: Meal selection + timing */}
-            {formMomentCategory === 'repas' && (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <select
-                  className="form-control"
-                  value={formMomentMealNum}
-                  onChange={(e) => {
-                    setFormMomentMealNum(e.target.value)
-                    if (e.target.value && formMomentTiming) {
-                      setFormMoment(`R${e.target.value}_${formMomentTiming}`)
-                    } else {
-                      setFormMoment('')
-                    }
-                  }}
-                  style={{ flex: 1 }}
-                >
-                  <option value="">-- Repas --</option>
-                  {Array.from({ length: mealCount }, (_, i) => (
-                    <option key={i + 1} value={String(i + 1)}>Repas {i + 1}</option>
-                  ))}
-                </select>
-                <select
-                  className="form-control"
-                  value={formMomentTiming}
-                  onChange={(e) => {
-                    setFormMomentTiming(e.target.value)
-                    if (formMomentMealNum && e.target.value) {
-                      setFormMoment(`R${formMomentMealNum}_${e.target.value}`)
-                    } else {
-                      setFormMoment('')
-                    }
-                  }}
-                  style={{ flex: 1 }}
-                >
-                  <option value="">-- Timing --</option>
-                  {MEAL_TIMINGS.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Custom / legacy input */}
-            {formMomentCustom && (
-              <input type="text" className="form-control" placeholder="Ex: Apres-midi, Matin..." value={formMoment} onChange={(e) => setFormMoment(e.target.value)} />
-            )}
-          </div>
-
-          {/* Extra moments for multi-dose frequencies (creates 1 row per moment on save) */}
-          {dosesPerDay > 1 && !editingId && (
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 4, display: 'block' }}>
-                Autres prises du jour ({dosesPerDay - 1} {dosesPerDay - 1 > 1 ? 'restantes' : 'restante'})
-              </label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {formExtraMoments.map((m, i) => (
-                  <select
-                    key={i}
-                    className="form-control"
-                    value={m}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      setFormExtraMoments((prev) => prev.map((x, idx) => (idx === i ? v : x)))
-                    }}
-                  >
-                    <option value="">— Choisir le moment de la prise {i + 2} —</option>
-                    <option value="a_jeun">A jeun</option>
-                    <option value="R1_avant">Avant repas 1</option>
-                    <option value="R1_pendant">Pendant repas 1</option>
-                    <option value="R1_apres">Après repas 1</option>
-                    <option value="R2_avant">Avant repas 2</option>
-                    <option value="R2_pendant">Pendant repas 2</option>
-                    <option value="R2_apres">Après repas 2</option>
-                    <option value="R3_avant">Avant repas 3</option>
-                    <option value="R3_pendant">Pendant repas 3</option>
-                    <option value="R3_apres">Après repas 3</option>
-                    <option value="R4_avant">Avant repas 4</option>
-                    <option value="R4_pendant">Pendant repas 4</option>
-                    <option value="R4_apres">Après repas 4</option>
-                    <option value="R5_avant">Avant repas 5</option>
-                    <option value="R5_pendant">Pendant repas 5</option>
-                    <option value="R5_apres">Après repas 5</option>
-                    <option value="pre_training">Pre-training</option>
-                    <option value="intra_training">Intra-training</option>
-                    <option value="post_training">Post-training</option>
-                    <option value="coucher">Coucher</option>
-                  </select>
-                ))}
-              </div>
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
-                Une ligne distincte sera créée pour chaque moment (suivi indépendant).
-              </div>
-            </div>
+            </>
           )}
 
           <input type="url" className="form-control" placeholder="Lien d'achat (optionnel)" value={formLien} onChange={(e) => setFormLien(e.target.value)} />
