@@ -55,7 +55,9 @@ export default function ApercuPage() {
           ? (() => { const d = new Date(); d.setDate(d.getDate() - 30); return supabase.from('daily_reports').select('user_id, date, weight, sessions_executed, session_performance, energy, sleep_quality, steps, adherence').eq('user_id', userId).gte('date', d.toISOString().slice(0, 10)).order('date', { ascending: false }).limit(30) })()
           : Promise.resolve({ data: [] }),
         supabase.from('roadmap_phases').select('id, athlete_id, phase, name, end_date, status, position').eq('athlete_id', params.id).eq('status', 'en_cours').order('position').limit(1),
-        supabase.from('workout_programs').select('id, nom, actif, workout_sessions(id, nom, exercices)').eq('athlete_id', params.id).eq('actif', true).limit(1),
+        // Drop the heavy `exercices` JSON column — apercu only needs sessions.length to display "X seances".
+        // The training tab fetches the full sessions when the user opens it.
+        supabase.from('workout_programs').select('id, nom, actif, workout_sessions(id, nom)').eq('athlete_id', params.id).eq('actif', true).limit(1),
         supabase.from('nutrition_plans').select('id, athlete_id, meal_type, calories_objectif, proteines, glucides, lipides, actif').eq('athlete_id', params.id).eq('actif', true),
         supabase.from('daily_tracking').select('date, water_ml, steps').eq('athlete_id', params.id).order('date', { ascending: false }).limit(7),
       ])
@@ -159,16 +161,10 @@ export default function ApercuPage() {
   }
 
   // -- Active program --
-  let progSessions = 0, progExercises = 0, progSeries = 0
-  if (activeProg) {
-    const sessions = activeProg.workout_sessions || []
-    progSessions = sessions.length
-    sessions.forEach((s: any) => {
-      let exs: any[] = []
-      try { exs = typeof s.exercices === 'string' ? JSON.parse(s.exercices) : (s.exercices || []) } catch { /* */ }
-      exs.forEach((ex: any) => { progExercises++; progSeries += parseInt(ex.series) || 0 })
-    })
-  }
+  // Only the session count is computed here. Exercices/series counts were dropped
+  // because they require fetching the heavy `exercices` JSON for every session,
+  // which slowed the apercu load. Detail is in the Training tab.
+  const progSessions = activeProg ? (activeProg.workout_sessions || []).length : 0
 
   // -- Nutrition --
   const trainingPlan = nutritionPlans.find((p: any) => p.meal_type === 'training' || p.meal_type === 'entrainement')
@@ -339,7 +335,7 @@ export default function ApercuPage() {
             {activeProg ? (
               <>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>{activeProg.nom}</div>
-                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{progSessions} seances &middot; {progExercises} exercices &middot; {progSeries} series</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{progSessions} séance{progSessions > 1 ? 's' : ''}</div>
               </>
             ) : <div style={{ color: 'var(--text3)', fontSize: 13 }}>Aucun programme actif</div>}
           </div>
