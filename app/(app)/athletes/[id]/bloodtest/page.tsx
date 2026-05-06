@@ -41,8 +41,9 @@ export default function BloodtestPage() {
     try {
       const [{ data: ath, error: athErr }, { data: ups }, { data: cms }, { data: cp }] = await Promise.all([
         supabase.from('athletes').select('bloodtest_enabled, bloodtest_tracked_markers, prenom, genre').eq('id', params.id).single(),
+        // validated_data omitted: heavy JSON, not consumed by the list view (only by the validation/detail pages).
         supabase.from('bloodtest_uploads')
-          .select('id, athlete_id, uploaded_by, uploader_user_id, file_path, dated_at, uploaded_at, validated_at, validated_by, extracted_data, validated_data, ai_extraction_meta, archived_at, created_at')
+          .select('id, athlete_id, uploaded_by, uploader_user_id, file_path, dated_at, uploaded_at, validated_at, validated_by, extracted_data, ai_extraction_meta, archived_at, created_at')
           .eq('athlete_id', params.id).is('archived_at', null)
           .order('dated_at', { ascending: false, nullsFirst: false })
           .order('uploaded_at', { ascending: false }).limit(50),
