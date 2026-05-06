@@ -23,6 +23,10 @@ export default function RetourVideoPlayer({ retourId, archived }: Props) {
   const [urls, setUrls] = useState<SignedUrls | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [speed, setSpeed] = useState<number>(1)
+  // Defer mounting the <video> element (which triggers a metadata fetch)
+  // until the user actually clicks Play. With many retours in a list, this
+  // saves ~50-100KB of metadata fetches per video that the user never opens.
+  const [armed, setArmed] = useState(false)
 
   useEffect(() => {
     if (archived) return
@@ -51,8 +55,12 @@ export default function RetourVideoPlayer({ retourId, archived }: Props) {
   }, [retourId, archived, auth.accessToken])
 
   useEffect(() => {
-    if (videoRef.current) videoRef.current.playbackRate = speed
-  }, [speed, urls])
+    if (armed && videoRef.current) {
+      videoRef.current.playbackRate = speed
+      // Auto-play on arm so the user's click reaches the video state directly.
+      videoRef.current.play().catch(() => { /* user gesture lost, ignore */ })
+    }
+  }, [speed, armed])
 
   if (archived) {
     return <div className={styles.archived}>
@@ -68,6 +76,45 @@ export default function RetourVideoPlayer({ retourId, archived }: Props) {
     return <div className={styles.archived}>Chargement…</div>
   }
 
+  // Pre-armed state: thumbnail + click-to-play overlay. No <video> element yet,
+  // so the browser doesn't fetch the video file or its metadata.
+  if (!armed) {
+    return (
+      <div
+        className={styles.wrapper}
+        onClick={() => setArmed(true)}
+        style={{ position: 'relative', cursor: 'pointer' }}
+      >
+        {urls.thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={urls.thumbnailUrl}
+            alt="Aperçu retour vidéo"
+            className={styles.video}
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          <div className={styles.video} style={{ background: '#000' }} />
+        )}
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.25)', borderRadius: 'inherit',
+        }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%',
+            background: 'rgba(255,255,255,0.92)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#000', fontSize: 22,
+          }}>
+            <i className="fas fa-play" style={{ marginLeft: 4 }} />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={styles.wrapper}>
       <video
@@ -78,6 +125,7 @@ export default function RetourVideoPlayer({ retourId, archived }: Props) {
         controls
         playsInline
         preload="metadata"
+        autoPlay
       />
       <div className={styles.controls}>
         {SPEEDS.map(s => (
