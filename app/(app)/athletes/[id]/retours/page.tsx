@@ -97,7 +97,7 @@ export default function RetoursPage() {
                   )}
                   {r.audio_url && !r.video_path && (
                     <div style={{ marginTop: 6 }}>
-                      <audio controls src={r.audio_url} style={{ height: 28, maxWidth: 250 }} />
+                      <audio controls preload="none" src={r.audio_url} style={{ height: 28, maxWidth: 250 }} />
                     </div>
                   )}
                   <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{date}</div>
