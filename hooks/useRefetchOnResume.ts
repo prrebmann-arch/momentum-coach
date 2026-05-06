@@ -17,11 +17,20 @@ import { useEffect, useRef } from 'react'
 export function useRefetchOnResume(refetch: () => void, isLoading: boolean) {
   const loadingRef = useRef(isLoading)
   loadingRef.current = isLoading
+  // Dedupe: coach:wake + visibilitychange both fire on tab return within ms,
+  // causing a duplicate refetch. Coalesce into a single call per 1s window.
+  const lastFetchAt = useRef(0)
 
   useEffect(() => {
-    const handleWake = () => refetch()
+    const dedupedRefetch = () => {
+      const now = Date.now()
+      if (now - lastFetchAt.current < 1000) return
+      lastFetchAt.current = now
+      refetch()
+    }
+    const handleWake = () => dedupedRefetch()
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && loadingRef.current) refetch()
+      if (document.visibilityState === 'visible' && loadingRef.current) dedupedRefetch()
     }
     window.addEventListener('coach:wake', handleWake)
     document.addEventListener('visibilitychange', handleVisibility)
