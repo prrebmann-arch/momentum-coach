@@ -377,7 +377,8 @@ export default function PosingPage() {
             return (
               <div key={v.id} className={styles.posingCard} onClick={() => setViewingVideo(v)}>
                 {v.thumbnail_url ? (
-                  <img src={v.thumbnail_url} alt="" className={styles.posingThumb} />
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={v.thumbnail_url} alt="" className={styles.posingThumb} loading="lazy" decoding="async" />
                 ) : (
                   <div className={styles.posingThumbPlaceholder}><i className="fas fa-play-circle" style={{ fontSize: 32, color: 'var(--text3)' }} /></div>
                 )}
