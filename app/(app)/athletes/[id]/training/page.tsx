@@ -15,6 +15,7 @@ import EditedBadge from '@/components/training/EditedBadge'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import type { SetData } from '@/components/training/SetRow'
+import type { Athlete } from '@/lib/types'
 import styles from '@/styles/training.module.css'
 
 const ProgramEditor = dynamic(() => import('@/components/training/ProgramEditor'), {
@@ -205,6 +206,11 @@ export default function TrainingPage() {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
   const [trainingTemplates, setTrainingTemplates] = useState<{ id: string; nom: string; category?: string | null; pattern_type?: string; pattern_data?: Record<string, unknown>; sessions_data?: Array<{ nom?: string; jour?: string; exercices?: unknown[] | string; exercises?: unknown[] | string }> }[]>([])
   const [loadingTemplates, setLoadingTemplates] = useState(false)
+  // Picker mode + "depuis un athlète" sub-state
+  const [pickerMode, setPickerMode] = useState<'templates' | 'athletes'>('templates')
+  const [pickerSourceAthleteId, setPickerSourceAthleteId] = useState<string | null>(null)
+  const [pickerAthletePrograms, setPickerAthletePrograms] = useState<WorkoutProgram[]>([])
+  const [loadingAthletePrograms, setLoadingAthletePrograms] = useState(false)
 
   // History state
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLog[]>([])
@@ -381,9 +387,76 @@ export default function TrainingPage() {
     }
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reset picker sub-state (mode + selected source athlete + fetched progs)
+  const resetPicker = useCallback(() => {
+    setPickerMode('templates')
+    setPickerSourceAthleteId(null)
+    setPickerAthletePrograms([])
+  }, [])
+
+  const closePicker = useCallback(() => {
+    setShowTemplatePicker(false)
+    resetPicker()
+  }, [resetPicker])
+
+  // Load programs of another athlete (when user picks a source athlete in the picker)
+  const loadAthletePrograms = useCallback(async (sourceAthleteId: string) => {
+    setPickerSourceAthleteId(sourceAthleteId)
+    setLoadingAthletePrograms(true)
+    try {
+      const { data, error } = await supabase
+        .from('workout_programs')
+        .select('id, nom, actif, pattern_type, pattern_data, created_at, workout_sessions(id, nom, jour, exercices, ordre)')
+        .eq('athlete_id', sourceAthleteId)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      if (error) {
+        console.error('[Training] loadAthletePrograms', error)
+        toast(`Erreur: ${error.message}`, 'error')
+        return
+      }
+      setPickerAthletePrograms((data as WorkoutProgram[]) || [])
+    } finally {
+      setLoadingAthletePrograms(false)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Select a program from another athlete: pre-fill editor as a NEW program for current athlete
+  const selectAthleteProgram = useCallback((prog: WorkoutProgram) => {
+    closePicker()
+    let pd: Record<string, unknown> = {}
+    try {
+      pd = typeof prog.pattern_data === 'string' ? JSON.parse(prog.pattern_data) : (prog.pattern_data || {})
+    } catch { /* empty */ }
+    const sessions = (prog.workout_sessions || [])
+      .sort((a, b) => (a.ordre || 0) - (b.ordre || 0))
+      .map((s) => {
+        const exercises = parseExercises(s.exercices)
+        return {
+          nom: s.nom || '',
+          jour: s.jour || '',
+          exercises: exercises.map((ex) => ({
+            nom: String(ex.nom || ''),
+            exercice_id: ex.exercice_id ? String(ex.exercice_id) : null,
+            muscle_principal: String(ex.muscle_principal || ''),
+            sets: (Array.isArray(ex.sets) ? ex.sets : []) as SetData[],
+            superset_id: ex.superset_id ? String(ex.superset_id) : null,
+          })),
+        }
+      })
+    setEditProgramId(null) // important: NEW program for current athlete, source untouched
+    setEditProgramData({
+      name: prog.nom,
+      patternType: prog.pattern_type || 'pattern',
+      patternData: pd,
+      sessions,
+    })
+    setView('editor')
+  }, [closePicker])
+
   // Select a training template: pre-fill editor with its data
   const selectTrainingTemplate = useCallback((tpl: typeof trainingTemplates[0]) => {
-    setShowTemplatePicker(false)
+    closePicker()
     const sd = tpl.sessions_data || []
     const sessions = sd.map((s) => {
       let exs: Array<{ nom?: string; series?: string | number; reps?: string; exercice_id?: string | null; muscle_principal?: string; sets?: SetData[]; superset_id?: string | null }> = []
@@ -971,7 +1044,16 @@ export default function TrainingPage() {
           templates={trainingTemplates}
           loading={loadingTemplates}
           onSelect={selectTrainingTemplate}
-          onClose={() => setShowTemplatePicker(false)}
+          onClose={closePicker}
+          mode={pickerMode}
+          onModeChange={(m) => { setPickerMode(m); setPickerSourceAthleteId(null); setPickerAthletePrograms([]) }}
+          athletes={athletes.filter((a) => a.id !== athleteId)}
+          sourceAthleteId={pickerSourceAthleteId}
+          onSelectSourceAthlete={loadAthletePrograms}
+          onBackToAthletes={() => { setPickerSourceAthleteId(null); setPickerAthletePrograms([]) }}
+          athletePrograms={pickerAthletePrograms}
+          loadingAthletePrograms={loadingAthletePrograms}
+          onSelectAthleteProgram={selectAthleteProgram}
         />
       )}
     </div>
@@ -983,20 +1065,41 @@ function TemplatePicker({
   loading,
   onSelect,
   onClose,
+  mode,
+  onModeChange,
+  athletes,
+  sourceAthleteId,
+  onSelectSourceAthlete,
+  onBackToAthletes,
+  athletePrograms,
+  loadingAthletePrograms,
+  onSelectAthleteProgram,
 }: {
   templates: { id: string; nom: string; category?: string | null; pattern_type?: string; pattern_data?: Record<string, unknown>; sessions_data?: Array<{ nom?: string; jour?: string; exercices?: unknown[] | string; exercises?: unknown[] | string }> }[]
   loading: boolean
   onSelect: (tpl: typeof templates[0]) => void
   onClose: () => void
+  mode: 'templates' | 'athletes'
+  onModeChange: (m: 'templates' | 'athletes') => void
+  athletes: Athlete[]
+  sourceAthleteId: string | null
+  onSelectSourceAthlete: (id: string) => void
+  onBackToAthletes: () => void
+  athletePrograms: WorkoutProgram[]
+  loadingAthletePrograms: boolean
+  onSelectAthleteProgram: (prog: WorkoutProgram) => void
 }) {
   const [search, setSearch] = useState('')
 
-  const filtered = search
+  // Reset search when mode or sub-step changes
+  useEffect(() => { setSearch('') }, [mode, sourceAthleteId])
+
+  const filteredTemplates = search
     ? templates.filter((t) => t.nom.toLowerCase().includes(search.toLowerCase()) || (t.category || '').toLowerCase().includes(search.toLowerCase()))
     : templates
 
   const groups: Record<string, typeof templates> = {}
-  filtered.forEach((t) => {
+  filteredTemplates.forEach((t) => {
     const cat = t.category || 'Sans catégorie'
     if (!groups[cat]) groups[cat] = []
     groups[cat].push(t)
@@ -1006,6 +1109,29 @@ function TemplatePicker({
     if (b === 'Sans catégorie') return -1
     return a.localeCompare(b)
   })
+
+  const filteredAthletes = search
+    ? athletes.filter((a) => `${a.prenom} ${a.nom}`.toLowerCase().includes(search.toLowerCase()))
+    : athletes
+  const sortedAthletes = [...filteredAthletes].sort((a, b) => `${a.prenom} ${a.nom}`.localeCompare(`${b.prenom} ${b.nom}`))
+
+  const sourceAthlete = sourceAthleteId ? athletes.find((a) => a.id === sourceAthleteId) : null
+  const onAthletesStep = mode === 'athletes' && !sourceAthleteId
+  const onAthleteProgramsStep = mode === 'athletes' && !!sourceAthleteId
+
+  const headerTitle = onAthleteProgramsStep
+    ? `Programmes de ${sourceAthlete?.prenom || ''} ${sourceAthlete?.nom || ''}`
+    : 'Importer un programme'
+
+  const placeholder = mode === 'templates'
+    ? 'Rechercher par nom ou catégorie...'
+    : onAthletesStep
+      ? 'Rechercher un athlète...'
+      : 'Rechercher un programme...'
+
+  const filteredPrograms = search
+    ? athletePrograms.filter((p) => p.nom.toLowerCase().includes(search.toLowerCase()))
+    : athletePrograms
 
   return (
     <div className="modal-overlay open" onClick={onClose}>
@@ -1018,29 +1144,77 @@ function TemplatePicker({
         overflow: 'hidden',
         animation: 'modalSlideIn 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
       }}>
-        {/* Fixed header + search */}
+        {/* Fixed header + tabs + search */}
         <div style={{ flexShrink: 0, padding: '24px 24px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <h3 style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>Choisir un template</h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              {onAthleteProgramsStep && (
+                <button
+                  onClick={onBackToAthletes}
+                  aria-label="Retour aux athlètes"
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--text2)',
+                    fontSize: 14, cursor: 'pointer', width: 28, height: 28,
+                    borderRadius: 'var(--radius-sm)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}
+                >
+                  <i className="fa-solid fa-arrow-left" />
+                </button>
+              )}
+              <h3 style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{headerTitle}</h3>
+            </div>
             <button
               onClick={onClose}
               style={{
                 background: 'none', border: 'none', color: 'var(--text3)',
                 fontSize: 18, cursor: 'pointer', width: 32, height: 32,
                 borderRadius: 'var(--radius-sm)', display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
+                alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               }}
             >
               <i className="fa-solid fa-xmark" />
             </button>
           </div>
+
+          {/* Tabs (hidden when drilled into an athlete's programs) */}
+          {!onAthleteProgramsStep && (
+            <div style={{ display: 'flex', gap: 4, marginBottom: 14, padding: 3, background: 'var(--bg3)', borderRadius: 8 }}>
+              {([
+                { key: 'templates', label: 'Templates', icon: 'fa-copy' },
+                { key: 'athletes', label: 'Depuis un athlète', icon: 'fa-users' },
+              ] as const).map((tab) => {
+                const active = mode === tab.key
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => onModeChange(tab.key)}
+                    style={{
+                      flex: 1, padding: '8px 10px', border: 'none',
+                      background: active ? 'var(--bg2)' : 'transparent',
+                      color: active ? 'var(--text)' : 'var(--text3)',
+                      fontWeight: active ? 600 : 500, fontSize: 12,
+                      cursor: 'pointer', borderRadius: 6,
+                      boxShadow: active ? 'var(--shadow-card)' : 'none',
+                      transition: 'all 0.15s',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}
+                  >
+                    <i className={`fa-solid ${tab.icon}`} style={{ fontSize: 11 }} />
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
           <div style={{ position: 'relative' }}>
             <i className="fas fa-search" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', fontSize: 12 }} />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher par nom ou catégorie..."
+              placeholder={placeholder}
               autoFocus
               style={{
                 width: '100%', padding: '10px 14px 10px 36px',
@@ -1055,95 +1229,250 @@ function TemplatePicker({
           </div>
         </div>
 
-        {/* Scrollable template list */}
+        {/* Scrollable body */}
         <div style={{ padding: '0 24px 24px', overflowY: 'auto', flex: 1 }}>
-          {loading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Skeleton height={48} borderRadius={8} />
-              <Skeleton height={48} borderRadius={8} />
-              <Skeleton height={48} borderRadius={8} />
-            </div>
-          ) : templates.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
-              <i className="fa-solid fa-folder-open" style={{ fontSize: 24, marginBottom: 8, display: 'block' }} />
-              <p>Aucun template training</p>
-              <p style={{ fontSize: 12, marginTop: 4 }}>Créez des templates dans la section Templates</p>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
-              <i className="fa-solid fa-search" style={{ fontSize: 20, marginBottom: 8, display: 'block' }} />
-              <p style={{ fontSize: 13 }}>Aucun résultat pour &quot;{search}&quot;</p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {catNames.map((cat) => (
-                <div key={cat}>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    marginBottom: 8, padding: '0 2px',
-                  }}>
-                    <i className="fas fa-folder-open" style={{ color: 'var(--primary)', fontSize: 12 }} />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', letterSpacing: '0.02em', textTransform: 'uppercase' }}>{cat}</span>
-                    <span style={{ fontSize: 10, color: 'var(--text3)', background: 'var(--bg3)', padding: '1px 7px', borderRadius: 10, fontWeight: 600 }}>{groups[cat].length}</span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {groups[cat].map((tpl) => {
-                      const sessionCount = tpl.sessions_data?.length || 0
-                      const sessionNames = (tpl.sessions_data || []).map((s) => s.nom || 'Séance').slice(0, 4)
-                      return (
-                        <button
-                          key={tpl.id}
-                          onClick={() => onSelect(tpl)}
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)',
-                            background: 'var(--bg2)', cursor: 'pointer', textAlign: 'left', width: '100%',
-                            transition: 'all 0.15s', gap: 12,
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--primary-border)'
-                            e.currentTarget.style.background = 'var(--bg-card-hover)'
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--border)'
-                            e.currentTarget.style.background = 'var(--bg2)'
-                          }}
-                        >
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>{tpl.nom}</div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 11, color: 'var(--text3)' }}>
-                              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <i className="fas fa-calendar-day" style={{ fontSize: 9, color: 'var(--primary)', opacity: 0.7 }} />
-                                {sessionCount} séance{sessionCount !== 1 ? 's' : ''}
-                              </span>
-                            </div>
-                            {sessionNames.length > 0 && (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 6 }}>
-                                {sessionNames.map((name, i) => (
-                                  <span key={i} style={{
-                                    padding: '1px 7px', background: 'var(--primary-bg)',
-                                    border: '1px solid var(--primary-border)', borderRadius: 4,
-                                    fontSize: 10, color: 'var(--text2)', fontWeight: 500,
-                                  }}>
-                                    {name}
-                                  </span>
-                                ))}
-                                {(tpl.sessions_data || []).length > 4 && (
-                                  <span style={{ fontSize: 10, color: 'var(--text3)', padding: '1px 4px' }}>
-                                    +{(tpl.sessions_data || []).length - 4}
-                                  </span>
-                                )}
+          {/* === MODE TEMPLATES === */}
+          {mode === 'templates' && (
+            loading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <Skeleton height={48} borderRadius={8} />
+                <Skeleton height={48} borderRadius={8} />
+                <Skeleton height={48} borderRadius={8} />
+              </div>
+            ) : templates.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
+                <i className="fa-solid fa-folder-open" style={{ fontSize: 24, marginBottom: 8, display: 'block' }} />
+                <p>Aucun template training</p>
+                <p style={{ fontSize: 12, marginTop: 4 }}>Créez des templates dans la section Templates</p>
+              </div>
+            ) : filteredTemplates.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
+                <i className="fa-solid fa-search" style={{ fontSize: 20, marginBottom: 8, display: 'block' }} />
+                <p style={{ fontSize: 13 }}>Aucun résultat pour &quot;{search}&quot;</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {catNames.map((cat) => (
+                  <div key={cat}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      marginBottom: 8, padding: '0 2px',
+                    }}>
+                      <i className="fas fa-folder-open" style={{ color: 'var(--primary)', fontSize: 12 }} />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', letterSpacing: '0.02em', textTransform: 'uppercase' }}>{cat}</span>
+                      <span style={{ fontSize: 10, color: 'var(--text3)', background: 'var(--bg3)', padding: '1px 7px', borderRadius: 10, fontWeight: 600 }}>{groups[cat].length}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {groups[cat].map((tpl) => {
+                        const sessionCount = tpl.sessions_data?.length || 0
+                        const sessionNames = (tpl.sessions_data || []).map((s) => s.nom || 'Séance').slice(0, 4)
+                        return (
+                          <button
+                            key={tpl.id}
+                            onClick={() => onSelect(tpl)}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)',
+                              background: 'var(--bg2)', cursor: 'pointer', textAlign: 'left', width: '100%',
+                              transition: 'all 0.15s', gap: 12,
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--primary-border)'
+                              e.currentTarget.style.background = 'var(--bg-card-hover)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = 'var(--border)'
+                              e.currentTarget.style.background = 'var(--bg2)'
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>{tpl.nom}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 11, color: 'var(--text3)' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <i className="fas fa-calendar-day" style={{ fontSize: 9, color: 'var(--primary)', opacity: 0.7 }} />
+                                  {sessionCount} séance{sessionCount !== 1 ? 's' : ''}
+                                </span>
                               </div>
+                              {sessionNames.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 6 }}>
+                                  {sessionNames.map((name, i) => (
+                                    <span key={i} style={{
+                                      padding: '1px 7px', background: 'var(--primary-bg)',
+                                      border: '1px solid var(--primary-border)', borderRadius: 4,
+                                      fontSize: 10, color: 'var(--text2)', fontWeight: 500,
+                                    }}>
+                                      {name}
+                                    </span>
+                                  ))}
+                                  {(tpl.sessions_data || []).length > 4 && (
+                                    <span style={{ fontSize: 10, color: 'var(--text3)', padding: '1px 4px' }}>
+                                      +{(tpl.sessions_data || []).length - 4}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <i className="fa-solid fa-chevron-right" style={{ color: 'var(--text3)', fontSize: 11, flexShrink: 0 }} />
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* === MODE ATHLETES — STEP 1: pick athlete === */}
+          {onAthletesStep && (
+            athletes.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
+                <i className="fa-solid fa-users" style={{ fontSize: 24, marginBottom: 8, display: 'block' }} />
+                <p>Aucun autre athlète</p>
+              </div>
+            ) : sortedAthletes.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
+                <i className="fa-solid fa-search" style={{ fontSize: 20, marginBottom: 8, display: 'block' }} />
+                <p style={{ fontSize: 13 }}>Aucun résultat pour &quot;{search}&quot;</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {sortedAthletes.map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => onSelectSourceAthlete(a.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)',
+                      background: 'var(--bg2)', cursor: 'pointer', textAlign: 'left', width: '100%',
+                      transition: 'all 0.15s', gap: 12,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--primary-border)'
+                      e.currentTarget.style.background = 'var(--bg-card-hover)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--border)'
+                      e.currentTarget.style.background = 'var(--bg2)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                      {a.avatar_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={a.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                      ) : (
+                        <div style={{
+                          width: 32, height: 32, borderRadius: '50%',
+                          background: 'var(--bg3)', color: 'var(--text2)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 12, fontWeight: 600, flexShrink: 0,
+                        }}>
+                          {(a.prenom?.[0] || '').toUpperCase()}{(a.nom?.[0] || '').toUpperCase()}
+                        </div>
+                      )}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {a.prenom} {a.nom}
+                        </div>
+                        {a.objectif && (
+                          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {a.objectif}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <i className="fa-solid fa-chevron-right" style={{ color: 'var(--text3)', fontSize: 11, flexShrink: 0 }} />
+                  </button>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* === MODE ATHLETES — STEP 2: pick program === */}
+          {onAthleteProgramsStep && (
+            loadingAthletePrograms ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <Skeleton height={48} borderRadius={8} />
+                <Skeleton height={48} borderRadius={8} />
+                <Skeleton height={48} borderRadius={8} />
+              </div>
+            ) : athletePrograms.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
+                <i className="fa-solid fa-dumbbell" style={{ fontSize: 24, marginBottom: 8, display: 'block' }} />
+                <p>Aucun programme</p>
+                <p style={{ fontSize: 12, marginTop: 4 }}>Cet athlète n&apos;a pas de programme à copier</p>
+              </div>
+            ) : filteredPrograms.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 24, color: 'var(--text3)' }}>
+                <i className="fa-solid fa-search" style={{ fontSize: 20, marginBottom: 8, display: 'block' }} />
+                <p style={{ fontSize: 13 }}>Aucun résultat pour &quot;{search}&quot;</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {filteredPrograms.map((prog) => {
+                  const sessions = (prog.workout_sessions || []).sort((a, b) => (a.ordre || 0) - (b.ordre || 0))
+                  const sessionNames = sessions.map((s) => s.nom || 'Séance').slice(0, 4)
+                  return (
+                    <button
+                      key={prog.id}
+                      onClick={() => onSelectAthleteProgram(prog)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)',
+                        background: 'var(--bg2)', cursor: 'pointer', textAlign: 'left', width: '100%',
+                        transition: 'all 0.15s', gap: 12,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--primary-border)'
+                        e.currentTarget.style.background = 'var(--bg-card-hover)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border)'
+                        e.currentTarget.style.background = 'var(--bg2)'
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>{prog.nom}</div>
+                          {prog.actif && (
+                            <span style={{
+                              background: 'var(--success)', color: '#fff',
+                              fontSize: 9, fontWeight: 700, padding: '1px 6px',
+                              borderRadius: 8, letterSpacing: '0.04em',
+                            }}>ACTIF</span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 11, color: 'var(--text3)' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <i className="fas fa-calendar-day" style={{ fontSize: 9, color: 'var(--primary)', opacity: 0.7 }} />
+                            {sessions.length} séance{sessions.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        {sessionNames.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 6 }}>
+                            {sessionNames.map((name, i) => (
+                              <span key={i} style={{
+                                padding: '1px 7px', background: 'var(--primary-bg)',
+                                border: '1px solid var(--primary-border)', borderRadius: 4,
+                                fontSize: 10, color: 'var(--text2)', fontWeight: 500,
+                              }}>
+                                {name}
+                              </span>
+                            ))}
+                            {sessions.length > 4 && (
+                              <span style={{ fontSize: 10, color: 'var(--text3)', padding: '1px 4px' }}>
+                                +{sessions.length - 4}
+                              </span>
                             )}
                           </div>
-                          <i className="fa-solid fa-chevron-right" style={{ color: 'var(--text3)', fontSize: 11, flexShrink: 0 }} />
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
+                        )}
+                      </div>
+                      <i className="fa-solid fa-chevron-right" style={{ color: 'var(--text3)', fontSize: 11, flexShrink: 0 }} />
+                    </button>
+                  )
+                })}
+              </div>
+            )
           )}
         </div>
       </div>
