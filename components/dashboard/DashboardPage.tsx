@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
@@ -327,7 +327,21 @@ export default function DashboardPage() {
   }, [loading, bilansToReview, lateAthletes, pendingVids, birthdays])
 
   const sendBilanRappel = useCallback(async (athlete: Athlete) => {
-    if (!athlete.user_id || sendingRappel.has(athlete.id) || sentRappels.has(athlete.id)) return
+    if (!athlete.user_id) return
+    // Read via functional setter to avoid putting the Sets in deps (they
+    // change reference every mutation → callback recreation cascade).
+    let alreadyInFlight = false
+    setSendingRappel(prev => {
+      if (prev.has(athlete.id)) { alreadyInFlight = true; return prev }
+      return new Set(prev).add(athlete.id)
+    })
+    if (alreadyInFlight) return
+    let alreadySent = false
+    setSentRappels(prev => { if (prev.has(athlete.id)) alreadySent = true; return prev })
+    if (alreadySent) {
+      setSendingRappel(prev => { const n = new Set(prev); n.delete(athlete.id); return n })
+      return
+    }
 
     // Check if already sent today
     const todayStr = toDateStr(new Date())
@@ -341,10 +355,9 @@ export default function DashboardPage() {
 
     if (existing && existing.length > 0) {
       toast('Rappel deja envoye aujourd\'hui', 'error')
+      setSendingRappel(prev => { const n = new Set(prev); n.delete(athlete.id); return n })
       return
     }
-
-    setSendingRappel(prev => new Set(prev).add(athlete.id))
 
     const title = 'Rappel bilan'
     const body = 'Ton bilan est en retard, pense a le remplir !'
@@ -366,10 +379,10 @@ export default function DashboardPage() {
     setSentRappels(prev => new Set(prev).add(athlete.id))
     toast(`Rappel envoye a ${athlete.prenom}`, 'success')
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sendingRappel, sentRappels, toast])
+  }, [toast])  // sendingRappel/sentRappels read via setter callbacks — not deps
 
   const updateCoachSetting = useCallback(async (key: string, value: number) => {
-    if (!user) return
+    if (!user?.id) return
     const { error } = await supabase
       .from('coach_settings')
       .upsert({ coach_id: user.id, [key]: value }, { onConflict: 'coach_id' })
@@ -379,7 +392,20 @@ export default function DashboardPage() {
     }
     toast('Reglage sauvegarde', 'success')
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, toast])
+  }, [user?.id, toast])
+
+  // Compute MRR from athlete payment plans (memoised — heavy on 100+ athletes).
+  // MUST stay above any conditional return — Rules of Hooks. See lessons.md
+  // [2026-05-02] (same crash pattern as bloodtest page).
+  const { activePayingAthletes, mrr } = useMemo(() => {
+    const active = athletes.filter(a => a._payment && !a._payment.is_free && a._payment.payment_status === 'active')
+    const total = active.reduce((sum, a) => {
+      const p = a._payment!
+      const monthlyAmount = p.frequency === 'week' ? (p.amount * 4.33) : p.frequency === 'day' ? (p.amount * 30) : p.amount
+      return sum + monthlyAmount
+    }, 0)
+    return { activePayingAthletes: active, mrr: total }
+  }, [athletes])
 
   // ── Loading state ──
   if (loading) {
@@ -400,14 +426,6 @@ export default function DashboardPage() {
   const todayFull = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   })
-
-  // Compute MRR from athlete payment plans
-  const activePayingAthletes = athletes.filter(a => a._payment && !a._payment.is_free && a._payment.payment_status === 'active')
-  const mrr = activePayingAthletes.reduce((sum, a) => {
-    const p = a._payment!
-    const monthlyAmount = p.frequency === 'week' ? (p.amount * 4.33) : p.frequency === 'day' ? (p.amount * 30) : p.amount
-    return sum + monthlyAmount
-  }, 0)
 
   const stats: StatCardData[] = [
     {

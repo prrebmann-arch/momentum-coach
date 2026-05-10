@@ -248,9 +248,15 @@ export default function InstagramAnalytics() {
       const mediaRes = await fetch(`https://graph.instagram.com/v25.0/me/media?fields=id,caption,media_type,media_url,thumbnail_url,timestamp,like_count,comments_count&limit=50&access_token=${account.access_token}`)
       const mediaData = await mediaRes.json()
       if (!mediaData.error && mediaData.data) {
-        for (const item of mediaData.data) {
-          const isVideo = item.media_type === 'VIDEO' || item.media_type === 'REELS'
-          if (isVideo) {
+        // Was: 50 sequential insights fetches × Promise(insights) → 50 sequential supabase upserts.
+        // Now: process videos in batches of 8 in parallel (both insights + upsert).
+        // Graph API rate limit ~200/hr; batch 8 × ~6 batches keeps us well under.
+        const videos = (mediaData.data as { id: string; caption?: string; media_type?: string; media_url?: string; thumbnail_url?: string; timestamp?: string; like_count?: number; comments_count?: number }[])
+          .filter((it) => it.media_type === 'VIDEO' || it.media_type === 'REELS')
+        const BATCH = 8
+        for (let i = 0; i < videos.length; i += BATCH) {
+          const batch = videos.slice(i, i + BATCH)
+          await Promise.all(batch.map(async (item) => {
             let reach = 0, saved = 0, shares = 0, totalViews = 0
             try {
               const iRes = await fetch(`https://graph.instagram.com/v25.0/${item.id}/insights?metric=views,reach,saved,shares&access_token=${account.access_token}`)
@@ -286,7 +292,7 @@ export default function InstagramAnalytics() {
               },
               { onConflict: 'ig_media_id' },
             )
-          }
+          }))
         }
       }
 
