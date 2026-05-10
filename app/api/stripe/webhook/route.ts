@@ -63,6 +63,19 @@ export async function POST(request: Request) {
     }
   }
 
+  // Legacy fallback: events processed BEFORE this migration only exist in
+  // stripe_audit_log. If Stripe retries one of those, we must not re-execute.
+  const { data: legacyAudit } = await supabase
+    .from('stripe_audit_log')
+    .select('id')
+    .eq('stripe_event_id', event.id)
+    .eq('action', 'webhook_received')
+    .limit(1)
+    .maybeSingle();
+  if (legacyAudit) {
+    return Response.json({ received: true, duplicate: true, legacy: true });
+  }
+
   // Atomic idempotency guard via stripe_processed_events (PRIMARY KEY on event_id).
   // INSERT first — if Stripe retries concurrently, the second lambda gets a unique
   // violation on the PK and exits early before running the handler. Replaces the
@@ -97,27 +110,41 @@ export async function POST(request: Request) {
     metadata: { type: event.type, is_coach: isCoachWebhook },
   });
 
+  let handlerSucceeded = false;
+  let handlerError: string | null = null;
   try {
     if (isCoachWebhook) {
       await handleCoachEvent(event, supabase);
     } else {
       await handlePlatformEvent(event, supabase);
     }
-    await supabase
-      .from('stripe_processed_events')
-      .update({ completed_at: new Date().toISOString() })
-      .eq('event_id', event.id);
+    handlerSucceeded = true;
   } catch (err: unknown) {
-    const msg = (err as Error).message;
-    await supabase
-      .from('stripe_processed_events')
-      .update({ failed_at: new Date().toISOString(), error_message: msg })
-      .eq('event_id', event.id);
-    await supabase.from('stripe_audit_log').insert({
-      action: 'webhook_processing_error', actor_type: 'system',
-      stripe_event_id: event.id,
-      metadata: { error: msg, type: event.type },
-    });
+    handlerError = (err as Error).message;
+  }
+
+  // Mark completion / failure OUTSIDE the try block so a metadata-update error
+  // doesn't roll back our knowledge of whether the handler succeeded.
+  // Both updates are best-effort; the source of truth is the business-logic state.
+  if (handlerSucceeded) {
+    try {
+      await supabase
+        .from('stripe_processed_events')
+        .update({ completed_at: new Date().toISOString() })
+        .eq('event_id', event.id);
+    } catch (e) { console.error('[webhook] completed_at update failed (non-fatal):', e); }
+  } else {
+    try {
+      await supabase
+        .from('stripe_processed_events')
+        .update({ failed_at: new Date().toISOString(), error_message: handlerError })
+        .eq('event_id', event.id);
+      await supabase.from('stripe_audit_log').insert({
+        action: 'webhook_processing_error', actor_type: 'system',
+        stripe_event_id: event.id,
+        metadata: { error: handlerError, type: event.type },
+      });
+    } catch (e) { console.error('[webhook] failure-mark update failed:', e); }
   }
 
   return Response.json({ received: true });

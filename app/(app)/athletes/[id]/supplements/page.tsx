@@ -348,16 +348,20 @@ export default function SupplementsPage() {
       let detectedMealCount = 5
       if (nutritionPlanList && nutritionPlanList.length > 0) {
         const trainingPlan = (nutritionPlanList as any[]).find((p) => p.meal_type === 'training' || p.meal_type === 'entrainement') || nutritionPlanList[0]
-        const { data: planMeals } = await supabase
+        const { data: planMeals, error: planErr } = await supabase
           .from('nutrition_plans')
           .select('meals_data')
           .eq('id', (trainingPlan as any).id)
           .single()
-        try {
-          const raw = (planMeals as any)?.meals_data
-          const meals = typeof raw === 'string' ? JSON.parse(raw) : (raw || [])
-          if (Array.isArray(meals) && meals.length > 0) detectedMealCount = meals.length
-        } catch { /* keep default */ }
+        if (planErr) {
+          console.warn('[supplements] nutrition_plans.single error:', planErr.message)
+        } else {
+          try {
+            const raw = (planMeals as any)?.meals_data
+            const meals = typeof raw === 'string' ? JSON.parse(raw) : (raw || [])
+            if (Array.isArray(meals) && meals.length > 0) detectedMealCount = meals.length
+          } catch (e) { console.warn('[supplements] meals_data parse error:', (e as Error).message) }
+        }
       }
       setMealCount(detectedMealCount)
       if (assignsErr) console.error('[supplements.loadData] assigns query error:', assignsErr)

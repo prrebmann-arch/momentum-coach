@@ -265,15 +265,16 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // Auto-pickup: if recorder stopped without user clicking Stop (browser-end or hard-cap),
-  // trigger the same post-stop flow. Only the autoStoppedAt timestamp drives this;
-  // listing all flags as deps would re-fire when each transitions to false.
+  // trigger the same post-stop flow. We need ALL deps so that if isProcessing/pending/
+  // isUploading transitions to false AFTER autoStoppedAt was set, the effect re-fires
+  // and processes the auto-stopped recording. Restoring deps after audit revealed a
+  // missed-state-transition bug from the over-trimmed version.
   useEffect(() => {
     if (!recorder.autoStoppedAt) return
     if (isProcessing || pending || isUploading) return
     recorder.consumeAutoStopped()
     void stopRecording()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recorder.autoStoppedAt])
+  }, [recorder.autoStoppedAt, isProcessing, pending, isUploading, stopRecording, recorder])
 
   const finalizeRecording = useCallback(async ({ titre, commentaire, athleteId }: FinalizeArgs) => {
     if (!pending || !user) { toast('Aucun enregistrement en attente', 'error'); return }

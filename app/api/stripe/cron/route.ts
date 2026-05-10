@@ -193,7 +193,9 @@ async function runRetry(supabase: ReturnType<typeof createClient<any>>, now: Dat
 
   if (!invoices?.length) return results;
 
-  for (const inv of invoices) {
+  type Invoice = NonNullable<typeof invoices>[number];
+
+  async function processOne(inv: Invoice): Promise<'retried' | 'blocked' | { error: string }> {
     try {
       const retryCount = inv.retry_count || 0;
 
@@ -209,7 +211,7 @@ async function runRetry(supabase: ReturnType<typeof createClient<any>>, now: Dat
             user_id: inv.coach_id, type: 'billing', title: 'Compte bloqué',
             body: `Impayé de ${(inv.total_amount / 100).toFixed(2)}€. Régularisez pour réactiver.`,
           });
-          results.blocked++; continue;
+          return 'blocked';
         }
       }
 
@@ -235,8 +237,22 @@ async function runRetry(supabase: ReturnType<typeof createClient<any>>, now: Dat
         await supabase.from('notifications').insert({ user_id: inv.coach_id, type: 'billing', title: 'Échec prélèvement', body: `Nouvelle tentative dans ${nextDays}j.` });
       }
 
-      results.retried++;
-    } catch (e: unknown) { results.errors.push({ invoice: inv.id, error: (e as Error).message }); }
+      return 'retried';
+    } catch (e: unknown) { return { error: (e as Error).message }; }
+  }
+
+  // Batch-parallelize 5-at-a-time, same pattern as runInvoice.
+  const BATCH = 5;
+  for (let i = 0; i < invoices.length; i += BATCH) {
+    const batch = invoices.slice(i, i + BATCH);
+    const settled = await Promise.allSettled(batch.map(processOne));
+    settled.forEach((r, idx) => {
+      const inv = batch[idx];
+      if (r.status === 'rejected') { results.errors.push({ invoice: inv.id, error: String(r.reason) }); return; }
+      if (r.value === 'retried') results.retried++;
+      else if (r.value === 'blocked') results.blocked++;
+      else results.errors.push({ invoice: inv.id, error: r.value.error });
+    });
   }
   return results;
 }
