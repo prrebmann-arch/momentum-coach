@@ -394,6 +394,19 @@ export default function DashboardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, toast])
 
+  // Compute MRR from athlete payment plans (memoised — heavy on 100+ athletes).
+  // MUST stay above any conditional return — Rules of Hooks. See lessons.md
+  // [2026-05-02] (same crash pattern as bloodtest page).
+  const { activePayingAthletes, mrr } = useMemo(() => {
+    const active = athletes.filter(a => a._payment && !a._payment.is_free && a._payment.payment_status === 'active')
+    const total = active.reduce((sum, a) => {
+      const p = a._payment!
+      const monthlyAmount = p.frequency === 'week' ? (p.amount * 4.33) : p.frequency === 'day' ? (p.amount * 30) : p.amount
+      return sum + monthlyAmount
+    }, 0)
+    return { activePayingAthletes: active, mrr: total }
+  }, [athletes])
+
   // ── Loading state ──
   if (loading) {
     return (
@@ -413,17 +426,6 @@ export default function DashboardPage() {
   const todayFull = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   })
-
-  // Compute MRR from athlete payment plans (memoised — heavy on 100+ athletes)
-  const { activePayingAthletes, mrr } = useMemo(() => {
-    const active = athletes.filter(a => a._payment && !a._payment.is_free && a._payment.payment_status === 'active')
-    const total = active.reduce((sum, a) => {
-      const p = a._payment!
-      const monthlyAmount = p.frequency === 'week' ? (p.amount * 4.33) : p.frequency === 'day' ? (p.amount * 30) : p.amount
-      return sum + monthlyAmount
-    }, 0)
-    return { activePayingAthletes: active, mrr: total }
-  }, [athletes])
 
   const stats: StatCardData[] = [
     {
