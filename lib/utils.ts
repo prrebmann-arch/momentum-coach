@@ -1,4 +1,5 @@
 import { MS_PER_DAY } from './constants'
+import { registerCacheClearer } from './clientCaches'
 
 // ===== PROMISE HELPERS =====
 
@@ -17,17 +18,43 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label = 'operati
   })
 }
 
-// ===== SESSION CACHE =====
+// ===== PAGE CACHE =====
+//
+// In-memory Map cache for cross-mount data persistence (e.g. switching between
+// athlete sub-tabs). The previous sessionStorage version caused 10-30s
+// JSON.parse freezes with 200+ athletes payloads. Map-based has zero parse cost.
+//
+// Pattern:
+//   const [cached] = useState(() => getPageCache<MyData>(key))
+//   const [loading, setLoading] = useState(!cached)
+//   const [data, setData] = useState(cached ?? defaults)
+//   ...inside loadData(): setPageCache(key, fresh)
+//
+// Cache survives navigation but not full reload. Cleared on signOut.
 
-/** Read from sessionStorage cache (DISABLED — caused 10-30s freezes from JSON.parse) */
-export function getPageCache<T>(_key: string): T | undefined {
-  return undefined
+const pageCache = new Map<string, unknown>()
+// Soft cap to avoid unbounded growth in long sessions.
+const PAGE_CACHE_MAX = 200
+
+export function getPageCache<T>(key: string): T | undefined {
+  return pageCache.get(key) as T | undefined
 }
 
-/** Write to sessionStorage cache (DISABLED) */
-export function setPageCache<T>(_key: string, _data: T): void {
-  // no-op
+export function setPageCache<T>(key: string, data: T): void {
+  if (pageCache.size >= PAGE_CACHE_MAX && !pageCache.has(key)) {
+    // Evict the oldest entry (Map preserves insertion order)
+    const firstKey = pageCache.keys().next().value
+    if (firstKey !== undefined) pageCache.delete(firstKey)
+  }
+  pageCache.set(key, data)
 }
+
+export function clearPageCache(): void {
+  pageCache.clear()
+}
+
+// Clear on coach signOut so the next user doesn't see stale data.
+registerCacheClearer(clearPageCache)
 
 // ===== DATE UTILITIES =====
 
