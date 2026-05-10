@@ -245,7 +245,8 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
       executionVideoId: executionVideoIdForNext ?? undefined,
     })
     setIsProcessing(false)
-  }, [recorder, user, toast, athleteIdForNext, broadcastIdsForNext, executionVideoIdForNext])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorder, user?.id, toast, athleteIdForNext, broadcastIdsForNext, executionVideoIdForNext])
 
   const cancelRecording = useCallback(() => {
     cancelledRef.current = true
@@ -254,6 +255,7 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
     setPending(null)
     setAthleteIdForNext(null)
     setExecutionVideoIdForNext(null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recorder])
 
   const discardPending = useCallback(() => {
@@ -263,12 +265,14 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // Auto-pickup: if recorder stopped without user clicking Stop (browser-end or hard-cap),
-  // trigger the same post-stop flow.
+  // trigger the same post-stop flow. We need ALL deps so that if isProcessing/pending/
+  // isUploading transitions to false AFTER autoStoppedAt was set, the effect re-fires
+  // and processes the auto-stopped recording. Restoring deps after audit revealed a
+  // missed-state-transition bug from the over-trimmed version.
   useEffect(() => {
     if (!recorder.autoStoppedAt) return
     if (isProcessing || pending || isUploading) return
     recorder.consumeAutoStopped()
-    // Drive the standard post-stop flow; it'll consume the cached result instantly.
     void stopRecording()
   }, [recorder.autoStoppedAt, isProcessing, pending, isUploading, stopRecording, recorder])
 

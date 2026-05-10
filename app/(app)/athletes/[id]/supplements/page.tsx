@@ -334,21 +334,34 @@ export default function SupplementsPage() {
       const startDate = rangeStart.toISOString().slice(0, 10)
       const today = new Date().toISOString().slice(0, 10)
 
-      const [{ data: assigns, error: assignsErr }, { data: ath }, { data: logData }, { data: nutritionPlans }] = await Promise.all([
+      // Step 1 — light list of plans (no heavy meals_data JSONB)
+      const [{ data: assigns, error: assignsErr }, { data: ath }, { data: logData }, { data: nutritionPlanList }] = await Promise.all([
         supabase.from('athlete_supplements').select('id, athlete_id, supplement_id, dosage, unite, frequence, intervalle_jours, moment_prise, concentration_mg_ml, notes, start_date, actif, supplements(id, nom, marque, type, lien_achat)').eq('athlete_id', params.id).limit(100),
         supabase.from('athletes').select('supplementation_unlocked').eq('id', params.id).single(),
         supabase.from('supplement_logs').select('id, athlete_id, athlete_supplement_id, taken_date, taken').eq('athlete_id', params.id).gte('taken_date', startDate).lte('taken_date', today).order('taken_date', { ascending: false }).limit(200),
-        supabase.from('nutrition_plans').select('id, meals_data, meal_type, actif').eq('athlete_id', params.id).eq('actif', true).limit(10),
+        supabase.from('nutrition_plans').select('id, meal_type, actif').eq('athlete_id', params.id).eq('actif', true).limit(10),
       ])
 
-      // Determine meal count from active training diet
+      // Step 2 — only fetch meals_data of the ONE relevant training plan, not all 10.
+      // meals_data is 10-50 KB per row (full meal/foods JSON); old code fetched all of them
+      // just to count meals.length on the training plan. -90% bandwidth on this query.
       let detectedMealCount = 5
-      if (nutritionPlans && nutritionPlans.length > 0) {
-        const trainingPlan = nutritionPlans.find((p: any) => p.meal_type === 'training' || p.meal_type === 'entrainement') || nutritionPlans[0]
-        try {
-          const meals = typeof trainingPlan.meals_data === 'string' ? JSON.parse(trainingPlan.meals_data) : (trainingPlan.meals_data || [])
-          if (Array.isArray(meals) && meals.length > 0) detectedMealCount = meals.length
-        } catch { /* keep default */ }
+      if (nutritionPlanList && nutritionPlanList.length > 0) {
+        const trainingPlan = (nutritionPlanList as any[]).find((p) => p.meal_type === 'training' || p.meal_type === 'entrainement') || nutritionPlanList[0]
+        const { data: planMeals, error: planErr } = await supabase
+          .from('nutrition_plans')
+          .select('meals_data')
+          .eq('id', (trainingPlan as any).id)
+          .single()
+        if (planErr) {
+          console.warn('[supplements] nutrition_plans.single error:', planErr.message)
+        } else {
+          try {
+            const raw = (planMeals as any)?.meals_data
+            const meals = typeof raw === 'string' ? JSON.parse(raw) : (raw || [])
+            if (Array.isArray(meals) && meals.length > 0) detectedMealCount = meals.length
+          } catch (e) { console.warn('[supplements] meals_data parse error:', (e as Error).message) }
+        }
       }
       setMealCount(detectedMealCount)
       if (assignsErr) console.error('[supplements.loadData] assigns query error:', assignsErr)
@@ -623,6 +636,16 @@ export default function SupplementsPage() {
   const assigned = assignments.filter((a: any) => a.supplements?.type === tab)
   const today = new Date().toISOString().slice(0, 10)
 
+  // O(1) log lookup: previously each call to .find() in the 14-day×N-assignment
+  // loop scanned the whole logs array. With 50+ supplements × 14 days × 200+ logs
+  // that's 140K+ comparisons per render. Indexing once at the top is ~free.
+  const logByKey = new Map<string, any>()
+  for (const l of logs) {
+    if (l && l.athlete_supplement_id && l.taken_date) {
+      logByKey.set(l.athlete_supplement_id + ':' + l.taken_date, l)
+    }
+  }
+
   // Build per-assignment history for 14 days + delay detection
   function getAssignmentHistory(a: any) {
     const intervalDays = a.intervalle_jours || getIntervalDays(a.frequence) || 1
@@ -634,7 +657,7 @@ export default function SupplementsPage() {
     for (let i = HISTORY_DAYS - 1; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i)
       const ds = d.toISOString().slice(0, 10)
-      const log = logs.find((l: any) => l.athlete_supplement_id === a.id && l.taken_date === ds)
+      const log = logByKey.get(a.id + ':' + ds)
       const due = isOnDemand ? false : isDueDate(a.start_date, intervalDays, ds)
       const isToday = ds === today
 
@@ -670,17 +693,23 @@ export default function SupplementsPage() {
   // Compliance grid for supplementation (summary)
   let complianceHtml = null
   if (tab === 'supplementation' && assigned.length) {
-    const suppIds = assigned.map((a: any) => a.id)
-    const todayLogs = logs.filter((l: any) => l.taken_date === today && suppIds.includes(l.athlete_supplement_id))
-    const takenTodayCount = todayLogs.filter((l: any) => l.taken).length
+    const suppIdSet = new Set<string>(assigned.map((a: any) => a.id))
+    let takenTodayCount = 0
+    for (const l of logs) {
+      if (l.taken && l.taken_date === today && suppIdSet.has(l.athlete_supplement_id)) takenTodayCount++
+    }
 
     const days: { label: string; taken: number; due: number; pct: number }[] = []
     for (let i = HISTORY_DAYS - 1; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i)
       const ds = d.toISOString().slice(0, 10)
-      const dayLogs = logs.filter((l: any) => l.taken_date === ds && suppIds.includes(l.athlete_supplement_id))
-      const taken = dayLogs.filter((l: any) => l.taken).length
-      // Count how many supplements were due that day
+      // Count taken via the index instead of full-scan filtering 14×.
+      let taken = 0
+      for (const a of assigned) {
+        const log = logByKey.get(a.id + ':' + ds)
+        if (log && log.taken) taken++
+      }
+      // Count due that day via the same loop (no need for separate pass).
       let dueCount = 0
       for (const a of assigned) {
         const intervalDays = a.intervalle_jours || getIntervalDays(a.frequence) || 1

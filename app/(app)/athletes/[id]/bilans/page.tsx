@@ -10,10 +10,13 @@ import { notifyAthlete } from '@/lib/push'
 import { getPageCache, setPageCache } from '@/lib/utils'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
+import dynamic from 'next/dynamic'
 import BilanAccordion from '@/components/bilans/BilanAccordion'
-import BilanProgressView from '@/components/bilans/BilanProgressView'
-import PhotoCompare from '@/components/bilans/PhotoCompare'
-import BilanPhotosUploadModal from '@/components/bilans/BilanPhotosUploadModal'
+// BilanProgressView pulls in chart.js (~40 KB) and react-zoom-pan-pinch via PhotoCompare.
+// Lazy: it lives on a tab the user only opens after the page is interactive.
+const BilanProgressView = dynamic(() => import('@/components/bilans/BilanProgressView'), { ssr: false, loading: () => <Skeleton height={300} borderRadius={12} /> })
+const PhotoCompare = dynamic(() => import('@/components/bilans/PhotoCompare'), { ssr: false, loading: () => <Skeleton height={200} borderRadius={12} /> })
+const BilanPhotosUploadModal = dynamic(() => import('@/components/bilans/BilanPhotosUploadModal'), { ssr: false, loading: () => null })
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import NouveauRetourButton from '@/components/recorder/NouveauRetourButton'

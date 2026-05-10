@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { memo, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
@@ -13,6 +13,7 @@ interface NavItem {
   route: string
 }
 
+// Module-scope const — referenced once per render, never recreated.
 const navGroups: { label?: string; items: NavItem[] }[] = [
   {
     items: [
@@ -45,7 +46,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
   },
 ]
 
-export default function Sidebar() {
+function SidebarImpl() {
   const pathname = usePathname()
   const router = useRouter()
   const { user, signOut } = useAuth()
@@ -124,3 +125,8 @@ export default function Sidebar() {
     </div>
   )
 }
+
+// Sidebar mounts on every (app) route. memo skips re-render unless the
+// (rare) hooks it consumes return new values.
+const Sidebar = memo(SidebarImpl)
+export default Sidebar

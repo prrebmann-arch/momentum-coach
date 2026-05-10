@@ -77,12 +77,16 @@ export default function BilansOverview() {
       const thirtyDaysAgo = new Date()
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
       const fromDate = thirtyDaysAgo.toISOString().slice(0, 10)
+      // Cap upper bound — defensive: a corrupt/future-dated row would otherwise
+      // dominate the limit(200) window and starve real ones.
+      const todayStr = new Date().toISOString().slice(0, 10)
 
       const { data } = await supabase
         .from('daily_reports')
         .select('id, user_id, date, weight, energy, sleep_quality, stress, adherence, sessions_executed, session_performance, steps, photo_front, photo_side, photo_back, coach_reviewed_at')
         .in('user_id', athleteUserIds)
         .gte('date', fromDate)
+        .lte('date', todayStr)
         .order('date', { ascending: false })
         .limit(200)
       setReports((data as DailyReport[]) || [])

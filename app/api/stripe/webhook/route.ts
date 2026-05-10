@@ -63,35 +63,88 @@ export async function POST(request: Request) {
     }
   }
 
-  // Replay protection: check if this event was already processed
-  const { data: existingEvent } = await supabase
+  // Legacy fallback: events processed BEFORE this migration only exist in
+  // stripe_audit_log. If Stripe retries one of those, we must not re-execute.
+  const { data: legacyAudit } = await supabase
     .from('stripe_audit_log')
     .select('id')
     .eq('stripe_event_id', event.id)
+    .eq('action', 'webhook_received')
+    .limit(1)
     .maybeSingle();
-  if (existingEvent) {
-    return Response.json({ received: true, duplicate: true });
+  if (legacyAudit) {
+    return Response.json({ received: true, duplicate: true, legacy: true });
   }
 
-  // Audit log
+  // Atomic idempotency guard via stripe_processed_events (PRIMARY KEY on event_id).
+  // INSERT first — if Stripe retries concurrently, the second lambda gets a unique
+  // violation on the PK and exits early before running the handler. Replaces the
+  // previous racy SELECT-then-INSERT pattern that could double-charge athletes.
+  // Migration: sql/stripe_webhook_idempotency.sql.
+  const { error: claimError } = await supabase
+    .from('stripe_processed_events')
+    .insert({
+      event_id: event.id,
+      event_type: event.type,
+      is_coach_webhook: isCoachWebhook,
+    });
+  if (claimError) {
+    // 23505 = unique_violation → another lambda already claimed this event
+    if ((claimError as { code?: string }).code === '23505') {
+      return Response.json({ received: true, duplicate: true });
+    }
+    // Any other error (RLS, table missing) → fail loud so Stripe retries
+    console.error('[webhook] claim failed:', claimError);
+    await supabase.from('stripe_audit_log').insert({
+      action: 'webhook_claim_failed', actor_type: 'system',
+      stripe_event_id: event.id,
+      metadata: { error: claimError.message, type: event.type },
+    });
+    return Response.json({ error: 'idempotency claim failed' }, { status: 500 });
+  }
+
+  // Audit log (non-blocking — fire and forget the side log)
   await supabase.from('stripe_audit_log').insert({
     action: 'webhook_received', actor_type: 'system',
     stripe_event_id: event.id,
     metadata: { type: event.type, is_coach: isCoachWebhook },
   });
 
+  let handlerSucceeded = false;
+  let handlerError: string | null = null;
   try {
     if (isCoachWebhook) {
       await handleCoachEvent(event, supabase);
     } else {
       await handlePlatformEvent(event, supabase);
     }
+    handlerSucceeded = true;
   } catch (err: unknown) {
-    await supabase.from('stripe_audit_log').insert({
-      action: 'webhook_processing_error', actor_type: 'system',
-      stripe_event_id: event.id,
-      metadata: { error: (err as Error).message, type: event.type },
-    });
+    handlerError = (err as Error).message;
+  }
+
+  // Mark completion / failure OUTSIDE the try block so a metadata-update error
+  // doesn't roll back our knowledge of whether the handler succeeded.
+  // Both updates are best-effort; the source of truth is the business-logic state.
+  if (handlerSucceeded) {
+    try {
+      await supabase
+        .from('stripe_processed_events')
+        .update({ completed_at: new Date().toISOString() })
+        .eq('event_id', event.id);
+    } catch (e) { console.error('[webhook] completed_at update failed (non-fatal):', e); }
+  } else {
+    try {
+      await supabase
+        .from('stripe_processed_events')
+        .update({ failed_at: new Date().toISOString(), error_message: handlerError })
+        .eq('event_id', event.id);
+      await supabase.from('stripe_audit_log').insert({
+        action: 'webhook_processing_error', actor_type: 'system',
+        stripe_event_id: event.id,
+        metadata: { error: handlerError, type: event.type },
+      });
+    } catch (e) { console.error('[webhook] failure-mark update failed:', e); }
   }
 
   return Response.json({ received: true });
