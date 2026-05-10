@@ -3,7 +3,8 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { verifyCronSecret, authErrorResponse } from '@/lib/api/auth';
 
-export const maxDuration = 120;
+// Vercel hard cap. We batch-parallelize below to stay under this even with 50+ coachs.
+export const maxDuration = 300;
 
 // Cached Stripe instance (persists across requests in same lambda)
 let _stripe: Stripe | null = null;
@@ -82,10 +83,14 @@ async function runInvoice(supabase: ReturnType<typeof createClient<any>>, now: D
   ]);
   const existingCoachIds = new Set((existingInvoices || []).map((e: { coach_id: string }) => e.coach_id));
 
-  for (const coach of coaches) {
+  type Coach = NonNullable<typeof coaches>[number];
+
+  // Process one coach end-to-end (Stripe API calls inside MUST stay sequential per coach
+  // — invoice.create depends on invoiceItems being attached first).
+  async function processCoach(coach: Coach): Promise<'invoiced' | 'skipped' | { error: string }> {
     try {
-      if (existingCoachIds.has(coach.user_id)) { results.skipped++; continue; }
-      if (coach.trial_ends_at && new Date(coach.trial_ends_at) > now) { results.skipped++; continue; }
+      if (existingCoachIds.has(coach.user_id)) return 'skipped';
+      if (coach.trial_ends_at && new Date(coach.trial_ends_at) > now) return 'skipped';
 
       const monthStart = `${billYear}-${String(billMonth).padStart(2, '0')}-01`;
       const monthEnd = `${billYear}-${String(billMonth).padStart(2, '0')}-${daysInMonth}`;
@@ -123,20 +128,23 @@ async function runInvoice(supabase: ReturnType<typeof createClient<any>>, now: D
       const athleteTotal = detail.reduce((s, d) => s + d.cost, 0);
       const businessFee = coach.plan === 'business' ? BUSINESS_FEE : 0;
       const totalAmount = athleteTotal + businessFee;
-      if (totalAmount === 0) { results.skipped++; continue; }
+      if (totalAmount === 0) return 'skipped';
 
       let stripeInvoiceId: string | null = null;
       let status = 'pending';
+      let stripeErr: string | null = null;
 
       if (coach.stripe_customer_id && coach.has_payment_method) {
         try {
+          // Stripe rejects creating an invoice without items, so we attach items first.
+          // create+finalize+pay must remain sequential (each depends on the previous).
           if (athleteTotal > 0) await stripe.invoiceItems.create({ customer: coach.stripe_customer_id, amount: athleteTotal, currency: 'eur', description: `AthleteFlow — ${detail.length} athlète(s) ${billMonth}/${billYear}` });
           if (businessFee > 0) await stripe.invoiceItems.create({ customer: coach.stripe_customer_id, amount: businessFee, currency: 'eur', description: `AthleteFlow — Plan Business ${billMonth}/${billYear}` });
           const inv = await stripe.invoices.create({ customer: coach.stripe_customer_id, auto_advance: true, collection_method: 'charge_automatically', metadata: { coach_id: coach.user_id, month: String(billMonth), year: String(billYear) } });
           const fin = await stripe.invoices.finalizeInvoice(inv.id);
           try { const paid = await stripe.invoices.pay(fin.id); stripeInvoiceId = paid.id; status = paid.status === 'paid' ? 'paid' : 'failed'; }
           catch { stripeInvoiceId = fin.id; status = 'failed'; }
-        } catch (e: unknown) { status = 'failed'; results.errors.push({ coach: coach.user_id, error: (e as Error).message }); }
+        } catch (e: unknown) { status = 'failed'; stripeErr = (e as Error).message; }
       }
 
       await supabase.from('platform_invoices').insert({
@@ -153,8 +161,23 @@ async function runInvoice(supabase: ReturnType<typeof createClient<any>>, now: D
         amount: totalAmount, metadata: { month: billMonth, year: billYear, athletes: detail.length, status },
       });
 
-      results.invoiced++;
-    } catch (e: unknown) { results.errors.push({ coach: coach.user_id, error: (e as Error).message }); }
+      if (stripeErr) return { error: stripeErr };
+      return 'invoiced';
+    } catch (e: unknown) { return { error: (e as Error).message }; }
+  }
+
+  // Batch-parallelize: 5 coachs at a time (Stripe rate limit safe ~25 req/s vs 100/s cap).
+  const BATCH = 5;
+  for (let i = 0; i < coaches.length; i += BATCH) {
+    const batch = coaches.slice(i, i + BATCH);
+    const settled = await Promise.allSettled(batch.map(processCoach));
+    settled.forEach((r, idx) => {
+      const coachId = batch[idx].user_id;
+      if (r.status === 'rejected') { results.errors.push({ coach: coachId, error: String(r.reason) }); return; }
+      if (r.value === 'invoiced') results.invoiced++;
+      else if (r.value === 'skipped') results.skipped++;
+      else results.errors.push({ coach: coachId, error: r.value.error });
+    });
   }
   return results;
 }

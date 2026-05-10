@@ -4,12 +4,17 @@ import { useAuth } from '@/contexts/AuthContext'
 import { AthleteProvider } from '@/contexts/AthleteContext'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import Sidebar from '@/components/layout/Sidebar'
 import styles from '@/styles/sidebar.module.css'
 import { RecorderProvider } from '@/contexts/RecorderContext'
-import RecordingPill from '@/components/recorder/RecordingPill'
-import RetourFinalizeModal from '@/components/recorder/RetourFinalizeModal'
-import LiveCamBubble from '@/components/recorder/LiveCamBubble'
+
+// Recorder UI — lazy. Only mounted when actively recording (the components
+// no-op themselves when idle). Keeps RecorderContext provider in tree so the
+// recorder hook works on every page, but defers ~80 KB of UI JS off cold start.
+const RecordingPill = dynamic(() => import('@/components/recorder/RecordingPill'), { ssr: false, loading: () => null })
+const RetourFinalizeModal = dynamic(() => import('@/components/recorder/RetourFinalizeModal'), { ssr: false, loading: () => null })
+const LiveCamBubble = dynamic(() => import('@/components/recorder/LiveCamBubble'), { ssr: false, loading: () => null })
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()

@@ -63,17 +63,34 @@ export async function POST(request: Request) {
     }
   }
 
-  // Replay protection: check if this event was already processed
-  const { data: existingEvent } = await supabase
-    .from('stripe_audit_log')
-    .select('id')
-    .eq('stripe_event_id', event.id)
-    .maybeSingle();
-  if (existingEvent) {
-    return Response.json({ received: true, duplicate: true });
+  // Atomic idempotency guard via stripe_processed_events (PRIMARY KEY on event_id).
+  // INSERT first — if Stripe retries concurrently, the second lambda gets a unique
+  // violation on the PK and exits early before running the handler. Replaces the
+  // previous racy SELECT-then-INSERT pattern that could double-charge athletes.
+  // Migration: sql/stripe_webhook_idempotency.sql.
+  const { error: claimError } = await supabase
+    .from('stripe_processed_events')
+    .insert({
+      event_id: event.id,
+      event_type: event.type,
+      is_coach_webhook: isCoachWebhook,
+    });
+  if (claimError) {
+    // 23505 = unique_violation → another lambda already claimed this event
+    if ((claimError as { code?: string }).code === '23505') {
+      return Response.json({ received: true, duplicate: true });
+    }
+    // Any other error (RLS, table missing) → fail loud so Stripe retries
+    console.error('[webhook] claim failed:', claimError);
+    await supabase.from('stripe_audit_log').insert({
+      action: 'webhook_claim_failed', actor_type: 'system',
+      stripe_event_id: event.id,
+      metadata: { error: claimError.message, type: event.type },
+    });
+    return Response.json({ error: 'idempotency claim failed' }, { status: 500 });
   }
 
-  // Audit log
+  // Audit log (non-blocking — fire and forget the side log)
   await supabase.from('stripe_audit_log').insert({
     action: 'webhook_received', actor_type: 'system',
     stripe_event_id: event.id,
@@ -86,11 +103,20 @@ export async function POST(request: Request) {
     } else {
       await handlePlatformEvent(event, supabase);
     }
+    await supabase
+      .from('stripe_processed_events')
+      .update({ completed_at: new Date().toISOString() })
+      .eq('event_id', event.id);
   } catch (err: unknown) {
+    const msg = (err as Error).message;
+    await supabase
+      .from('stripe_processed_events')
+      .update({ failed_at: new Date().toISOString(), error_message: msg })
+      .eq('event_id', event.id);
     await supabase.from('stripe_audit_log').insert({
       action: 'webhook_processing_error', actor_type: 'system',
       stripe_event_id: event.id,
-      metadata: { error: (err as Error).message, type: event.type },
+      metadata: { error: msg, type: event.type },
     });
   }
 

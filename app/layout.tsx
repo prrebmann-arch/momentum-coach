@@ -4,10 +4,11 @@ import { SpeedInsights } from '@vercel/speed-insights/next'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { ToastProvider } from '@/contexts/ToastContext'
+// FontAwesome — only solid + regular kept. Brands removed (~90 KB) since no `fa-brands` usage in app.
+// If you ever add a brand icon, re-add brands.min.css OR use a SVG (preferred for one-off brand icons).
 import '@fortawesome/fontawesome-free/css/fontawesome.min.css'
 import '@fortawesome/fontawesome-free/css/solid.min.css'
 import '@fortawesome/fontawesome-free/css/regular.min.css'
-import '@fortawesome/fontawesome-free/css/brands.min.css'
 import './globals.css'
 
 const inter = Inter({
