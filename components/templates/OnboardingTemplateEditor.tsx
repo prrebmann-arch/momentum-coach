@@ -5,12 +5,9 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import FormGroup from '@/components/ui/FormGroup'
-import OnboardingTimeline, { type TimelinePoint } from '@/components/onboarding/OnboardingTimeline'
-import OnboardingTimelineVerticalSpine, {
+import OnboardingTimelineVerticalFeed, {
   type VerticalTimelinePoint,
-} from '@/components/onboarding/OnboardingTimelineVerticalSpine'
-import OnboardingTimelineVerticalFeed from '@/components/onboarding/OnboardingTimelineVerticalFeed'
-import OnboardingTimelineVerticalCompact from '@/components/onboarding/OnboardingTimelineVerticalCompact'
+} from '@/components/onboarding/OnboardingTimelineVerticalFeed'
 import OnboardingStepModal from '@/components/onboarding/OnboardingStepModal'
 import {
   monthIndexForOffset,
@@ -26,15 +23,6 @@ type ModalState =
   | { kind: 'closed' }
   | { kind: 'add'; defaultDay: number }
   | { kind: 'edit'; step: EditorStep }
-
-type ViewMode = 'horizontal' | 'spine' | 'feed' | 'compact'
-const VIEW_STORAGE_KEY = 'onboarding-view-mode'
-const VIEW_OPTIONS: { id: ViewMode; label: string; icon: string }[] = [
-  { id: 'spine', label: 'Spine', icon: 'fa-grip-lines-vertical' },
-  { id: 'feed', label: 'Feed', icon: 'fa-list-ul' },
-  { id: 'compact', label: 'Compact', icon: 'fa-bars' },
-  { id: 'horizontal', label: 'Horizontal', icon: 'fa-grip-lines' },
-]
 
 interface Props {
   template: OnboardingTemplate | null // null = create mode
@@ -59,25 +47,6 @@ export default function OnboardingTemplateEditor({ template, onSaved, onCancel }
   const [monthIndex, setMonthIndex] = useState(0)
   const [modal, setModal] = useState<ModalState>({ kind: 'closed' })
   const [saving, setSaving] = useState(false)
-  const [viewMode, setViewModeState] = useState<ViewMode>('spine')
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const stored = window.localStorage.getItem(VIEW_STORAGE_KEY) as ViewMode | null
-      if (stored && VIEW_OPTIONS.find((o) => o.id === stored)) setViewModeState(stored)
-    } catch {
-      /* noop */
-    }
-  }, [])
-  const setViewMode = (mode: ViewMode) => {
-    setViewModeState(mode)
-    try {
-      window.localStorage.setItem(VIEW_STORAGE_KEY, mode)
-    } catch {
-      /* noop */
-    }
-  }
 
   useEffect(() => {
     setName(template?.name ?? '')
@@ -85,11 +54,6 @@ export default function OnboardingTemplateEditor({ template, onSaved, onCancel }
     setIsDefault(!!template?.is_default)
     setSteps((template?.steps ?? []).map((s) => ({ ...s, _localId: nextLocalId() })))
   }, [template])
-
-  const points: TimelinePoint[] = useMemo(
-    () => steps.map((s) => ({ id: s._localId, day_offset: s.day_offset, type: s.type, title: s.title })),
-    [steps],
-  )
 
   const verticalPoints: VerticalTimelinePoint[] = useMemo(
     () =>
@@ -108,10 +72,6 @@ export default function OnboardingTemplateEditor({ template, onSaved, onCancel }
     const max = steps.reduce((m, s) => Math.max(m, s.day_offset), 0)
     return Math.max(monthIndexForOffset(max) + 1, 5)
   }, [steps])
-
-  const handleMove = (id: string, newDayOffset: number) => {
-    setSteps((prev) => prev.map((s) => (s._localId === id ? { ...s, day_offset: newDayOffset } : s)))
-  }
 
   const handleSaveStep = (data: {
     id?: string
@@ -259,80 +219,20 @@ export default function OnboardingTemplateEditor({ template, onSaved, onCancel }
         Définir comme template par défaut (pré-sélectionné à la création d&apos;un athlète)
       </label>
 
-      <div className={styles.viewPicker} role="tablist" aria-label="Choisir la vue">
-        {VIEW_OPTIONS.map((opt) => (
-          <button
-            key={opt.id}
-            type="button"
-            role="tab"
-            aria-selected={viewMode === opt.id}
-            className={viewMode === opt.id ? styles.active : ''}
-            onClick={() => setViewMode(opt.id)}
-            title={opt.label}
-          >
-            <i className={`fa-solid ${opt.icon}`} />
-            {opt.label}
-          </button>
-        ))}
-      </div>
-
-      {viewMode === 'horizontal' && (
-        <OnboardingTimeline
-          points={points}
+      <div className={styles.vWrap}>
+        <OnboardingTimelineVerticalFeed
+          points={verticalPoints}
+          startDate={null}
           monthIndex={monthIndex}
           maxMonthIndex={maxMonthIndex}
           onMonthChange={setMonthIndex}
-          onPointMove={handleMove}
           onPointClick={(id) => {
             const step = steps.find((s) => s._localId === id)
             if (step) setModal({ kind: 'edit', step })
           }}
-          onAxisClick={(day) => setModal({ kind: 'add', defaultDay: day })}
+          onAddAt={(day) => setModal({ kind: 'add', defaultDay: day })}
         />
-      )}
-      {viewMode === 'spine' && (
-        <div className={styles.vWrap}>
-          <OnboardingTimelineVerticalSpine
-            points={verticalPoints}
-            startDate={null}
-            onPointClick={(id) => {
-              const step = steps.find((s) => s._localId === id)
-              if (step) setModal({ kind: 'edit', step })
-            }}
-            onAddAt={(day) => setModal({ kind: 'add', defaultDay: day })}
-          />
-        </div>
-      )}
-      {viewMode === 'feed' && (
-        <div className={styles.vWrap}>
-          <OnboardingTimelineVerticalFeed
-            points={verticalPoints}
-            startDate={null}
-            monthIndex={monthIndex}
-            maxMonthIndex={maxMonthIndex}
-            onMonthChange={setMonthIndex}
-            onPointClick={(id) => {
-              const step = steps.find((s) => s._localId === id)
-              if (step) setModal({ kind: 'edit', step })
-            }}
-            onAddAt={(day) => setModal({ kind: 'add', defaultDay: day })}
-          />
-        </div>
-      )}
-      {viewMode === 'compact' && (
-        <div className={styles.vWrap}>
-          <OnboardingTimelineVerticalCompact
-            points={verticalPoints}
-            startDate={null}
-            onPointClick={(id) => {
-              const step = steps.find((s) => s._localId === id)
-              if (step) setModal({ kind: 'edit', step })
-            }}
-            onAddAt={(day) => setModal({ kind: 'add', defaultDay: day })}
-            onToggleDone={() => {}}
-          />
-        </div>
-      )}
+      </div>
 
       <OnboardingStepModal
         isOpen={modal.kind !== 'closed'}
