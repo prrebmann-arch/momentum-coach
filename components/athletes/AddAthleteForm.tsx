@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { generateSecurePassword } from '@/lib/utils'
 import Modal from '@/components/ui/Modal'
 import FormGroup from '@/components/ui/FormGroup'
+import { addDays, ensurePremiumTemplate, todayIso, type OnboardingTemplateStep } from '@/lib/onboarding'
 import styles from '@/styles/athletes.module.css'
 
 interface AddAthleteFormProps {
@@ -20,6 +21,13 @@ interface AddAthleteFormProps {
 interface OnboardingWorkflow {
   id: string
   name: string
+}
+
+interface OnboardingTemplateLite {
+  id: string
+  name: string
+  is_default: boolean
+  steps: OnboardingTemplateStep[]
 }
 
 export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthleteFormProps) {
@@ -51,6 +59,11 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
   const [workflows, setWorkflows] = useState<OnboardingWorkflow[]>([])
   const [selectedWorkflow, setSelectedWorkflow] = useState('')
 
+  // Onboarding timeline template
+  const [onboardingTemplates, setOnboardingTemplates] = useState<OnboardingTemplateLite[]>([])
+  const [selectedOnboardingTemplate, setSelectedOnboardingTemplate] = useState('')
+  const [onboardingStartDate, setOnboardingStartDate] = useState(todayIso())
+
   useEffect(() => {
     if (!isOpen || !user) return
     supabase
@@ -61,6 +74,36 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
       .then(({ data }) => {
         setWorkflows(data || [])
       })
+    ;(async () => {
+      let { data, error } = await supabase
+        .from('onboarding_templates')
+        .select('id, name, is_default, steps')
+        .eq('coach_id', user.id)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (error) {
+        console.error('[AddAthleteForm] onboarding_templates select', error)
+        return
+      }
+      let tpls = (data || []) as OnboardingTemplateLite[]
+      // Auto-seed default Premium template on first encounter
+      if (tpls.length === 0) {
+        const inserted = await ensurePremiumTemplate(supabase, user.id)
+        if (inserted) {
+          const refresh = await supabase
+            .from('onboarding_templates')
+            .select('id, name, is_default, steps')
+            .eq('coach_id', user.id)
+            .order('is_default', { ascending: false })
+            .limit(50)
+          tpls = (refresh.data || []) as OnboardingTemplateLite[]
+        }
+      }
+      setOnboardingTemplates(tpls)
+      const def = tpls.find((t) => t.is_default)
+      if (def) setSelectedOnboardingTemplate(def.id)
+    })()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, user])
 
@@ -78,6 +121,9 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
     setBillingAnchor('anniversary')
     setBillingDay('1')
     setSelectedWorkflow('')
+    const def = onboardingTemplates.find((t) => t.is_default)
+    setSelectedOnboardingTemplate(def?.id ?? '')
+    setOnboardingStartDate(todayIso())
   }
 
   const copyWhatsappMessage = async () => {
@@ -184,6 +230,11 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
 
       const workflowId = selectedWorkflow || null
 
+      const onboardingTpl = selectedOnboardingTemplate
+        ? onboardingTemplates.find((t) => t.id === selectedOnboardingTemplate)
+        : null
+      const onboardingStart = onboardingTpl ? (onboardingStartDate || todayIso()) : null
+
       const { data: insertedAthletes, error } = await supabase
         .from('athletes')
         .insert({
@@ -194,6 +245,7 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
           poids_objectif: null,
           objectif: 'maintenance',
           onboarding_workflow_id: workflowId,
+          onboarding_start_date: onboardingStart,
           coach_id: coachId,
           user_id: existingUserId,
         })
@@ -246,6 +298,29 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
           athlete_id: insertedAthlete.id,
           event: 'added',
         })
+      }
+
+      // Instantiate onboarding timeline steps if a template was selected
+      if (onboardingTpl && insertedAthlete && onboardingStart) {
+        const rows = (onboardingTpl.steps || []).map((s) => ({
+          athlete_id: insertedAthlete.id,
+          coach_id: coachId,
+          template_id: onboardingTpl.id,
+          day_offset: s.day_offset,
+          scheduled_date: addDays(onboardingStart, s.day_offset),
+          type: s.type,
+          title: s.title,
+          description: s.description ?? null,
+        }))
+        if (rows.length > 0) {
+          const { error: stepsErr } = await supabase
+            .from('athlete_onboarding_steps')
+            .insert(rows)
+          if (stepsErr) {
+            console.error('[AddAthleteForm] onboarding steps insert', stepsErr)
+            toast('Athlète créé mais timeline non initialisée', 'error')
+          }
+        }
       }
 
       // Create onboarding entry if workflow selected
@@ -376,32 +451,64 @@ export default function AddAthleteForm({ isOpen, onClose, onCreated }: AddAthlet
           </div>
 
           {/* ── Section: Onboarding ── */}
-          {workflows.length > 0 && (
+          {(workflows.length > 0 || onboardingTemplates.length > 0) && (
             <div className={styles.formSection}>
               <div className={styles.formSectionHeader}>
                 <div className={`${styles.formSectionIcon} ${styles.formSectionIconOnboarding}`}>
                   <i className="fa-solid fa-route" />
                 </div>
                 <div>
-                  <div className={styles.formSectionTitle}>Parcours</div>
-                  <div className={styles.formSectionSubtitle}>Assigner un parcours d&apos;onboarding</div>
+                  <div className={styles.formSectionTitle}>Onboarding</div>
+                  <div className={styles.formSectionSubtitle}>Timeline de coaching + parcours athlète</div>
                 </div>
               </div>
 
-              <FormGroup label="Parcours d'onboarding" htmlFor="add-workflow">
-                <select
-                  id="add-workflow"
-                  value={selectedWorkflow}
-                  onChange={(e) => setSelectedWorkflow(e.target.value)}
-                >
-                  <option value="">&mdash; Aucun &mdash;</option>
-                  {workflows.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
-                    </option>
-                  ))}
-                </select>
-              </FormGroup>
+              {onboardingTemplates.length > 0 && (
+                <>
+                  <FormGroup label="Template timeline" htmlFor="add-onboarding-template">
+                    <select
+                      id="add-onboarding-template"
+                      value={selectedOnboardingTemplate}
+                      onChange={(e) => setSelectedOnboardingTemplate(e.target.value)}
+                    >
+                      <option value="">&mdash; Aucun &mdash;</option>
+                      {onboardingTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} {t.is_default ? '(par défaut)' : ''} — {t.steps?.length || 0} points
+                        </option>
+                      ))}
+                    </select>
+                  </FormGroup>
+
+                  {selectedOnboardingTemplate && (
+                    <FormGroup label="Date de démarrage (J0)" htmlFor="add-onboarding-start">
+                      <input
+                        id="add-onboarding-start"
+                        type="date"
+                        value={onboardingStartDate}
+                        onChange={(e) => setOnboardingStartDate(e.target.value)}
+                      />
+                    </FormGroup>
+                  )}
+                </>
+              )}
+
+              {workflows.length > 0 && (
+                <FormGroup label="Parcours d'onboarding (app athlète)" htmlFor="add-workflow">
+                  <select
+                    id="add-workflow"
+                    value={selectedWorkflow}
+                    onChange={(e) => setSelectedWorkflow(e.target.value)}
+                  >
+                    <option value="">&mdash; Aucun &mdash;</option>
+                    {workflows.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormGroup>
+              )}
             </div>
           )}
 

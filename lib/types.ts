@@ -58,11 +58,16 @@ export interface Athlete {
   medicaments?: string | null
   notes_sante?: string | null
   onboarding_workflow_id?: string | null
+  onboarding_start_date?: string | null
   created_at: string
   /** Transient: attached from roadmap_phases query */
   _phase?: { athlete_id: string; phase: string; name: string } | null
   /** Transient: attached from athlete_payment_plans query */
   _payment?: { payment_status: string; amount: number; frequency: string; is_free: boolean } | null
+  /** Transient: next-due onboarding step (from athlete_onboarding_steps) */
+  _nextStep?: { id: string; scheduled_date: string; type: 'message' | 'call' | 'milestone'; title: string } | null
+  /** Transient: count of overdue + today steps */
+  _urgentCount?: number
 }
 
 export interface User {

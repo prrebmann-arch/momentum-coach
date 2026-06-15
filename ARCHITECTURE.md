@@ -32,6 +32,7 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/athletes` | `app/(app)/athletes/page.tsx` -> `components/athletes/AthletesList.tsx` | Athletes list, add athlete |
 | `/athletes/[id]` | `page.tsx` (redirects to /apercu) | — |
 | `/athletes/[id]/apercu` | overview tab | Athlete summary |
+| `/athletes/[id]/onboarding` | onboarding timeline | Per-athlete drag/drop timeline (months stacked, applies templates). Edits `athlete_onboarding_steps`. |
 | `/athletes/[id]/infos` | profile/contact info | Personal info edit |
 | `/athletes/[id]/training` | training tab | Workout programs, sessions, logs |
 | `/athletes/[id]/nutrition` | nutrition tab | Diet plans, logs |
@@ -49,7 +50,7 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/athletes/[id]/menstrual` | cycle logs | — |
 | `/bilans` | `app/(app)/bilans/page.tsx` -> `components/bilans/BilansOverview.tsx` | Cross-athlete bilans review |
 | `/videos` | `app/(app)/videos/page.tsx` | Cross-athlete technique videos to review |
-| `/templates` | `app/(app)/templates/page.tsx` | Training/Nutrition/**Compléments**/Workflows/Questionnaires tabs |
+| `/templates` | `app/(app)/templates/page.tsx` | Training/Nutrition/**Compléments**/**Onboarding**/Workflows/Questionnaires tabs |
 | `/aliments` | `app/(app)/aliments/page.tsx` (464 lines) | Coach's food DB CRUD |
 | `/exercices` | `app/(app)/exercices/page.tsx` | Coach's exercises DB CRUD |
 | `/formations` | `app/(app)/formations/page.tsx` -> `FormationsPage.tsx` | Course content |
@@ -114,6 +115,12 @@ All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer 
 ### `bloodtest/`
 - `BloodtestAnalysisProgress.tsx` — barre de chargement animée pendant l'analyse Claude (ETA basée sur historique, états dégradés stale/error/done).
 
+### `onboarding/`
+- `OnboardingTimeline.tsx` — composant réutilisable : ligne horizontale 1 mois, drag-drop points, click pour ajouter, mois préc/suiv. Mode read-only optionnel.
+- `OnboardingStepModal.tsx` — modal add/edit (type message/call/milestone + titre + jour + description). Bouton "Marquer fait" / "Supprimer".
+- `OnboardingStepBadge.tsx` — pastille colorée par urgence pour AthletesList ("J-3 R2", "Auj. Production plan", etc.). Pulse rouge si en retard.
+- `ApplyTemplateModal.tsx` — picker de template + date J0 + mode replace/append. Pré-sélectionne le template `is_default`.
+
 ### `bilans/`
 - `BilansOverview.tsx` — `/bilans` page body. Pulls `daily_reports`.
 - `BilanAccordion.tsx` — single-day expanded view.
@@ -132,6 +139,7 @@ All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer 
 ### `templates/`
 - `TrainingTemplatesList.tsx`, `NutritionTemplatesList.tsx`, `WorkflowsList.tsx`, `QuestionnaireTemplatesList.tsx`.
 - `SupplementTemplatesList.tsx`, `SupplementTemplateEditor.tsx` — packs de compléments réutilisables (sub-tabs complement/supplementation).
+- `OnboardingTemplatesList.tsx`, `OnboardingTemplateEditor.tsx` — templates de timeline d'onboarding. Auto-seed "Onboarding Premium" au premier visite (13 points sur J0→J30, basé sur process Romain Synergy).
 - `TrainingTemplateEditor.tsx` (legacy — `ProgramEditor` is preferred).
 
 ### `business/`
@@ -205,6 +213,9 @@ Source of truth = SQL migrations in `sql/*.sql` + observed SELECTs.
 ### Templates / Onboarding
 - `training_templates`, `nutrition_templates` (col `nom`, JSON `meals_data` heavy — exclude from list queries), `questionnaire_templates`, `questionnaire_assignments`, `questionnaire_responses`.
 - `onboarding_workflows` (col `name`!), `athlete_onboarding`.
+- `onboarding_templates` (`coach_id, name, description, is_default, steps jsonb`). Steps = `[{day_offset, type:'message'|'call'|'milestone', title, description?}]`. Source de vérité pour les templates de timeline.
+- `athlete_onboarding_steps` (`athlete_id, coach_id, template_id, day_offset, scheduled_date, type, title, description, done_at, dismissed_at`). Instances per-athlète, créées au moment d'appliquer un template. Une fois matérialisées, les edits du template ne propagent PAS (drift par athlète OK).
+- `athletes.onboarding_start_date` (date, nullable) — ancre J0 de la timeline. NULL = pas de timeline active.
 
 ### Health / Posing / Suppl.
 - `posing_retours`, `posing_videos` (audio col added).
@@ -358,6 +369,12 @@ useRefetchOnResume(load, loading)
 | Modify FODMAP coach UI | `app/(app)/athletes/[id]/fodmap/page.tsx` |
 | Modify FODMAP catalog (8 groups, 24 foods, 72 portions) | `lib/fodmapCatalog.ts` (mirror in ATHLETE/src/utils/fodmapCatalog.js) |
 | Modify FODMAP status derivation / ISO week helpers | `lib/fodmap.ts` |
+| Modify the onboarding timeline UI (drag, add, month nav) | `components/onboarding/OnboardingTimeline.tsx` |
+| Modify badge colors / urgency thresholds (J-3 etc.) | `lib/onboarding.ts` (`computeUrgency`) |
+| Modify the seeded "Premium" template content | `lib/onboarding.ts` (`PREMIUM_TEMPLATE_STEPS`) |
+| Modify athlete onboarding sub-tab logic (apply/move/done) | `app/(app)/athletes/[id]/onboarding/page.tsx` |
+| Modify how athletes list fetches next-due step | `contexts/AthleteContext.tsx` (`fetchAthletesData` — 4th parallel query on `athlete_onboarding_steps`) |
+| Modify how the new-athlete form picks a template | `components/athletes/AddAthleteForm.tsx` (`selectedOnboardingTemplate` + steps insert) |
 
 ---
 
