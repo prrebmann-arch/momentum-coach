@@ -44,31 +44,15 @@ function getBadgeLook(level: 'overdue' | 'today' | 'imminent' | 'soon' | 'later'
         icon: 'fa-circle-exclamation',
       }
     case 'soon':
-      return {
-        word: 'PROCHAINE ACTION',
-        sizeClass: styles.badgeM,
-        bg: 'rgba(234, 179, 8, 0.18)',
-        color: '#eab308',
-        ring: 'none',
-        icon: 'fa-clock',
-      }
     case 'later':
-      return {
-        word: 'PROCHAINE ACTION',
-        sizeClass: styles.badgeM,
-        bg: 'rgba(132, 204, 22, 0.18)',
-        color: '#84cc16',
-        ring: 'none',
-        icon: 'fa-clock',
-      }
     case 'far':
       return {
         word: 'PROCHAINE ACTION',
-        sizeClass: styles.badgeM,
-        bg: 'rgba(148, 163, 184, 0.15)',
-        color: 'var(--text2)',
-        ring: 'none',
-        icon: 'fa-calendar',
+        sizeClass: styles.badgeXL,
+        bg: '#16a34a', // strong green (matches the EN RETARD XL look)
+        color: 'white',
+        ring: '0 0 0 2px rgba(22, 163, 74, 0.35), 0 4px 14px rgba(22, 163, 74, 0.45)',
+        icon: 'fa-circle-arrow-right',
       }
     default:
       return null
