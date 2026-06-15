@@ -73,6 +73,31 @@ export default function OnboardingTemplateEditor({ template, onSaved, onCancel }
     return Math.max(monthIndexForOffset(max) + 1, 5)
   }, [steps])
 
+  // Persist a steps array to the DB for an EXISTING template. No-op when the
+  // template hasn't been created yet (the user is still naming it in "create"
+  // mode) — in that case the steps stay in local draft until the top
+  // "Créer" button writes everything at once.
+  const persistSteps = async (nextSteps: EditorStep[]) => {
+    if (!template?.id) return
+    const payload = nextSteps
+      .slice()
+      .sort((a, b) => a.day_offset - b.day_offset)
+      .map((s) => ({
+        day_offset: s.day_offset,
+        type: s.type,
+        title: s.title,
+        description: s.description ?? undefined,
+      }))
+    const { error } = await supabase
+      .from('onboarding_templates')
+      .update({ steps: payload })
+      .eq('id', template.id)
+    if (error) {
+      console.error('[onboarding template] auto-save steps', error)
+      toast(`Erreur: ${error.message}`, 'error')
+    }
+  }
+
   const handleSaveStep = (data: {
     id?: string
     day_offset: number
@@ -80,38 +105,44 @@ export default function OnboardingTemplateEditor({ template, onSaved, onCancel }
     title: string
     description: string | null
   }) => {
-    if (data.id) {
-      setSteps((prev) =>
-        prev.map((s) =>
-          s._localId === data.id
-            ? {
-                ...s,
-                day_offset: data.day_offset,
-                type: data.type,
-                title: data.title,
-                description: data.description ?? undefined,
-              }
-            : s,
-        ),
-      )
-    } else {
-      setSteps((prev) => [
-        ...prev,
-        {
-          _localId: nextLocalId(),
-          day_offset: data.day_offset,
-          type: data.type,
-          title: data.title,
-          description: data.description ?? undefined,
-        },
-      ])
-    }
+    setSteps((prev) => {
+      const next = data.id
+        ? prev.map((s) =>
+            s._localId === data.id
+              ? {
+                  ...s,
+                  day_offset: data.day_offset,
+                  type: data.type,
+                  title: data.title,
+                  description: data.description ?? undefined,
+                }
+              : s,
+          )
+        : [
+            ...prev,
+            {
+              _localId: nextLocalId(),
+              day_offset: data.day_offset,
+              type: data.type,
+              title: data.title,
+              description: data.description ?? undefined,
+            },
+          ]
+      // Fire-and-forget auto-save for existing templates. Local state is set
+      // synchronously above so the UI updates immediately.
+      persistSteps(next)
+      return next
+    })
     setModal({ kind: 'closed' })
   }
 
   const handleDeleteStep = (id: string) => {
     if (!confirm('Supprimer ce point ?')) return
-    setSteps((prev) => prev.filter((s) => s._localId !== id))
+    setSteps((prev) => {
+      const next = prev.filter((s) => s._localId !== id)
+      persistSteps(next)
+      return next
+    })
     setModal({ kind: 'closed' })
   }
 
@@ -182,9 +213,25 @@ export default function OnboardingTemplateEditor({ template, onSaved, onCancel }
           <i className="fa-solid fa-arrow-left" style={{ marginRight: 6 }} />
           Retour
         </button>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {template?.id && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12,
+                color: '#22c55e',
+                fontWeight: 600,
+              }}
+              title="Les points sont sauvegardés automatiquement à chaque ajout / modification."
+            >
+              <i className="fa-solid fa-circle-check" />
+              Auto-sauvegardé
+            </span>
+          )}
           <button className="btn btn-red" onClick={handleSave} disabled={saving}>
-            {saving ? 'Enregistrement…' : template?.id ? 'Enregistrer' : 'Créer'}
+            {saving ? 'Enregistrement…' : template?.id ? 'Enregistrer nom & description' : 'Créer'}
           </button>
         </div>
       </div>
