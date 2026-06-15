@@ -7,10 +7,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
 import { getPageCache, setPageCache } from '@/lib/utils'
-import Badge from '@/components/ui/Badge'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
-import styles from '@/styles/athlete-tabs.module.css'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -324,116 +322,501 @@ export default function QuestionnairesPage() {
   }
 
   return (
-    <div>
-      {/* Send from template */}
-      <div style={{ background: 'var(--bg2)', border: '1px solid var(--glass-border)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
-        <h3 style={{ fontSize: 15, margin: '0 0 12px' }}>Envoyer un questionnaire</h3>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          {templates.length ? (
-            <>
-              <select className="form-control" style={{ width: 'auto', minWidth: 200 }} value={selectedTemplate} onChange={(e) => setSelectedTemplate(e.target.value)}>
-                <option value="">&mdash; Choisir un template &mdash;</option>
-                {templates.map((t: any) => (
-                  <option key={t.id} value={t.id}>{t.titre} ({(t.questions || []).length}q)</option>
-                ))}
-              </select>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
-                <input type="checkbox" checked={obligatoire} onChange={(e) => setObligatoire(e.target.checked)} /> Obligatoire
-              </label>
-              <button className="btn btn-red btn-sm" onClick={sendFromTemplate} disabled={sending}>
-                <i className="fas fa-paper-plane" /> Envoyer
-              </button>
-            </>
-          ) : (
-            <span style={{ color: 'var(--text3)', fontSize: 13 }}>Aucun template. Creez-en un dans Templates.</span>
-          )}
-          <button className="btn btn-outline btn-sm" onClick={() => { setShowQuick(true); setQuickQuestions([{ id: crypto.randomUUID(), label: '', type: 'text', options: [], required: false }]) }}>
-            <i className="fas fa-bolt" /> Questionnaire rapide
-          </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* ── Toolbar : Envoyer ── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+          padding: '14px 18px',
+          background: 'linear-gradient(180deg, var(--bg3, var(--bg2)), var(--bg2))',
+          border: '1px solid var(--border)',
+          borderRadius: 12,
+          boxShadow: '0 1px 0 rgba(255,255,255,0.02) inset, 0 2px 8px rgba(0,0,0,0.15)',
+        }}
+      >
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--text2)', fontSize: 13, fontWeight: 600 }}>
+          <i className="fa-solid fa-paper-plane" />
+          Envoyer
         </div>
+        {templates.length ? (
+          <>
+            <select
+              className="form-control"
+              style={{ minWidth: 220, flex: '0 1 280px' }}
+              value={selectedTemplate}
+              onChange={(e) => setSelectedTemplate(e.target.value)}
+            >
+              <option value="">— Choisir un template —</option>
+              {templates.map((t: any) => (
+                <option key={t.id} value={t.id}>{t.titre} ({(t.questions || []).length}q)</option>
+              ))}
+            </select>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', color: 'var(--text2)' }}>
+              <input type="checkbox" checked={obligatoire} onChange={(e) => setObligatoire(e.target.checked)} />
+              Obligatoire
+            </label>
+            <button className="btn btn-red btn-sm" onClick={sendFromTemplate} disabled={sending || !selectedTemplate}>
+              {sending ? <i className="fas fa-spinner fa-spin" /> : <><i className="fas fa-paper-plane" style={{ marginRight: 6 }} />Envoyer</>}
+            </button>
+          </>
+        ) : (
+          <span style={{ color: 'var(--text3)', fontSize: 13 }}>Aucun template. Créez-en un dans Templates.</span>
+        )}
+        <button
+          className="btn btn-outline btn-sm"
+          style={{ marginLeft: 'auto' }}
+          onClick={() => { setShowQuick(true); setQuickQuestions([{ id: crypto.randomUUID(), label: '', type: 'text', options: [], required: false }]) }}
+        >
+          <i className="fas fa-bolt" style={{ marginRight: 6 }} />
+          Questionnaire rapide
+        </button>
       </div>
 
-      {/* History */}
-      <h3 style={{ fontSize: 15, margin: '0 0 12px' }}>Historique</h3>
+      {/* ── Section Historique ── */}
+      <div
+        style={{
+          background: 'linear-gradient(180deg, var(--bg2), var(--bg))',
+          border: '1px solid var(--border)',
+          borderRadius: 14,
+          padding: '20px 24px 24px 24px',
+          boxShadow: '0 1px 0 rgba(255,255,255,0.02) inset',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+            marginBottom: 18,
+            paddingBottom: 14,
+            borderBottom: '1px solid var(--border)',
+          }}
+        >
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>
+            <i className="fa-solid fa-clipboard-list" style={{ color: 'var(--text2)' }} />
+            Historique
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '3px 8px',
+                borderRadius: 999,
+                background: 'var(--bg3)',
+                color: 'var(--text2)',
+                letterSpacing: 0.3,
+              }}
+            >
+              {assignments.length} envoyé{assignments.length > 1 ? 's' : ''}
+            </span>
+          </div>
+          <span style={{ fontSize: 12, color: 'var(--text2)' }}>Clique sur un questionnaire pour voir le détail</span>
+        </div>
 
-      {!assignments.length ? (
-        <EmptyState icon="fas fa-clipboard-list" message="Aucun questionnaire envoye" />
-      ) : (
-        assignments.map((a: any) => {
-          const title = a.questionnaire_templates?.titre || '(Sans titre)'
-          const sentDate = new Date(a.sent_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
-          const isPending = a.status === 'pending'
-          const isExpanded = expandedIds.has(a.id)
-          const resp = responsesMap[a.id]
-          const questions = a.questions_snapshot || []
-          const answers = resp ? (resp.responses || []) : []
+        {!assignments.length ? (
+          <EmptyState icon="fas fa-clipboard-list" message="Aucun questionnaire envoyé" />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {assignments.map((a: any) => {
+              const title = a.questionnaire_templates?.titre || '(Sans titre)'
+              const sentDate = new Date(a.sent_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+              const isPending = a.status === 'pending'
+              const isExpanded = expandedIds.has(a.id)
+              const resp = responsesMap[a.id]
+              const questions = a.questions_snapshot || []
+              const answers = resp ? (resp.responses || []) : []
+              const accent = isPending ? '#f97316' : '#22c55e'
 
-          return (
-            <div key={a.id} className={styles.qtCard}>
-              <div className={styles.qtCardHeader}>
-                <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => toggleDetail(a.id)}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <i className="fas fa-chevron-right" style={{ fontSize: 11, color: 'var(--text3)', transition: 'transform .2s', transform: isExpanded ? 'rotate(90deg)' : '' }} />
-                    <span style={{ fontWeight: 700, fontSize: 14 }}>{title}</span>
-                    <Badge variant={isPending ? 'warning' : 'success'}>{isPending ? 'En attente' : `Complete${a.completed_at ? ' \u00b7 ' + new Date(a.completed_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : ''}`}</Badge>
-                    {a.obligatoire && <Badge variant="error">Obligatoire</Badge>}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2, paddingLeft: 22 }}>
-                    Envoye le {sentDate} &middot; {questions.length} question(s)
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={(e) => e.stopPropagation()}>
-                  {isPending && (
-                    <button className="btn btn-outline btn-sm" onClick={() => relance(a.id)}>
-                      <i className="fas fa-bell" /> Relancer
-                    </button>
-                  )}
-                  <button className="btn btn-outline btn-sm" style={{ color: 'var(--danger)' }} onClick={() => deleteAssignment(a.id)}>
-                    <i className="fas fa-trash" />
-                  </button>
-                </div>
-              </div>
-
-              {isExpanded && (
-                <div className={styles.qtDetail}>
-                  {resp && (
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--success)', marginBottom: 10 }}>
-                      <i className="fas fa-check-circle" /> Reponses recues
-                    </div>
-                  )}
-                  {questions.map((q: any, qi: number) => {
-                    const typeInfo = Q_TYPES.find((t) => t.value === q.type)
-                    const ans = answers.find((r: any) => r.question_id === q.id)
-                    return (
-                      <div key={qi} style={{ marginBottom: 10 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <i className={`fas ${typeInfo?.icon || 'fa-question'}`} style={{ fontSize: 11, color: 'var(--text3)', width: 16, textAlign: 'center' }} />
-                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)' }}>
-                            {q.label || '(sans label)'}{q.required && <span style={{ color: 'var(--danger)', fontSize: 10, marginLeft: 4 }}>*</span>}
+              return (
+                <div
+                  key={a.id}
+                  style={{
+                    background: 'var(--bg2)',
+                    border: '1px solid var(--border)',
+                    borderLeft: `3px solid ${accent}`,
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    transition: 'border-color .15s ease, box-shadow .15s ease',
+                    boxShadow: isExpanded ? '0 4px 18px rgba(0,0,0,0.25)' : undefined,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '14px 16px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => toggleDetail(a.id)}
+                  >
+                    <i
+                      className="fa-solid fa-chevron-right"
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--text2)',
+                        transition: 'transform .2s',
+                        transform: isExpanded ? 'rotate(90deg)' : '',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{title}</span>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            padding: '3px 9px',
+                            background: isPending ? 'rgba(249, 115, 22, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                            color: accent,
+                            fontSize: 10.5,
+                            fontWeight: 800,
+                            letterSpacing: 0.5,
+                            textTransform: 'uppercase',
+                            borderRadius: 999,
+                          }}
+                        >
+                          <i className={`fa-solid ${isPending ? 'fa-clock' : 'fa-check'}`} style={{ fontSize: 9 }} />
+                          {isPending
+                            ? 'En attente'
+                            : `Complète${a.completed_at ? ' · ' + new Date(a.completed_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : ''}`}
+                        </span>
+                        {a.obligatoire && (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              padding: '3px 9px',
+                              background: 'rgba(239, 68, 68, 0.15)',
+                              color: '#ef4444',
+                              fontSize: 10.5,
+                              fontWeight: 800,
+                              letterSpacing: 0.5,
+                              textTransform: 'uppercase',
+                              borderRadius: 999,
+                            }}
+                          >
+                            <i className="fa-solid fa-exclamation" style={{ fontSize: 9 }} />
+                            Obligatoire
                           </span>
-                        </div>
-                        {resp && (
-                          <div style={{ marginTop: 4, fontSize: 14, paddingLeft: 22 }}>
-                            {ans && q.type === 'photo' && isPhotoAnswer(ans.answer) ? (
-                              <PhotoAnswer pathOrUrl={ans.answer} />
-                            ) : ans ? (
-                              <span style={{ color: q.type === 'yesno' ? (ans.answer ? 'var(--success)' : 'var(--danger)') : 'var(--text)' }}>
-                                {formatAnswer(q, ans.answer)}
-                              </span>
-                            ) : (
-                              <span style={{ color: 'var(--text3)', fontStyle: 'italic' }}>Pas de reponse</span>
-                            )}
-                          </div>
                         )}
                       </div>
-                    )
-                  })}
+                      <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>
+                        <i className="fa-regular fa-calendar" style={{ marginRight: 6, opacity: 0.6 }} />
+                        Envoyé le {sentDate}
+                        <span style={{ margin: '0 8px', opacity: 0.4 }}>·</span>
+                        {questions.length} question{questions.length > 1 ? 's' : ''}
+                      </div>
+                    </div>
+                    <div
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {isPending && (
+                        <button className="btn btn-outline btn-sm" onClick={() => relance(a.id)}>
+                          <i className="fas fa-bell" style={{ marginRight: 4 }} />
+                          Relancer
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-outline btn-sm"
+                        style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)' }}
+                        onClick={() => deleteAssignment(a.id)}
+                        aria-label="Supprimer"
+                        title="Supprimer"
+                      >
+                        <i className="fas fa-trash" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div
+                      style={{
+                        padding: '16px 18px 18px 18px',
+                        borderTop: '1px solid var(--border)',
+                        background: 'var(--bg)',
+                      }}
+                    >
+                      {resp ? (
+                        <div
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '5px 12px',
+                            background: 'rgba(34, 197, 94, 0.15)',
+                            color: '#22c55e',
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            letterSpacing: 0.5,
+                            textTransform: 'uppercase',
+                            marginBottom: 14,
+                          }}
+                        >
+                          <i className="fa-solid fa-circle-check" />
+                          Réponses reçues
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '5px 12px',
+                            background: 'rgba(249, 115, 22, 0.15)',
+                            color: '#f97316',
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            letterSpacing: 0.5,
+                            textTransform: 'uppercase',
+                            marginBottom: 14,
+                          }}
+                        >
+                          <i className="fa-solid fa-clock" />
+                          Aperçu des questions (en attente)
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {questions.map((q: any, qi: number) => {
+                          const typeInfo = Q_TYPES.find((t) => t.value === q.type)
+                          const ans = answers.find((r: any) => r.question_id === q.id)
+                          return (
+                            <QuestionRow
+                              key={qi}
+                              index={qi + 1}
+                              question={q}
+                              typeIcon={typeInfo?.icon || 'fa-question'}
+                              answer={ans}
+                              hasResponse={!!resp}
+                            />
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          )
-        })
-      )}
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Question + answer row (used inside expanded assignment cards) ──
+function QuestionRow({
+  index,
+  question,
+  typeIcon,
+  answer,
+  hasResponse,
+}: {
+  index: number
+  question: any
+  typeIcon: string
+  answer: any | undefined
+  hasResponse: boolean
+}) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '36px 1fr',
+        gap: 12,
+        padding: '12px 14px',
+        background: 'var(--bg2)',
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+      }}
+    >
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 10,
+          background: 'var(--bg3)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+          color: 'var(--text2)',
+          fontWeight: 800,
+          fontSize: 13,
+          position: 'relative',
+        }}
+        title={`Question #${index}`}
+      >
+        {index}
+        <i
+          className={`fa-solid ${typeIcon}`}
+          style={{
+            position: 'absolute',
+            bottom: -6,
+            right: -6,
+            fontSize: 9,
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: '50%',
+            width: 16,
+            height: 16,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--text2)',
+          }}
+        />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 13.5,
+            fontWeight: 600,
+            color: 'var(--text)',
+            lineHeight: 1.4,
+            marginBottom: hasResponse ? 8 : 0,
+          }}
+        >
+          {question.label || '(sans label)'}
+          {question.required && (
+            <span style={{ color: '#ef4444', fontSize: 11, marginLeft: 4, fontWeight: 700 }}>*</span>
+          )}
+        </div>
+        {hasResponse && <AnswerCell question={question} answer={answer} />}
+      </div>
+    </div>
+  )
+}
+
+function AnswerCell({ question, answer }: { question: any; answer: any | undefined }) {
+  if (!answer) {
+    return (
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '4px 10px',
+          background: 'rgba(148, 163, 184, 0.1)',
+          color: 'var(--text2)',
+          borderRadius: 8,
+          fontSize: 12,
+          fontStyle: 'italic',
+        }}
+      >
+        <i className="fa-solid fa-minus" style={{ fontSize: 10 }} />
+        Pas de réponse
+      </div>
+    )
+  }
+
+  const val = answer.answer
+
+  if (question.type === 'photo' && isPhotoAnswer(val)) {
+    return <PhotoAnswer pathOrUrl={val} />
+  }
+
+  if (question.type === 'yesno') {
+    const isYes = !!val
+    return (
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '5px 12px',
+          background: isYes ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+          color: isYes ? '#22c55e' : '#ef4444',
+          borderRadius: 999,
+          fontSize: 13,
+          fontWeight: 700,
+        }}
+      >
+        <i className={`fa-solid ${isYes ? 'fa-check' : 'fa-xmark'}`} />
+        {isYes ? 'Oui' : 'Non'}
+      </div>
+    )
+  }
+
+  if (question.type === 'rating') {
+    const num = typeof val === 'number' ? val : parseInt(String(val), 10) || 0
+    const pct = Math.max(0, Math.min(100, (num / 10) * 100))
+    const color = num >= 7 ? '#22c55e' : num >= 4 ? '#eab308' : '#ef4444'
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 18, fontWeight: 800, color, lineHeight: 1, minWidth: 48 }}>
+          {num}
+          <span style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 500 }}>/10</span>
+        </span>
+        <div
+          style={{
+            flex: 1,
+            maxWidth: 200,
+            height: 6,
+            background: 'var(--bg3)',
+            borderRadius: 999,
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width .3s ease' }} />
+        </div>
+      </div>
+    )
+  }
+
+  if (question.type === 'choice') {
+    const items = Array.isArray(val) ? val : [val]
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {items.filter(Boolean).map((it, i) => (
+          <span
+            key={i}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 10px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              color: '#ef4444',
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            <i className="fa-solid fa-circle-check" style={{ fontSize: 9 }} />
+            {String(it)}
+          </span>
+        ))}
+      </div>
+    )
+  }
+
+  // Default: text answer in a soft container
+  return (
+    <div
+      style={{
+        padding: '8px 12px',
+        background: 'var(--bg3)',
+        border: '1px solid var(--border)',
+        borderRadius: 8,
+        fontSize: 13.5,
+        color: 'var(--text)',
+        lineHeight: 1.5,
+        whiteSpace: 'pre-wrap',
+      }}
+    >
+      {String(val)}
     </div>
   )
 }
