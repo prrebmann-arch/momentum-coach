@@ -45,7 +45,9 @@ export default function TrainingTemplateEditor({
   onCancel,
 }: Props) {
   const supabase = createClient()
-  const { coach } = useAuth()
+  // `coach.id` is coach_profiles.id (≠ auth.users.id). RLS expects coach_id = auth.uid(),
+  // so writes must use `user.id`. See tasks/lessons.md 2026-06-15.
+  const { user } = useAuth()
   const { toast } = useToast()
 
   const [name, setName] = useState(initialName)
@@ -120,7 +122,7 @@ export default function TrainingTemplateEditor({
       toast('Le nom est obligatoire', 'error')
       return
     }
-    if (!coach) return
+    if (!user) return
 
     setSaving(true)
     const patternData = patternType === 'pattern' ? { pattern } : { days: fixedDays.split(',').map((d) => d.trim()).filter(Boolean) }
@@ -141,7 +143,7 @@ export default function TrainingTemplateEditor({
       pattern_type: patternType,
       pattern_data: patternData,
       sessions_data: sessionsData,
-      coach_id: coach.id,
+      coach_id: user?.id,
     }
 
     let error
