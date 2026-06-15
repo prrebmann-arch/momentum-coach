@@ -9,6 +9,7 @@ import styles from '@/styles/athletes.module.css'
 
 const TABS = [
   { label: 'Apercu', route: 'apercu', icon: 'fa-eye' },
+  { label: 'Onboard.', route: 'onboarding', icon: 'fa-flag-checkered' },
   { label: 'Infos', route: 'infos', icon: 'fa-id-card' },
   { label: 'Entr.', route: 'training', icon: 'fa-dumbbell' },
   { label: 'Nutrition', route: 'nutrition', icon: 'fa-utensils' },
