@@ -51,7 +51,9 @@ function parseSteps(raw: WorkflowStep[] | string | null | undefined): WorkflowSt
 
 export default function WorkflowsList({ workflows, onRefresh }: Props) {
   const supabase = createClient()
-  const { coach } = useAuth()
+  // `coach.id` is coach_profiles.id (≠ auth.users.id). RLS expects coach_id = auth.uid(),
+  // so writes must use `user.id`. See tasks/lessons.md 2026-06-15.
+  const { user } = useAuth()
   const { toast } = useToast()
 
   const [editing, setEditing] = useState<string | null>(null)
@@ -111,14 +113,14 @@ export default function WorkflowsList({ workflows, onRefresh }: Props) {
       toast('Le nom est requis', 'error')
       return
     }
-    if (!coach) return
+    if (!user) return
 
     setSaving(true)
     const payload = {
       name: wfName.trim(),
       description: wfDesc.trim() || null,
       steps,
-      coach_id: coach.id,
+      coach_id: user.id,
     }
 
     let error
