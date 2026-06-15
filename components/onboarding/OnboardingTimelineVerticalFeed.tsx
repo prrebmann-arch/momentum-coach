@@ -10,7 +10,15 @@ import {
   type OnboardingStepType,
 } from '@/lib/onboarding'
 import styles from '@/styles/onboarding.module.css'
-import type { VerticalTimelinePoint } from './OnboardingTimelineVerticalSpine'
+
+export interface VerticalTimelinePoint {
+  id: string
+  day_offset: number
+  type: OnboardingStepType
+  title: string
+  description?: string | null
+  done?: boolean
+}
 
 interface Props {
   points: VerticalTimelinePoint[]

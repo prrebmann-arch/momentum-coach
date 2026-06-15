@@ -8,12 +8,9 @@ import { useToast } from '@/contexts/ToastContext'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import Skeleton from '@/components/ui/Skeleton'
 import Toggle from '@/components/ui/Toggle'
-import OnboardingTimeline, { type TimelinePoint } from '@/components/onboarding/OnboardingTimeline'
-import OnboardingTimelineVerticalSpine, {
+import OnboardingTimelineVerticalFeed, {
   type VerticalTimelinePoint,
-} from '@/components/onboarding/OnboardingTimelineVerticalSpine'
-import OnboardingTimelineVerticalFeed from '@/components/onboarding/OnboardingTimelineVerticalFeed'
-import OnboardingTimelineVerticalCompact from '@/components/onboarding/OnboardingTimelineVerticalCompact'
+} from '@/components/onboarding/OnboardingTimelineVerticalFeed'
 import OnboardingStepInlineEditor from '@/components/onboarding/OnboardingStepInlineEditor'
 import ApplyTemplateModal from '@/components/onboarding/ApplyTemplateModal'
 import Modal from '@/components/ui/Modal'
@@ -32,15 +29,6 @@ type ModalState =
   | { kind: 'closed' }
   | { kind: 'add'; defaultDay: number }
 
-type ViewMode = 'horizontal' | 'spine' | 'feed' | 'compact'
-const VIEW_STORAGE_KEY = 'onboarding-view-mode'
-const VIEW_OPTIONS: { id: ViewMode; label: string; icon: string }[] = [
-  { id: 'spine', label: 'Spine', icon: 'fa-grip-lines-vertical' },
-  { id: 'feed', label: 'Feed', icon: 'fa-list-ul' },
-  { id: 'compact', label: 'Compact', icon: 'fa-bars' },
-  { id: 'horizontal', label: 'Horizontal', icon: 'fa-grip-lines' },
-]
-
 export default function AthleteOnboardingPage() {
   const params = useParams<{ id: string }>()
   const { user } = useAuth()
@@ -58,27 +46,6 @@ export default function AthleteOnboardingPage() {
   const [modal, setModal] = useState<ModalState>({ kind: 'closed' })
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null)
   const [applyOpen, setApplyOpen] = useState(false)
-  // Default to "spine" — the brand-new big vertical view. User can switch back to horizontal anytime.
-  const [viewMode, setViewModeState] = useState<ViewMode>('spine')
-
-  // Hydrate view-mode from localStorage on mount (avoid SSR/client mismatch by reading in effect).
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      const stored = window.localStorage.getItem(VIEW_STORAGE_KEY) as ViewMode | null
-      if (stored && VIEW_OPTIONS.find((o) => o.id === stored)) setViewModeState(stored)
-    } catch {
-      /* noop */
-    }
-  }, [])
-  const setViewMode = (mode: ViewMode) => {
-    setViewModeState(mode)
-    try {
-      window.localStorage.setItem(VIEW_STORAGE_KEY, mode)
-    } catch {
-      /* noop */
-    }
-  }
 
   const loadData = useCallback(async () => {
     if (!user?.id || !athleteId) return
@@ -156,18 +123,6 @@ export default function AthleteOnboardingPage() {
     [steps, hideDone],
   )
 
-  const points: TimelinePoint[] = useMemo(
-    () =>
-      visibleSteps.map((s) => ({
-        id: s.id,
-        day_offset: s.day_offset,
-        type: s.type,
-        title: s.title,
-        done: !!s.done_at,
-      })),
-    [visibleSteps],
-  )
-
   const verticalPoints: VerticalTimelinePoint[] = useMemo(
     () =>
       visibleSteps.map((s) => ({
@@ -223,26 +178,6 @@ export default function AthleteOnboardingPage() {
       await loadData()
     }
     toast('Date de démarrage mise à jour', 'success')
-  }
-
-  const movePoint = async (id: string, newDayOffset: number) => {
-    if (!startDate) return
-    const target = steps.find((s) => s.id === id)
-    if (!target) return
-    const newScheduled = addDays(startDate, newDayOffset)
-    // Optimistic
-    setSteps((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, day_offset: newDayOffset, scheduled_date: newScheduled } : s)),
-    )
-    const { error } = await supabase
-      .from('athlete_onboarding_steps')
-      .update({ day_offset: newDayOffset, scheduled_date: newScheduled })
-      .eq('id', id)
-    if (error) {
-      console.error('[onboarding] move', error)
-      toast(`Erreur: ${error.message}`, 'error')
-      await loadData()
-    }
   }
 
   const saveStep = async (data: {
@@ -430,22 +365,6 @@ export default function AthleteOnboardingPage() {
           />
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div className={styles.viewPicker} role="tablist" aria-label="Choisir la vue">
-            {VIEW_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                role="tab"
-                aria-selected={viewMode === opt.id}
-                className={viewMode === opt.id ? styles.active : ''}
-                onClick={() => setViewMode(opt.id)}
-                title={opt.label}
-              >
-                <i className={`fa-solid ${opt.icon}`} />
-                {opt.label}
-              </button>
-            ))}
-          </div>
           <label
             style={{
               display: 'inline-flex',
@@ -482,103 +401,32 @@ export default function AthleteOnboardingPage() {
         </div>
       ) : (
         <>
-          {viewMode === 'horizontal' && (
-            <OnboardingTimeline
-              points={points}
+          <div className={styles.vWrap}>
+            <div className={styles.vHeader}>
+              <div className={styles.vHeaderTitle}>
+                <i className="fa-solid fa-list-ul" style={{ color: 'var(--text2)' }} />
+                Timeline d&apos;onboarding
+                <span className="count">{verticalPoints.length} points</span>
+              </div>
+              <span className={styles.vHeaderHint}>Vue chronologique par jour</span>
+            </div>
+            <OnboardingTimelineVerticalFeed
+              points={verticalPoints}
+              startDate={startDate}
+              selectedId={selectedStepId}
               monthIndex={monthIndex}
               maxMonthIndex={maxMonthIndex}
               onMonthChange={setMonthIndex}
-              startDate={startDate}
-              onPointMove={movePoint}
               onPointClick={(id) => {
                 setSelectedStepId(id)
                 setModal({ kind: 'closed' })
               }}
-              onAxisClick={(day) => {
+              onAddAt={(day) => {
                 setSelectedStepId(null)
                 setModal({ kind: 'add', defaultDay: day })
               }}
             />
-          )}
-          {viewMode === 'spine' && (
-            <div className={styles.vWrap}>
-              <div className={styles.vHeader}>
-                <div className={styles.vHeaderTitle}>
-                  <i className="fa-solid fa-grip-lines-vertical" style={{ color: 'var(--text2)' }} />
-                  Timeline d&apos;onboarding
-                  <span className="count">{verticalPoints.length} points</span>
-                </div>
-                <span className={styles.vHeaderHint}>Clique sur un point pour l&apos;éditer · survole entre deux points pour ajouter</span>
-              </div>
-              <OnboardingTimelineVerticalSpine
-                points={verticalPoints}
-                startDate={startDate}
-                selectedId={selectedStepId}
-                onPointClick={(id) => {
-                  setSelectedStepId(id)
-                  setModal({ kind: 'closed' })
-                }}
-                onAddAt={(day) => {
-                  setSelectedStepId(null)
-                  setModal({ kind: 'add', defaultDay: day })
-                }}
-              />
-            </div>
-          )}
-          {viewMode === 'feed' && (
-            <div className={styles.vWrap}>
-              <div className={styles.vHeader}>
-                <div className={styles.vHeaderTitle}>
-                  <i className="fa-solid fa-list-ul" style={{ color: 'var(--text2)' }} />
-                  Timeline d&apos;onboarding
-                  <span className="count">{verticalPoints.length} points</span>
-                </div>
-                <span className={styles.vHeaderHint}>Vue chronologique par jour</span>
-              </div>
-              <OnboardingTimelineVerticalFeed
-                points={verticalPoints}
-                startDate={startDate}
-                selectedId={selectedStepId}
-                monthIndex={monthIndex}
-                maxMonthIndex={maxMonthIndex}
-                onMonthChange={setMonthIndex}
-                onPointClick={(id) => {
-                  setSelectedStepId(id)
-                  setModal({ kind: 'closed' })
-                }}
-                onAddAt={(day) => {
-                  setSelectedStepId(null)
-                  setModal({ kind: 'add', defaultDay: day })
-                }}
-              />
-            </div>
-          )}
-          {viewMode === 'compact' && (
-            <div className={styles.vWrap}>
-              <div className={styles.vHeader}>
-                <div className={styles.vHeaderTitle}>
-                  <i className="fa-solid fa-bars" style={{ color: 'var(--text2)' }} />
-                  Timeline d&apos;onboarding
-                  <span className="count">{verticalPoints.length} points</span>
-                </div>
-                <span className={styles.vHeaderHint}>Vue dense — coche pour valider</span>
-              </div>
-              <OnboardingTimelineVerticalCompact
-                points={verticalPoints}
-                startDate={startDate}
-                selectedId={selectedStepId}
-                onPointClick={(id) => {
-                  setSelectedStepId(id)
-                  setModal({ kind: 'closed' })
-                }}
-                onAddAt={(day) => {
-                  setSelectedStepId(null)
-                  setModal({ kind: 'add', defaultDay: day })
-                }}
-                onToggleDone={toggleDone}
-              />
-            </div>
-          )}
+          </div>
           {(() => {
             // Edit mode takes precedence over add mode.
             const selected = selectedStepId ? steps.find((s) => s.id === selectedStepId) : null
@@ -611,10 +459,6 @@ export default function AthleteOnboardingPage() {
             ) : null
 
             if (!editorNode) return null
-
-            // Vertical views (Spine / Feed / Compact) → modal central.
-            // Horizontal view → inline en bas (comportement legacy).
-            if (viewMode === 'horizontal') return editorNode
 
             return (
               <Modal
