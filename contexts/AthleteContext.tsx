@@ -25,8 +25,10 @@ async function fetchAthletesData(userId: string): Promise<Athlete[]> {
   // to match scheduled_date (which the coach edits in their local calendar).
   const now = new Date()
   const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  // Horizon J+90 — assez large pour toujours afficher la prochaine action sur la card
+  // athlète, même si elle est à plusieurs semaines (R2, bilan M1, etc.).
   const horizon = new Date(now)
-  horizon.setDate(horizon.getDate() + 14)
+  horizon.setDate(horizon.getDate() + 90)
   const horizonIso = `${horizon.getFullYear()}-${String(horizon.getMonth() + 1).padStart(2, '0')}-${String(horizon.getDate()).padStart(2, '0')}`
 
   const [{ data, error }, { data: phases }, { data: plans }, { data: steps, error: stepsErr }] = await Promise.all([

@@ -45,7 +45,7 @@ function getBadgeLook(level: 'overdue' | 'today' | 'imminent' | 'soon' | 'later'
       }
     case 'soon':
       return {
-        word: 'BIENTÔT',
+        word: 'PROCHAINE ACTION',
         sizeClass: styles.badgeM,
         bg: 'rgba(234, 179, 8, 0.18)',
         color: '#eab308',
@@ -54,12 +54,21 @@ function getBadgeLook(level: 'overdue' | 'today' | 'imminent' | 'soon' | 'later'
       }
     case 'later':
       return {
-        word: null,
+        word: 'PROCHAINE ACTION',
         sizeClass: styles.badgeM,
         bg: 'rgba(132, 204, 22, 0.18)',
         color: '#84cc16',
         ring: 'none',
         icon: 'fa-clock',
+      }
+    case 'far':
+      return {
+        word: 'PROCHAINE ACTION',
+        sizeClass: styles.badgeM,
+        bg: 'rgba(148, 163, 184, 0.15)',
+        color: 'var(--text2)',
+        ring: 'none',
+        icon: 'fa-calendar',
       }
     default:
       return null
@@ -75,7 +84,6 @@ function OnboardingStepBadgeImpl({
 }: OnboardingStepBadgeProps) {
   const today = todayIso()
   const urgency = computeUrgency(scheduledDate, today)
-  if (urgency.level === 'far') return null
 
   const look = getBadgeLook(urgency.level)
   if (!look) return null
