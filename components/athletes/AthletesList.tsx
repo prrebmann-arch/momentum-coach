@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, memo } from 'react'
+import { useState, useMemo, useEffect, memo } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useAthleteContext } from '@/contexts/AthleteContext'
@@ -8,10 +8,14 @@ import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import AddAthleteForm from './AddAthleteForm'
 import Modal from '@/components/ui/Modal'
+import OnboardingStepBadge from '@/components/onboarding/OnboardingStepBadge'
+import { computeUrgency, todayIso } from '@/lib/onboarding'
 import styles from '@/styles/athletes.module.css'
 import type { Athlete } from '@/lib/types'
 
 import { PROG_PHASES } from '@/lib/constants'
+
+type SortMode = 'created' | 'urgency' | 'alpha'
 
 const PAYMENT_STATUS_MAP: Record<string, { label: string; color: string }> = {
   active: { label: 'Actif', color: '#22c55e' },
@@ -32,6 +36,9 @@ function getPaymentBadge(athlete: Athlete) {
 const badgeContainerStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }
 
 const AthleteCard = memo(function AthleteCard({ athlete, href }: { athlete: Athlete; href: string }) {
+  const nextStep = athlete._nextStep
+  const urgentCount = athlete._urgentCount || 0
+  const extraCount = urgentCount > 1 ? urgentCount - 1 : 0
   const initials = (athlete.prenom?.charAt(0) || '') + (athlete.nom?.charAt(0) || '')
   const poids = athlete.poids_actuel ? `${athlete.poids_actuel} kg` : '\u2014'
   const activePhase = athlete._phase
@@ -75,6 +82,16 @@ const AthleteCard = memo(function AthleteCard({ athlete, href }: { athlete: Athl
           </span>
         </div>
       </div>
+      {nextStep && (
+        <div style={{ marginTop: 8, marginBottom: 4 }}>
+          <OnboardingStepBadge
+            scheduledDate={nextStep.scheduled_date}
+            type={nextStep.type}
+            title={nextStep.title}
+            extraCount={extraCount}
+          />
+        </div>
+      )}
       <div className={styles.statGrid}>
         <div className={styles.statBox}>
           <div className={styles.statValue}>{poids}</div>
@@ -97,22 +114,63 @@ const AthleteCard = memo(function AthleteCard({ athlete, href }: { athlete: Athl
   )
 })
 
+function urgencyRank(a: Athlete): number {
+  // Lower = more urgent (sort ascending). No step → very high number.
+  const s = a._nextStep
+  if (!s) return 1_000_000
+  const u = computeUrgency(s.scheduled_date, todayIso())
+  const order: Record<typeof u.level, number> = {
+    overdue: 0,
+    today: 1,
+    imminent: 2,
+    soon: 3,
+    later: 4,
+    far: 5,
+  }
+  return order[u.level] * 1000 + new Date(s.scheduled_date).getTime() / 1_000_000
+}
+
 export default function AthletesList() {
   const { athletes, loading } = useAthleteContext()
   const [search, setSearch] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [credentialsMessage, setCredentialsMessage] = useState<string | null>(null)
+  const [sortMode, setSortMode] = useState<SortMode>('created')
+
+  // Persist sort mode in localStorage (read in effect, lessons #418 hydration)
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem('athletes:sort') as SortMode | null
+      if (stored === 'urgency' || stored === 'alpha' || stored === 'created') {
+        setSortMode(stored)
+      }
+    } catch {
+      /* noop */
+    }
+  }, [])
+  const handleSortChange = (next: SortMode) => {
+    setSortMode(next)
+    try { window.localStorage.setItem('athletes:sort', next) } catch { /* noop */ }
+  }
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return athletes
-    const q = search.toLowerCase()
-    return athletes.filter(
-      (a) =>
-        a.prenom?.toLowerCase().includes(q) ||
-        a.nom?.toLowerCase().includes(q) ||
-        a.email?.toLowerCase().includes(q)
-    )
-  }, [athletes, search])
+    let list = athletes
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(
+        (a) =>
+          a.prenom?.toLowerCase().includes(q) ||
+          a.nom?.toLowerCase().includes(q) ||
+          a.email?.toLowerCase().includes(q)
+      )
+    }
+    if (sortMode === 'urgency') {
+      list = [...list].sort((a, b) => urgencyRank(a) - urgencyRank(b))
+    } else if (sortMode === 'alpha') {
+      list = [...list].sort((a, b) => (a.prenom || '').localeCompare(b.prenom || ''))
+    }
+    return list
+  }, [athletes, search, sortMode])
 
   if (loading) {
     return (
@@ -144,8 +202,8 @@ export default function AthletesList() {
         </button>
       </div>
 
-      <div className={styles.searchBar}>
-        <div className={styles.searchWrap}>
+      <div className={styles.searchBar} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className={styles.searchWrap} style={{ flex: 1, minWidth: 200 }}>
           <i className={`fa-solid fa-search ${styles.searchIcon}`} />
           <input
             type="text"
@@ -155,6 +213,23 @@ export default function AthletesList() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <select
+          value={sortMode}
+          onChange={(e) => handleSortChange(e.target.value as SortMode)}
+          aria-label="Tri"
+          style={{
+            background: 'var(--bg2)',
+            border: '1px solid var(--border)',
+            color: 'var(--text)',
+            padding: '8px 10px',
+            borderRadius: 8,
+            fontSize: 13,
+          }}
+        >
+          <option value="created">Tri: récents</option>
+          <option value="urgency">Tri: urgence onboarding</option>
+          <option value="alpha">Tri: alphabétique</option>
+        </select>
       </div>
 
       {filtered.length === 0 ? (

@@ -22,11 +22,15 @@ import WorkflowsList from '@/components/templates/WorkflowsList'
 import QuestionnaireTemplatesList from '@/components/templates/QuestionnaireTemplatesList'
 import SupplementTemplatesList, { type SupplementTemplate } from '@/components/templates/SupplementTemplatesList'
 import SupplementTemplateEditor from '@/components/templates/SupplementTemplateEditor'
+import OnboardingTemplatesList from '@/components/templates/OnboardingTemplatesList'
+import OnboardingTemplateEditor from '@/components/templates/OnboardingTemplateEditor'
+import { ensurePremiumTemplate, type OnboardingTemplate } from '@/lib/onboarding'
 
 const TABS = [
   { id: 'training', label: 'Training' },
   { id: 'nutrition', label: 'Nutrition' },
   { id: 'supplements', label: 'Compléments' },
+  { id: 'onboarding', label: 'Onboarding' },
   { id: 'workflow', label: 'Workflows' },
   { id: 'questionnaires', label: 'Questionnaires' },
 ]
@@ -89,6 +93,11 @@ export default function TemplatesPage() {
   const [creatingSupplement, setCreatingSupplement] = useState(false)
   const [supplementType, setSupplementType] = useState<'complement' | 'supplementation'>('complement')
 
+  // Onboarding
+  const [onboardingTemplates, setOnboardingTemplates] = useState<OnboardingTemplate[]>([])
+  const [editingOnboarding, setEditingOnboarding] = useState<string | null>(null)
+  const [creatingOnboarding, setCreatingOnboarding] = useState(false)
+
   const loadData = useCallback(async () => {
     if (!user) return
     // Only show skeleton on first load — background refresh keeps existing data visible
@@ -141,6 +150,27 @@ export default function TemplatesPage() {
           .limit(100)
         if (error) console.error('[templates/supplements] select error:', error)
         setSupplementTemplates((data || []) as SupplementTemplate[])
+      } else if (activeTab === 'onboarding') {
+        const fetchTemplates = async () =>
+          supabase
+            .from('onboarding_templates')
+            .select('id, coach_id, name, description, is_default, steps, created_at, updated_at')
+            .eq('coach_id', user.id)
+            .order('is_default', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(100)
+        const { data, error } = await fetchTemplates()
+        if (error) console.error('[templates/onboarding] select error:', error)
+        let rows = (data || []) as OnboardingTemplate[]
+        // Auto-seed default Premium template on first visit. Concurrency-safe (lib has in-flight lock).
+        if (rows.length === 0) {
+          const inserted = await ensurePremiumTemplate(supabase, user.id)
+          if (inserted) {
+            const { data: refreshed } = await fetchTemplates()
+            rows = (refreshed || []) as OnboardingTemplate[]
+          }
+        }
+        setOnboardingTemplates(rows)
       }
     } finally {
       setLoading(false)
@@ -162,7 +192,31 @@ export default function TemplatesPage() {
     setCreatingNutrition(false)
     setEditingSupplement(null)
     setCreatingSupplement(false)
+    setEditingOnboarding(null)
+    setCreatingOnboarding(false)
   }
+
+  // ── Onboarding handlers ──
+  const handleOnboardingEdit = (id: string) => {
+    setEditingOnboarding(id)
+    setCreatingOnboarding(false)
+  }
+  const handleOnboardingCreate = () => {
+    setEditingOnboarding(null)
+    setCreatingOnboarding(true)
+  }
+  const handleOnboardingSaved = () => {
+    setEditingOnboarding(null)
+    setCreatingOnboarding(false)
+    loadData()
+  }
+  const handleOnboardingCancel = () => {
+    setEditingOnboarding(null)
+    setCreatingOnboarding(false)
+  }
+  const editedOnboardingTemplate = editingOnboarding
+    ? onboardingTemplates.find((t) => t.id === editingOnboarding) || null
+    : null
 
   // ── Supplement template handlers ──
   const handleSupplementEdit = (id: string) => {
@@ -422,6 +476,20 @@ export default function TemplatesPage() {
     )
   }
 
+  // ── Onboarding template editor ──
+  if (activeTab === 'onboarding' && (editingOnboarding || creatingOnboarding)) {
+    return (
+      <div>
+        <h1 className="page-title">Templates</h1>
+        <OnboardingTemplateEditor
+          template={editedOnboardingTemplate}
+          onSaved={handleOnboardingSaved}
+          onCancel={handleOnboardingCancel}
+        />
+      </div>
+    )
+  }
+
   // ── Supplement template editor ──
   if (activeTab === 'supplements' && (editingSupplement || creatingSupplement)) {
     return (
@@ -519,6 +587,16 @@ export default function TemplatesPage() {
                 onRefresh={loadData}
                 onEdit={handleSupplementEdit}
                 onCreate={handleSupplementCreate}
+              />
+            )}
+
+            {activeTab === 'onboarding' && (
+              <OnboardingTemplatesList
+                templates={onboardingTemplates}
+                loading={false}
+                onRefresh={loadData}
+                onEdit={handleOnboardingEdit}
+                onCreate={handleOnboardingCreate}
               />
             )}
           </>
