@@ -51,7 +51,10 @@ function genId() {
 
 export default function QuestionnaireTemplatesList({ templates, onRefresh }: Props) {
   const supabase = createClient()
-  const { coach } = useAuth()
+  // `coach.id` is coach_profiles.id (a different UUID than auth.users.id).
+  // RLS on questionnaire_templates expects coach_id = auth.uid(), so the insert
+  // must use `user.id`, not `coach.id` (silent insert failure otherwise).
+  const { user } = useAuth()
   const { toast } = useToast()
 
   const [editing, setEditing] = useState<string | null>(null)
@@ -111,12 +114,12 @@ export default function QuestionnaireTemplatesList({ templates, onRefresh }: Pro
       toast('Le titre est obligatoire', 'error')
       return
     }
-    if (!coach) return
+    if (!user) return
 
     setSaving(true)
     const qs = questions.map((q) => ({ ...q, id: q.id || genId() }))
     const payload = {
-      coach_id: coach.id,
+      coach_id: user.id,
       titre: titre.trim(),
       description: description.trim() || null,
       questions: qs,
@@ -132,6 +135,7 @@ export default function QuestionnaireTemplatesList({ templates, onRefresh }: Pro
     setSaving(false)
 
     if (error) {
+      console.error('[questionnaire template] save', error)
       toast('Erreur: ' + error.message, 'error')
       return
     }
@@ -153,15 +157,16 @@ export default function QuestionnaireTemplatesList({ templates, onRefresh }: Pro
 
   const handleDuplicate = async (id: string) => {
     const tpl = templates.find((t) => t.id === id)
-    if (!tpl || !coach) return
+    if (!tpl || !user) return
 
     const { error } = await supabase.from('questionnaire_templates').insert({
-      coach_id: coach.id,
+      coach_id: user.id,
       titre: tpl.titre + ' (copie)',
       description: tpl.description,
       questions: tpl.questions,
     })
     if (error) {
+      console.error('[questionnaire template] duplicate', error)
       toast('Erreur: ' + error.message, 'error')
       return
     }
