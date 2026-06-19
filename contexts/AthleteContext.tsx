@@ -60,6 +60,32 @@ async function fetchAthletesData(userId: string): Promise<Athlete[]> {
       .limit(1000),
   ])
 
+  // Latest weight per athlete from daily_reports (last 90 days).
+  // athletes.poids_actuel column is never updated by the ATHLETE app — the
+  // source of truth is daily_reports.poids. We resolve the most recent
+  // non-null value per user_id and override the column at hydration.
+  const userIds = (data as Array<{ user_id: string | null }> | null || [])
+    .map(a => a.user_id)
+    .filter((id): id is string => !!id)
+  const latestWeightByUserId = new Map<string, number>()
+  if (userIds.length > 0) {
+    const ninetyAgo = new Date(now)
+    ninetyAgo.setDate(ninetyAgo.getDate() - 90)
+    const ninetyIso = `${ninetyAgo.getFullYear()}-${String(ninetyAgo.getMonth() + 1).padStart(2, '0')}-${String(ninetyAgo.getDate()).padStart(2, '0')}`
+    const { data: reports } = await supabase
+      .from('daily_reports')
+      .select('user_id, poids, date')
+      .in('user_id', userIds)
+      .not('poids', 'is', null)
+      .gte('date', ninetyIso)
+      .order('date', { ascending: false })
+      .limit(5000)
+    ;(reports as Array<{ user_id: string; poids: number | null; date: string }> | null || []).forEach(r => {
+      if (r.poids == null) return
+      if (!latestWeightByUserId.has(r.user_id)) latestWeightByUserId.set(r.user_id, r.poids)
+    })
+  }
+
   if (error) throw error
   if (!data) return []
   if (stepsErr) console.error('[AthleteContext] steps fetch error', stepsErr)
@@ -84,13 +110,17 @@ async function fetchAthletesData(userId: string): Promise<Athlete[]> {
     }
   })
 
-  const fresh = (data as Athlete[]).map(a => ({
-    ...a,
-    _phase: phaseMap[a.id] || null,
-    _payment: planMap[a.id] || null,
-    _nextStep: stepMap[a.id] || null,
-    _urgentCount: urgentMap[a.id] || 0,
-  }))
+  const fresh = (data as Athlete[]).map(a => {
+    const liveWeight = a.user_id ? latestWeightByUserId.get(a.user_id) : undefined
+    return {
+      ...a,
+      poids_actuel: liveWeight ?? a.poids_actuel,
+      _phase: phaseMap[a.id] || null,
+      _payment: planMap[a.id] || null,
+      _nextStep: stepMap[a.id] || null,
+      _urgentCount: urgentMap[a.id] || 0,
+    }
+  })
 
   return fresh
 }
