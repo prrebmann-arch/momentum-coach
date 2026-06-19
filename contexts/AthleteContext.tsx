@@ -62,7 +62,7 @@ async function fetchAthletesData(userId: string): Promise<Athlete[]> {
 
   // Latest weight per athlete from daily_reports (last 90 days).
   // athletes.poids_actuel column is never updated by the ATHLETE app — the
-  // source of truth is daily_reports.poids. We resolve the most recent
+  // source of truth is daily_reports.weight. We resolve the most recent
   // non-null value per user_id and override the column at hydration.
   const userIds = (data as Array<{ user_id: string | null }> | null || [])
     .map(a => a.user_id)
@@ -74,15 +74,15 @@ async function fetchAthletesData(userId: string): Promise<Athlete[]> {
     const ninetyIso = `${ninetyAgo.getFullYear()}-${String(ninetyAgo.getMonth() + 1).padStart(2, '0')}-${String(ninetyAgo.getDate()).padStart(2, '0')}`
     const { data: reports } = await supabase
       .from('daily_reports')
-      .select('user_id, poids, date')
+      .select('user_id, weight, date')
       .in('user_id', userIds)
-      .not('poids', 'is', null)
+      .not('weight', 'is', null)
       .gte('date', ninetyIso)
       .order('date', { ascending: false })
       .limit(5000)
-    ;(reports as Array<{ user_id: string; poids: number | null; date: string }> | null || []).forEach(r => {
-      if (r.poids == null) return
-      if (!latestWeightByUserId.has(r.user_id)) latestWeightByUserId.set(r.user_id, r.poids)
+    ;(reports as Array<{ user_id: string; weight: number | null; date: string }> | null || []).forEach(r => {
+      if (r.weight == null) return
+      if (!latestWeightByUserId.has(r.user_id)) latestWeightByUserId.set(r.user_id, r.weight)
     })
   }
 
