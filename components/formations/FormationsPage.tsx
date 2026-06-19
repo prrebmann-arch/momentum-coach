@@ -28,6 +28,7 @@ interface FormationVideo {
   title: string
   video_url: string
   position: number
+  available_from_day: number
 }
 
 interface Athlete {
@@ -84,6 +85,11 @@ export default function FormationsPage() {
   const [editVisibility, setEditVisibility] = useState<'all' | 'selected'>('all')
   const [editSelectedAthletes, setEditSelectedAthletes] = useState<Set<string>>(new Set())
 
+  // Edit formation modal (rename + description)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+
   // ── Load formations list ──
   const loadFormations = useCallback(async () => {
     if (!user) return
@@ -124,7 +130,7 @@ export default function FormationsPage() {
     if (!user) return
     const [fRes, vRes, mRes, progRes] = await Promise.all([
       supabase.from('formations').select('id, coach_id, title, description, visibility, video_count, created_at').eq('id', formationId).single(),
-      supabase.from('formation_videos').select('id, formation_id, title, video_url, position, created_at').eq('formation_id', formationId).order('position').limit(100),
+      supabase.from('formation_videos').select('id, formation_id, title, video_url, position, available_from_day, created_at').eq('formation_id', formationId).order('position').limit(100),
       supabase.from('formation_members').select('athlete_id, athletes(id, prenom, nom, email, user_id)').eq('formation_id', formationId).limit(200),
       supabase.from('formation_video_progress').select('user_id, video_id, watched').limit(1000),
     ])
@@ -209,6 +215,10 @@ export default function FormationsPage() {
     if (!title?.trim()) return
     const url = prompt('Lien de la video (YouTube, Vimeo, Loom...) :')
     if (!url?.trim()) return
+    const dayInput = prompt('Disponible a partir de J+? (0 = immediat, debloque selon date d\'inscription de l\'athlete)', '0')
+    if (dayInput === null) return
+    const parsedDay = parseInt(dayInput.trim(), 10)
+    const day = !isNaN(parsedDay) && parsedDay >= 0 ? parsedDay : 0
 
     const { data: existing } = await supabase
       .from('formation_videos')
@@ -224,10 +234,42 @@ export default function FormationsPage() {
       title: title.trim(),
       video_url: url.trim(),
       position: nextPos,
+      available_from_day: day,
     })
     if (error) { toast('Erreur ajout video', 'error'); return }
 
     await supabase.from('formations').update({ video_count: nextPos + 1 }).eq('id', currentFormation.id)
+    await viewFormation(currentFormation.id)
+  }
+
+  // ── Update video schedule day ──
+  const updateVideoDay = async (videoId: string, currentDay: number) => {
+    const input = prompt('Disponible a partir de J+? (0 = immediat)', String(currentDay))
+    if (input === null) return
+    const parsed = parseInt(input.trim(), 10)
+    if (isNaN(parsed) || parsed < 0) { toast('Valeur invalide', 'error'); return }
+    const { error } = await supabase.from('formation_videos').update({ available_from_day: parsed }).eq('id', videoId)
+    if (error) { toast('Erreur mise a jour', 'error'); return }
+    if (currentFormation) await viewFormation(currentFormation.id)
+  }
+
+  // ── Edit formation (rename + description) ──
+  const openEditModal = () => {
+    if (!currentFormation) return
+    setEditTitle(currentFormation.title)
+    setEditDescription(currentFormation.description || '')
+    setShowEditModal(true)
+  }
+
+  const submitEdit = async () => {
+    if (!currentFormation) return
+    if (!editTitle.trim()) { toast('Le nom est obligatoire', 'error'); return }
+    const { error } = await supabase.from('formations').update({
+      title: editTitle.trim(),
+      description: editDescription.trim(),
+    }).eq('id', currentFormation.id)
+    if (error) { toast('Erreur mise a jour', 'error'); return }
+    setShowEditModal(false)
     await viewFormation(currentFormation.id)
   }
 
@@ -344,6 +386,9 @@ export default function FormationsPage() {
             <h1 className="page-title">{currentFormation.title}</h1>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="outline" onClick={openEditModal}>
+              <i className="fas fa-pen" /> Modifier
+            </Button>
             <Button variant="outline" onClick={openMembersModal}>
               <i className="fas fa-users" /> Membres
             </Button>
@@ -413,6 +458,29 @@ export default function FormationsPage() {
                   </div>
                   <div className={styles.fmVideoInfo}>
                     <div className={styles.fmVideoTitle}>{v.title}</div>
+                    <button
+                      type="button"
+                      onClick={() => updateVideoDay(v.id, v.available_from_day)}
+                      title="Modifier la date de deverrouillage"
+                      style={{
+                        marginTop: 8,
+                        background: v.available_from_day === 0 ? 'var(--success-glow, rgba(34,197,94,0.12))' : 'var(--primary-glow)',
+                        color: v.available_from_day === 0 ? 'var(--success)' : 'var(--primary)',
+                        border: 'none',
+                        padding: '4px 10px',
+                        borderRadius: 999,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        letterSpacing: 0.3,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <i className={`fas ${v.available_from_day === 0 ? 'fa-unlock' : 'fa-clock'}`} />
+                      {v.available_from_day === 0 ? 'Dispo immediatement' : `Debloque a J+${v.available_from_day}`}
+                    </button>
                   </div>
                   <div className={styles.fmVideoActions}>
                     <button onClick={() => moveVideo(v.id, v.position, 'up')} title="Monter" disabled={i === 0}>
@@ -430,6 +498,23 @@ export default function FormationsPage() {
             })}
           </div>
         )}
+
+        {/* Edit formation modal */}
+        <Modal isOpen={showEditModal} title="Modifier la formation" onClose={() => setShowEditModal(false)}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label className="field-label">Nom de la formation *</label>
+              <input type="text" className="field-input" value={editTitle} onChange={e => setEditTitle(e.target.value)} />
+            </div>
+            <div>
+              <label className="field-label">Description</label>
+              <textarea className="field-input" rows={2} value={editDescription} onChange={e => setEditDescription(e.target.value)} />
+            </div>
+            <Button variant="primary" style={{ marginTop: 8 }} onClick={submitEdit}>
+              <i className="fas fa-check" /> Enregistrer
+            </Button>
+          </div>
+        </Modal>
 
         {/* Members modal */}
         <Modal isOpen={showMembersModal} title={`Membres -- ${currentFormation.title}`} onClose={() => setShowMembersModal(false)}>
