@@ -229,16 +229,35 @@ export default function FormationsPage() {
 
     const nextPos = existing?.length ? existing[0].position + 1 : 0
 
-    const { error } = await supabase.from('formation_videos').insert({
+    const { data: inserted, error } = await supabase.from('formation_videos').insert({
       formation_id: currentFormation.id,
       title: title.trim(),
       video_url: url.trim(),
       position: nextPos,
       available_from_day: day,
-    })
+    }).select('id').single()
     if (error) { toast('Erreur ajout video', 'error'); return }
 
     await supabase.from('formations').update({ video_count: nextPos + 1 }).eq('id', currentFormation.id)
+
+    // Push athletes only if video is immediately available. Otherwise the
+    // cron at /api/notifications/formation-unlock handles it on the J+X day.
+    if (day === 0 && inserted?.id) {
+      try {
+        const { data: session } = await supabase.auth.getSession()
+        const token = session?.session?.access_token
+        if (token) {
+          await fetch('/api/notifications/formation-new-video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ formation_id: currentFormation.id, video_id: inserted.id, video_title: title.trim() }),
+          })
+        }
+      } catch (e) {
+        console.error('[addVideo] push failed', e)
+      }
+    }
+
     await viewFormation(currentFormation.id)
   }
 
