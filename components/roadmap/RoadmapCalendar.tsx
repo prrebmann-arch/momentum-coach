@@ -34,6 +34,7 @@ interface SupplementRow {
   frequence: string | null
   moment_prise: string | null
   start_date: string | null
+  end_date: string | null
   actif: boolean
   supplements: { id: string; nom: string; marque: string | null; type: string | null } | null
 }
@@ -196,9 +197,11 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       if (r.adherence != null) adherenceByDate[r.date] = parseFloat(String(r.adherence))
     })
 
-    // Only true 'supplementation' (hormonal / cycle products) — not 'complement'
-    // (whey, BCAA, vitamins…) which would clutter the roadmap view.
-    const activeSupps = supplements.filter(s => s.actif && s.supplements && s.supplements.type === 'supplementation')
+    // Only 'supplementation' rows are roadmap-relevant. Whether the row is
+    // currently actif=true doesn't matter — what matters is the time window
+    // (start_date..end_date) of the cycle. A stopped cycle (actif=false,
+    // end_date set) should still show on the weeks where it WAS active.
+    const cycleSupps = supplements.filter(s => s.supplements && s.supplements.type === 'supplementation')
 
     const weeks: {
       num: number
@@ -241,8 +244,13 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         ? Math.round((adhVals.reduce((a, b) => a + b, 0) / adhVals.length) * 10)
         : null
 
-      // Supplement is active on this week if start_date is null or <= weekEnd
-      const supps = activeSupps.filter(s => !s.start_date || s.start_date <= weekEndKey)
+      // Supp cycle overlaps this week iff (start <= weekEnd) AND (end IS NULL OR end >= weekStart).
+      // Null start_date is interpreted as "always started", so it overlaps unless end ended before weekStart.
+      const supps = cycleSupps.filter(s => {
+        const startOk = !s.start_date || s.start_date <= weekEndKey
+        const endOk = !s.end_date || s.end_date >= weekKey
+        return startOk && endOk
+      })
 
       weeks.push({ num: weekNum++, start: weekKey, end: weekEndKey, phase, avgWeight, totalCardio: cardioSum, supps, adherencePct })
       weekStart.setDate(weekStart.getDate() + 7)
@@ -326,135 +334,124 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
                   className={`${styles.rmFeedCard} ${isCurrent ? styles.rmFeedCardCurrent : ''} ${isPast ? styles.rmFeedCardPast : ''}`}
                   style={{ borderLeftColor: color }}
                 >
-                  <header className={styles.rmFeedCardHead}>
-                    <span className={styles.rmFeedNum}>S{w.num}</span>
-                    <span className={styles.rmFeedRange}>
-                      {formatDateShort(w.start)} — {formatDateShort(w.end)}
-                    </span>
-                    {isCurrent && <span className={styles.rmFeedNowBadge}>EN COURS</span>}
-                    {pi && p && (
-                      <span className={styles.rmFeedPhase} style={{ background: color, color: '#fff' }}>
-                        {p.name}
-                      </span>
-                    )}
-                  </header>
-
-                  <div className={styles.rmFeedStats}>
-                    <div className={styles.rmFeedStat}>
-                      <span className={styles.rmFeedStatLabel}><i className="fa-solid fa-weight-scale" /> Poids moy.</span>
-                      <span className={styles.rmFeedStatValue}>{w.avgWeight ? `${w.avgWeight} kg` : '—'}</span>
-                    </div>
-                    <div className={styles.rmFeedStat}>
-                      <span className={styles.rmFeedStatLabel}><i className="fa-solid fa-heart-pulse" style={{ color: '#ef4444' }} /> Cardio</span>
-                      <span className={styles.rmFeedStatValue}>{w.totalCardio > 0 ? `${w.totalCardio} min` : '—'}</span>
-                    </div>
-                    <div className={`${styles.rmFeedStat} ${styles[`rmFeedStatAdh_${adhClass}`]}`}>
-                      <span className={styles.rmFeedStatLabel}><i className="fa-solid fa-circle-check" /> Adhérence</span>
-                      <span className={styles.rmFeedStatValue}>{w.adherencePct != null ? `${w.adherencePct}%` : '—'}</span>
-                    </div>
-                  </div>
-
-                  <div className={styles.rmFeedBody}>
-                    <div className={styles.rmFeedBlock}>
-                      <div className={styles.rmFeedBlockHdr}>
-                        <i className="fa-solid fa-dumbbell" />
-                        <span>Programme</span>
-                      </div>
-                      <div className={styles.rmFeedBlockBody}>
-                        {prog ? prog.nom : <span className={styles.rmFeedMuted}>Aucun</span>}
-                      </div>
+                  <div className={styles.rmFeedRow}>
+                    {/* 1. Semaine */}
+                    <div className={styles.rmFeedWeek}>
+                      <span className={styles.rmFeedNum}>S{w.num}</span>
+                      <span className={styles.rmFeedRange}>{formatDateShort(w.start)} — {formatDateShort(w.end)}</span>
+                      {isCurrent && <span className={styles.rmFeedNowBadge}>NOW</span>}
                     </div>
 
-                    <div className={styles.rmFeedBlock}>
-                      <div className={styles.rmFeedBlockHdr}>
-                        <i className="fa-solid fa-utensils" style={{ color: '#f59e0b' }} />
-                        <span>Nutrition</span>
+                    {/* 2. Phase */}
+                    <div>
+                      {pi && p ? (
+                        <span className={styles.rmFeedPhase} style={{ background: color }}>{p.name}</span>
+                      ) : (
+                        <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>
+                      )}
+                    </div>
+
+                    {/* 3. Programme */}
+                    <div className={styles.rmFeedKv} title={prog?.nom}>
+                      <i className="fa-solid fa-dumbbell" />
+                      {prog ? <strong>{prog.nom}</strong> : <span style={{ color: 'var(--text3)' }}>—</span>}
+                    </div>
+
+                    {/* 4. Nutrition */}
+                    <div className={styles.rmFeedKv}>
+                      <i className="fa-solid fa-utensils" style={{ color: '#f59e0b' }} />
+                      {nutri ? (
+                        <>
+                          <strong>{nutri.calories_objectif ?? nutri.nom}</strong>
+                          {nutri.calories_objectif != null && <span className="sub">kcal · P{nutri.proteines ?? 0} G{nutri.glucides ?? 0} L{nutri.lipides ?? 0}</span>}
+                          {w.adherencePct != null && (
+                            <span className={`${styles.rmFeedAdh} ${styles[`rmFeedAdh_${adhClass}`]}`} style={{ marginLeft: 6 }}>
+                              {w.adherencePct}%
+                            </span>
+                          )}
+                        </>
+                      ) : <span style={{ color: 'var(--text3)' }}>—</span>}
+                    </div>
+
+                    {/* 5. Poids */}
+                    <div className={styles.rmFeedKv}>
+                      <i className="fa-solid fa-weight-scale" />
+                      {w.avgWeight ? <strong>{w.avgWeight} kg</strong> : <span style={{ color: 'var(--text3)' }}>—</span>}
+                    </div>
+
+                    {/* 6. Cardio + Suppléments chips */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                      <div className={styles.rmFeedKv}>
+                        <i className="fa-solid fa-heart-pulse" style={{ color: '#ef4444' }} />
+                        {w.totalCardio > 0 ? <strong>{w.totalCardio} min</strong> : <span style={{ color: 'var(--text3)' }}>—</span>}
                       </div>
-                      <div className={styles.rmFeedBlockBody}>
-                        {nutri ? (
+                      <div className={styles.rmFeedSuppChips}>
+                        {w.supps.length === 0 ? (
+                          <span style={{ color: 'var(--text3)', fontSize: 10 }}>aucune supp.</span>
+                        ) : (
                           <>
-                            <div className={styles.rmFeedNutriTop}>
-                              <strong>{nutri.calories_objectif ?? nutri.nom}</strong>
-                              {nutri.calories_objectif != null && <span className={styles.rmFeedUnit}>kcal</span>}
-                            </div>
-                            {(nutri.proteines != null || nutri.glucides != null || nutri.lipides != null) && (
-                              <div className={styles.rmFeedNutriMacros}>
-                                P {nutri.proteines ?? 0}g · G {nutri.glucides ?? 0}g · L {nutri.lipides ?? 0}g
-                              </div>
+                            {w.supps.slice(0, 2).map(s => (
+                              <span key={s.id} className={styles.rmFeedSuppChip} title={`${s.supplements?.nom}${s.dosage ? ` ${s.dosage}${s.unite || ''}` : ''}`}>
+                                {s.supplements?.nom}
+                              </span>
+                            ))}
+                            {w.supps.length > 2 && (
+                              <button type="button" className={styles.rmFeedSuppMore} onClick={() => setExpandedSuppsKey(isExpandedSupps ? null : w.start)}>
+                                {isExpandedSupps ? 'masquer' : `+${w.supps.length - 2}`}
+                              </button>
+                            )}
+                            {w.supps.length > 0 && w.supps.length <= 2 && (
+                              <button type="button" className={styles.rmFeedSuppMore} onClick={() => setExpandedSuppsKey(isExpandedSupps ? null : w.start)} title="Détails dosages">
+                                <i className={`fa-solid fa-chevron-${isExpandedSupps ? 'up' : 'down'}`} />
+                              </button>
                             )}
                           </>
-                        ) : <span className={styles.rmFeedMuted}>Aucun</span>}
+                        )}
                       </div>
                     </div>
 
-                    <div className={styles.rmFeedBlock}>
-                      <div className={styles.rmFeedBlockHdr}>
-                        <i className="fa-solid fa-pills" style={{ color: '#a855f7' }} />
-                        <span>Suppléments</span>
-                        {w.supps.length > 0 && (
-                          <button
-                            type="button"
-                            className={styles.rmFeedToggle}
-                            onClick={() => setExpandedSuppsKey(isExpandedSupps ? null : w.start)}
-                          >
-                            {w.supps.length} actif{w.supps.length > 1 ? 's' : ''} <i className={`fa-solid fa-chevron-${isExpandedSupps ? 'up' : 'down'}`} />
-                          </button>
-                        )}
-                      </div>
-                      <div className={styles.rmFeedBlockBody}>
-                        {w.supps.length === 0 && <span className={styles.rmFeedMuted}>Aucun</span>}
-                        {w.supps.length > 0 && !isExpandedSupps && (
-                          <div className={styles.rmFeedSuppPreview}>
-                            {w.supps.slice(0, 2).map(s => s.supplements?.nom).filter(Boolean).join(', ')}
-                            {w.supps.length > 2 && ` +${w.supps.length - 2}`}
-                          </div>
-                        )}
-                        {isExpandedSupps && (
-                          <ul className={styles.rmFeedSuppList}>
-                            {w.supps.map(s => (
-                              <li key={s.id}>
-                                <span className={styles.rmFeedSuppName}>
-                                  {s.supplements?.nom}
-                                  {s.supplements?.marque && <em>· {s.supplements.marque}</em>}
-                                </span>
-                                <span className={styles.rmFeedSuppDose}>
-                                  {s.dosage ? `${s.dosage}${s.unite || ''}` : ''}
-                                  {s.frequence ? ` · ${s.frequence}` : ''}
-                                  {s.moment_prise ? ` · ${s.moment_prise}` : ''}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
+                    {/* 7. Note */}
+                    <div className={styles.rmFeedNoteCol}>
+                      <i className="fa-solid fa-note-sticky" style={{ color: '#f59e0b', fontSize: 11 }} />
+                      {isEditingNote ? (
+                        <input
+                          autoFocus
+                          value={editingNoteValue}
+                          onChange={e => setEditingNoteValue(e.target.value)}
+                          onBlur={commitNote}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitNote() }
+                            if (e.key === 'Escape') { e.preventDefault(); setEditingNoteKey(null) }
+                          }}
+                          placeholder="…"
+                          className={styles.rmFeedNoteInput}
+                        />
+                      ) : note ? (
+                        <button type="button" className={styles.rmFeedNoteText} onClick={() => startNoteEdit(w.start)} title={note}>{note}</button>
+                      ) : (
+                        <button type="button" className={styles.rmFeedNoteEmpty} onClick={() => startNoteEdit(w.start)}>+ note</button>
+                      )}
                     </div>
                   </div>
 
-                  <footer className={styles.rmFeedNote}>
-                    <i className="fa-solid fa-note-sticky" style={{ color: '#f59e0b' }} />
-                    {isEditingNote ? (
-                      <input
-                        autoFocus
-                        value={editingNoteValue}
-                        onChange={e => setEditingNoteValue(e.target.value)}
-                        onBlur={commitNote}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') { e.preventDefault(); commitNote() }
-                          if (e.key === 'Escape') { e.preventDefault(); setEditingNoteKey(null) }
-                        }}
-                        placeholder="Note de la semaine…"
-                        className={styles.rmFeedNoteInput}
-                      />
-                    ) : note ? (
-                      <button type="button" className={styles.rmFeedNoteText} onClick={() => startNoteEdit(w.start)}>
-                        {note}
-                      </button>
-                    ) : (
-                      <button type="button" className={styles.rmFeedNoteEmpty} onClick={() => startNoteEdit(w.start)}>
-                        <i className="fa-solid fa-plus" /> Ajouter une note
-                      </button>
-                    )}
-                  </footer>
+                  {isExpandedSupps && w.supps.length > 0 && (
+                    <ul className={styles.rmFeedSuppDetails}>
+                      {w.supps.map(s => (
+                        <li key={s.id}>
+                          <span className="nm">
+                            {s.supplements?.nom}
+                            {s.supplements?.marque && <em>· {s.supplements.marque}</em>}
+                          </span>
+                          <span className="ds">
+                            {s.dosage ? `${s.dosage}${s.unite || ''}` : ''}
+                            {s.frequence ? ` · ${s.frequence}` : ''}
+                            {s.moment_prise ? ` · ${s.moment_prise}` : ''}
+                            {s.end_date && <span style={{ color: '#ef4444', marginLeft: 4 }}>· stop {formatDateShort(s.end_date)}</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </article>
               )
             })}
