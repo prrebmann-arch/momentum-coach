@@ -204,6 +204,23 @@
   padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
   background: var(--bg3); color: var(--text2); white-space: nowrap;
 }
+.rmWtNutriCell {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+}
+.rmWtNutriTop {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text);
+}
+.rmWtNutriTop i { color: #f59e0b; font-size: 11px; }
+.rmWtNutriTop strong { font-weight: 700; }
+.rmWtAdh {
+  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 999px;
+  letter-spacing: 0.3px;
+}
+.rmWtMacros {
+  font-size: 10px; color: var(--text3); font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
 
 @media (max-width: 1200px) {
   .rmWtHdr, .rmWtRow { grid-template-columns: 130px 1fr 80px 1fr 1fr 80px 100px 1.2fr; }
