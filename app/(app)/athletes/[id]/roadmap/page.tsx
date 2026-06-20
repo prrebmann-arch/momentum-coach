@@ -29,6 +29,24 @@ interface NutritionRef {
 interface DailyReport {
   date: string
   weight: number | null
+  cardio_minutes: number | null
+}
+
+interface SupplementRow {
+  id: string
+  dosage: number | null
+  unite: string | null
+  frequence: string | null
+  moment_prise: string | null
+  start_date: string | null
+  actif: boolean
+  supplements: { id: string; nom: string; marque: string | null; type: string | null } | null
+}
+
+interface WeekNote {
+  athlete_id: string
+  week_start: string
+  note: string
 }
 
 function getNextMonday(from: Date): Date {
@@ -48,12 +66,14 @@ export default function RoadmapPage() {
   const { selectedAthlete } = useAthleteContext()
 
   const cacheKey = `athlete_${athleteId}_roadmap`
-  const [cached] = useState(() => getPageCache<{ phases: RoadmapPhase[]; programs: ProgramRef[]; nutritions: NutritionRef[]; reports: DailyReport[] }>(cacheKey))
+  const [cached] = useState(() => getPageCache<{ phases: RoadmapPhase[]; programs: ProgramRef[]; nutritions: NutritionRef[]; reports: DailyReport[]; supplements: SupplementRow[]; weekNotes: WeekNote[] }>(cacheKey))
 
   const [phases, setPhases] = useState<RoadmapPhase[]>(cached?.phases ?? [])
   const [programs, setPrograms] = useState<ProgramRef[]>(cached?.programs ?? [])
   const [nutritions, setNutritions] = useState<NutritionRef[]>(cached?.nutritions ?? [])
   const [reports, setReports] = useState<DailyReport[]>(cached?.reports ?? [])
+  const [supplements, setSupplements] = useState<SupplementRow[]>(cached?.supplements ?? [])
+  const [weekNotes, setWeekNotes] = useState<WeekNote[]>(cached?.weekNotes ?? [])
   const [loading, setLoading] = useState(!cached)
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -66,7 +86,7 @@ export default function RoadmapPage() {
     try {
       const userId = athleteUserId
 
-      const [phasesRes, progsRes, nutritionsRes, reportsRes] = await Promise.all([
+      const [phasesRes, progsRes, nutritionsRes, reportsRes, suppsRes, notesRes] = await Promise.all([
         supabase
           .from('roadmap_phases')
           .select('id, athlete_id, coach_id, phase, name, start_date, end_date, position, status, programme_id, nutrition_id, description')
@@ -77,24 +97,56 @@ export default function RoadmapPage() {
         supabase.from('workout_programs').select('id,nom').eq('athlete_id', athleteId).limit(50),
         supabase.from('nutrition_plans').select('id,nom').eq('athlete_id', athleteId).limit(50),
         userId
-          ? supabase.from('daily_reports').select('date,weight').eq('user_id', userId).limit(120)
+          ? supabase.from('daily_reports').select('date,weight,cardio_minutes').eq('user_id', userId).limit(400)
           : Promise.resolve({ data: [] }),
+        supabase
+          .from('athlete_supplements')
+          .select('id, dosage, unite, frequence, moment_prise, start_date, actif, supplements(id, nom, marque, type)')
+          .eq('athlete_id', athleteId)
+          .limit(100),
+        supabase
+          .from('roadmap_week_notes')
+          .select('athlete_id, week_start, note')
+          .eq('athlete_id', athleteId)
+          .limit(200),
       ])
 
       const phasesData = (phasesRes.data || []) as RoadmapPhase[]
       const progsData = (progsRes.data || []) as ProgramRef[]
       const nutritionsData = (nutritionsRes.data || []) as NutritionRef[]
       const reportsData = (reportsRes.data || []) as DailyReport[]
+      const suppsData = (suppsRes.data || []) as unknown as SupplementRow[]
+      const notesData = (notesRes.data || []) as WeekNote[]
       setPhases(phasesData)
       setPrograms(progsData)
       setNutritions(nutritionsData)
       setReports(reportsData)
+      setSupplements(suppsData)
+      setWeekNotes(notesData)
 
-      setPageCache(cacheKey, { phases: phasesData, programs: progsData, nutritions: nutritionsData, reports: reportsData })
+      setPageCache(cacheKey, { phases: phasesData, programs: progsData, nutritions: nutritionsData, reports: reportsData, supplements: suppsData, weekNotes: notesData })
     } finally {
       setLoading(false)
     }
   }, [athleteId, athleteUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveWeekNote = useCallback(async (weekStart: string, note: string) => {
+    if (!user) return
+    const payload = { athlete_id: athleteId, coach_id: user.id, week_start: weekStart, note }
+    const { error } = await supabase
+      .from('roadmap_week_notes')
+      .upsert(payload, { onConflict: 'athlete_id,week_start' })
+    if (error) { toast('Erreur enregistrement note', 'error'); return }
+    setWeekNotes(prev => {
+      const idx = prev.findIndex(n => n.week_start === weekStart)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = { athlete_id: athleteId, week_start: weekStart, note }
+        return next
+      }
+      return [...prev, { athlete_id: athleteId, week_start: weekStart, note }]
+    })
+  }, [user, athleteId, supabase, toast])
 
   useEffect(() => {
     loadData()
@@ -329,6 +381,9 @@ export default function RoadmapPage() {
         programs={programs}
         nutritions={nutritions}
         reports={reports}
+        supplements={supplements}
+        weekNotes={weekNotes}
+        onSaveWeekNote={saveWeekNote}
       />
 
       {modalData && (
