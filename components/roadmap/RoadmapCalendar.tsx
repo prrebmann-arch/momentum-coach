@@ -189,7 +189,9 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       if (r.cardio_minutes) cardioByDate[r.date] = (cardioByDate[r.date] || 0) + r.cardio_minutes
     })
 
-    const activeSupps = supplements.filter(s => s.actif && s.supplements)
+    // Only true 'supplementation' (hormonal / cycle products) — not 'complement'
+    // (whey, BCAA, vitamins…) which would clutter the roadmap view.
+    const activeSupps = supplements.filter(s => s.actif && s.supplements && s.supplements.type === 'supplementation')
 
     const weeks: {
       num: number
