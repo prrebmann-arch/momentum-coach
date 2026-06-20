@@ -14,12 +14,17 @@ interface ProgramRef {
 interface NutritionRef {
   id: string
   nom: string
+  calories_objectif: number | null
+  proteines: number | null
+  glucides: number | null
+  lipides: number | null
 }
 
 interface DailyReport {
   date: string
   weight: number | null
   cardio_minutes: number | null
+  adherence: number | null
 }
 
 interface SupplementRow {
@@ -184,9 +189,11 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
 
     const weightByDate: Record<string, number> = {}
     const cardioByDate: Record<string, number> = {}
+    const adherenceByDate: Record<string, number> = {}
     reports.forEach((r) => {
       if (r.weight) weightByDate[r.date] = parseFloat(String(r.weight))
       if (r.cardio_minutes) cardioByDate[r.date] = (cardioByDate[r.date] || 0) + r.cardio_minutes
+      if (r.adherence != null) adherenceByDate[r.date] = parseFloat(String(r.adherence))
     })
 
     // Only true 'supplementation' (hormonal / cycle products) — not 'complement'
@@ -201,6 +208,7 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       avgWeight: string | null
       totalCardio: number
       supps: SupplementRow[]
+      adherencePct: number | null
     }[] = []
     let weekStart = new Date(min)
     let weekNum = 1
@@ -213,6 +221,7 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       const phase = phases.find((p) => p.start_date <= weekEndKey && p.end_date >= weekKey)
 
       const weightVals: number[] = []
+      const adhVals: number[] = []
       let cardioSum = 0
       for (let d = 0; d < 7; d++) {
         const dt = new Date(weekStart)
@@ -221,15 +230,21 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         const v = weightByDate[dKey]
         if (v) weightVals.push(v)
         cardioSum += cardioByDate[dKey] || 0
+        const a = adherenceByDate[dKey]
+        if (a != null) adhVals.push(a)
       }
       const avgWeight = weightVals.length
         ? (weightVals.reduce((a, b) => a + b, 0) / weightVals.length).toFixed(1)
+        : null
+      // daily_reports.adherence is logged on a /10 scale → × 10 to get %
+      const adherencePct = adhVals.length
+        ? Math.round((adhVals.reduce((a, b) => a + b, 0) / adhVals.length) * 10)
         : null
 
       // Supplement is active on this week if start_date is null or <= weekEnd
       const supps = activeSupps.filter(s => !s.start_date || s.start_date <= weekEndKey)
 
-      weeks.push({ num: weekNum++, start: weekKey, end: weekEndKey, phase, avgWeight, totalCardio: cardioSum, supps })
+      weeks.push({ num: weekNum++, start: weekKey, end: weekEndKey, phase, avgWeight, totalCardio: cardioSum, supps, adherencePct })
       weekStart.setDate(weekStart.getDate() + 7)
     }
     return weeks
@@ -333,10 +348,30 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
                       <span style={{ color: 'var(--text3)' }}>&mdash;</span>
                     )}
                   </span>
-                  <span className={styles.rmWtCell}>
+                  <span className={styles.rmWtCell} style={{ textAlign: 'left' }}>
                     {nutri ? (
-                      <span className={styles.rmWtNutri}>
-                        <i className="fa-solid fa-utensils" /> {nutri.nom}
+                      <span className={styles.rmWtNutriCell}>
+                        <span className={styles.rmWtNutriTop}>
+                          <i className="fa-solid fa-utensils" />
+                          {nutri.calories_objectif ? <strong>{nutri.calories_objectif} kcal</strong> : <strong>{nutri.nom}</strong>}
+                          {w.adherencePct != null && (
+                            <span
+                              className={styles.rmWtAdh}
+                              style={{
+                                background: w.adherencePct >= 80 ? 'rgba(34,197,94,0.18)' : w.adherencePct >= 60 ? 'rgba(245,158,11,0.18)' : 'rgba(239,68,68,0.18)',
+                                color: w.adherencePct >= 80 ? '#22c55e' : w.adherencePct >= 60 ? '#f59e0b' : '#ef4444',
+                              }}
+                              title={`Adhérence moyenne sur la semaine (basée sur daily_reports.adherence)`}
+                            >
+                              {w.adherencePct}%
+                            </span>
+                          )}
+                        </span>
+                        {(nutri.proteines != null || nutri.glucides != null || nutri.lipides != null) && (
+                          <span className={styles.rmWtMacros}>
+                            P {nutri.proteines ?? 0}g · G {nutri.glucides ?? 0}g · L {nutri.lipides ?? 0}g
+                          </span>
+                        )}
                       </span>
                     ) : (
                       <span style={{ color: 'var(--text3)' }}>&mdash;</span>
