@@ -177,13 +177,13 @@
 .rmWt { border-radius: 10px; overflow: hidden; border: var(--card-border); }
 
 .rmWtHdr {
-  display: grid; grid-template-columns: 160px 1fr 100px 1fr 1fr;
+  display: grid; grid-template-columns: 150px 1fr 90px 1fr 1fr 90px 110px 1.4fr;
   background: var(--bg3); padding: 10px 16px; gap: 8px;
 }
 .rmWtH { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.3px; text-align: center; }
 
 .rmWtRow {
-  display: grid; grid-template-columns: 160px 1fr 100px 1fr 1fr;
+  display: grid; grid-template-columns: 150px 1fr 90px 1fr 1fr 90px 110px 1.4fr;
   padding: 10px 16px; gap: 8px; align-items: center;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -203,6 +203,10 @@
   display: inline-flex; align-items: center; gap: 4px;
   padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
   background: var(--bg3); color: var(--text2); white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .rmWtHdr, .rmWtRow { grid-template-columns: 130px 1fr 80px 1fr 1fr 80px 100px 1.2fr; }
 }
 
 @media (max-width: 768px) {
