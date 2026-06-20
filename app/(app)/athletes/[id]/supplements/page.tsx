@@ -625,7 +625,12 @@ export default function SupplementsPage() {
 
   async function removeAssignment(id: string) {
     if (!confirm('Retirer ce supplement ?')) return
-    const { error } = await supabase.from('athlete_supplements').update({ actif: false }).eq('id', id)
+    const todayStr = new Date().toISOString().slice(0, 10)
+    // Record end_date so the roadmap weekly view can show this supp
+    // as 'was active' on past weeks without showing it as still active now.
+    const { error } = await supabase.from('athlete_supplements')
+      .update({ actif: false, end_date: todayStr })
+      .eq('id', id)
     if (error) { toast('Erreur', 'error'); return }
     toast('Supplement retire', 'success')
     loadData()
