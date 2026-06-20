@@ -295,164 +295,167 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         </div>
       </div>
 
-      {/* Week table */}
+      {/* Weekly feed cards */}
       {weekTableRows.length > 0 && (
-        <div className={styles.rmWeektableSection}>
-          <h3 className={styles.rmSectionTitle}>Vue semaine par semaine</h3>
-          <div className={styles.rmWt} data-cols="8">
-            <div className={styles.rmWtHdr}>
-              <span className={styles.rmWtH} style={{ textAlign: 'left' }}>Semaine</span>
-              <span className={styles.rmWtH}>Phase</span>
-              <span className={styles.rmWtH}>Poids moyen</span>
-              <span className={styles.rmWtH}>Programme</span>
-              <span className={styles.rmWtH}>Nutrition</span>
-              <span className={styles.rmWtH}>Cardio</span>
-              <span className={styles.rmWtH}>Suppléments</span>
-              <span className={styles.rmWtH} style={{ textAlign: 'left' }}>Note</span>
-            </div>
+        <div className={styles.rmFeedSection}>
+          <div className={styles.rmFeedHead}>
+            <h3 className={styles.rmSectionTitle} style={{ margin: 0 }}>Vue semaine par semaine</h3>
+            <span className={styles.rmFeedHeadHint}>
+              {weekTableRows.length} semaine{weekTableRows.length > 1 ? 's' : ''} planifiée{weekTableRows.length > 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className={styles.rmFeedList}>
             {weekTableRows.map((w) => {
               const isCurrent = w.start <= todayStr && w.end >= todayStr
+              const isPast = w.end < todayStr
               const p = w.phase
               const pi = p ? PROG_PHASES[p.phase as ProgPhaseKey] : null
-              const color = pi ? pi.color : null
+              const color = pi ? pi.color : 'var(--border)'
               const prog = p ? programs.find((pr) => pr.id === p.programme_id) : null
               const nutri = p ? nutritions.find((n) => n.id === p.nutrition_id) : null
               const note = noteByWeek[w.start] ?? ''
               const isEditingNote = editingNoteKey === w.start
               const isExpandedSupps = expandedSuppsKey === w.start
+              const adhClass = w.adherencePct == null ? 'neutral'
+                : w.adherencePct >= 80 ? 'good'
+                : w.adherencePct >= 60 ? 'mid' : 'bad'
 
               return (
-                <div key={w.num} className={`${styles.rmWtRow} ${isCurrent ? styles.rmWtCurrent : ''}`}>
-                  <span className={`${styles.rmWtCell} ${styles.rmWtWeek}`}>
-                    <strong>S{w.num}</strong>
-                    <span className={styles.rmWtDates}>
+                <article
+                  key={w.num}
+                  className={`${styles.rmFeedCard} ${isCurrent ? styles.rmFeedCardCurrent : ''} ${isPast ? styles.rmFeedCardPast : ''}`}
+                  style={{ borderLeftColor: color }}
+                >
+                  <header className={styles.rmFeedCardHead}>
+                    <span className={styles.rmFeedNum}>S{w.num}</span>
+                    <span className={styles.rmFeedRange}>
                       {formatDateShort(w.start)} — {formatDateShort(w.end)}
                     </span>
-                  </span>
-                  <span className={styles.rmWtCell}>
-                    {pi && p ? (
-                      <span className={styles.rmWtPhase} style={{ background: color! }}>
+                    {isCurrent && <span className={styles.rmFeedNowBadge}>EN COURS</span>}
+                    {pi && p && (
+                      <span className={styles.rmFeedPhase} style={{ background: color, color: '#fff' }}>
                         {p.name}
                       </span>
-                    ) : (
-                      <span style={{ color: 'var(--text3)' }}>&mdash;</span>
                     )}
-                  </span>
-                  <span className={styles.rmWtCell}>{w.avgWeight ? `${w.avgWeight} kg` : '\u2014'}</span>
-                  <span className={styles.rmWtCell}>
-                    {prog ? (
-                      <span className={styles.rmWtProg}>
-                        <i className="fa-solid fa-dumbbell" /> {prog.nom}
-                      </span>
-                    ) : (
-                      <span style={{ color: 'var(--text3)' }}>&mdash;</span>
-                    )}
-                  </span>
-                  <span className={styles.rmWtCell} style={{ textAlign: 'left' }}>
-                    {nutri ? (
-                      <span className={styles.rmWtNutriCell}>
-                        <span className={styles.rmWtNutriTop}>
-                          <i className="fa-solid fa-utensils" />
-                          {nutri.calories_objectif ? <strong>{nutri.calories_objectif} kcal</strong> : <strong>{nutri.nom}</strong>}
-                          {w.adherencePct != null && (
-                            <span
-                              className={styles.rmWtAdh}
-                              style={{
-                                background: w.adherencePct >= 80 ? 'rgba(34,197,94,0.18)' : w.adherencePct >= 60 ? 'rgba(245,158,11,0.18)' : 'rgba(239,68,68,0.18)',
-                                color: w.adherencePct >= 80 ? '#22c55e' : w.adherencePct >= 60 ? '#f59e0b' : '#ef4444',
-                              }}
-                              title={`Adhérence moyenne sur la semaine (basée sur daily_reports.adherence)`}
-                            >
-                              {w.adherencePct}%
-                            </span>
-                          )}
-                        </span>
-                        {(nutri.proteines != null || nutri.glucides != null || nutri.lipides != null) && (
-                          <span className={styles.rmWtMacros}>
-                            P {nutri.proteines ?? 0}g · G {nutri.glucides ?? 0}g · L {nutri.lipides ?? 0}g
-                          </span>
-                        )}
-                      </span>
-                    ) : (
-                      <span style={{ color: 'var(--text3)' }}>&mdash;</span>
-                    )}
-                  </span>
-                  <span className={styles.rmWtCell}>
-                    {w.totalCardio > 0 ? (
-                      <span style={{ color: 'var(--text)', fontWeight: 500 }}>
-                        <i className="fa-solid fa-heart-pulse" style={{ marginRight: 4, color: '#ef4444' }} /> {w.totalCardio} min
-                      </span>
-                    ) : (
-                      <span style={{ color: 'var(--text3)' }}>&mdash;</span>
-                    )}
-                  </span>
-                  <span className={styles.rmWtCell}>
-                    {w.supps.length > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => setExpandedSuppsKey(isExpandedSupps ? null : w.start)}
-                        style={{ background: 'transparent', border: 'none', color: 'var(--text)', cursor: 'pointer', fontSize: 12, padding: 0 }}
-                        title={w.supps.map(s => `${s.supplements?.nom}${s.dosage ? ` ${s.dosage}${s.unite || ''}` : ''}`).join(' · ')}
-                      >
-                        <i className="fa-solid fa-pills" style={{ marginRight: 4, color: '#a855f7' }} />
-                        {w.supps.length} actif{w.supps.length > 1 ? 's' : ''}
-                        <i className={`fa-solid fa-chevron-${isExpandedSupps ? 'up' : 'down'}`} style={{ marginLeft: 4, fontSize: 9 }} />
-                      </button>
-                    ) : (
-                      <span style={{ color: 'var(--text3)' }}>&mdash;</span>
-                    )}
-                  </span>
-                  <span className={styles.rmWtCell} style={{ textAlign: 'left', overflow: 'visible' }}>
-                    {isEditingNote ? (
-                      <span style={{ display: 'flex', gap: 4, alignItems: 'center', width: '100%' }}>
-                        <input
-                          autoFocus
-                          value={editingNoteValue}
-                          onChange={e => setEditingNoteValue(e.target.value)}
-                          onBlur={commitNote}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') { e.preventDefault(); commitNote() }
-                            if (e.key === 'Escape') { e.preventDefault(); setEditingNoteKey(null) }
-                          }}
-                          placeholder="Note de la semaine…"
-                          style={{ flex: 1, background: 'var(--bg3)', border: '1px solid var(--primary)', borderRadius: 4, color: 'var(--text)', padding: '4px 8px', fontSize: 12 }}
-                        />
-                      </span>
-                    ) : note ? (
-                      <button
-                        type="button"
-                        onClick={() => startNoteEdit(w.start)}
-                        style={{ background: 'transparent', border: 'none', color: 'var(--text)', cursor: 'pointer', fontSize: 12, textAlign: 'left', padding: 0, width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                        title={note}
-                      >
-                        <i className="fa-solid fa-note-sticky" style={{ marginRight: 4, color: '#f59e0b' }} /> {note}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => startNoteEdit(w.start)}
-                        style={{ background: 'transparent', border: '1px dashed var(--border)', color: 'var(--text3)', cursor: 'pointer', fontSize: 11, padding: '2px 8px', borderRadius: 4 }}
-                      >
-                        <i className="fa-solid fa-plus" /> Note
-                      </button>
-                    )}
-                  </span>
-                  {isExpandedSupps && (
-                    <div style={{ gridColumn: '1 / -1', background: 'var(--bg3)', padding: '8px 12px', borderRadius: 6, marginTop: 4, fontSize: 12 }}>
-                      {w.supps.map(s => (
-                        <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
-                          <span style={{ color: 'var(--text)' }}>
-                            <strong>{s.supplements?.nom}</strong>
-                            {s.supplements?.marque ? <span style={{ color: 'var(--text3)' }}> · {s.supplements.marque}</span> : null}
-                          </span>
-                          <span style={{ color: 'var(--text2)' }}>
-                            {s.dosage ? `${s.dosage}${s.unite || ''}` : ''} {s.frequence ? `· ${s.frequence}` : ''} {s.moment_prise ? `· ${s.moment_prise}` : ''}
-                          </span>
-                        </div>
-                      ))}
+                  </header>
+
+                  <div className={styles.rmFeedStats}>
+                    <div className={styles.rmFeedStat}>
+                      <span className={styles.rmFeedStatLabel}><i className="fa-solid fa-weight-scale" /> Poids moy.</span>
+                      <span className={styles.rmFeedStatValue}>{w.avgWeight ? `${w.avgWeight} kg` : '—'}</span>
                     </div>
-                  )}
-                </div>
+                    <div className={styles.rmFeedStat}>
+                      <span className={styles.rmFeedStatLabel}><i className="fa-solid fa-heart-pulse" style={{ color: '#ef4444' }} /> Cardio</span>
+                      <span className={styles.rmFeedStatValue}>{w.totalCardio > 0 ? `${w.totalCardio} min` : '—'}</span>
+                    </div>
+                    <div className={`${styles.rmFeedStat} ${styles[`rmFeedStatAdh_${adhClass}`]}`}>
+                      <span className={styles.rmFeedStatLabel}><i className="fa-solid fa-circle-check" /> Adhérence</span>
+                      <span className={styles.rmFeedStatValue}>{w.adherencePct != null ? `${w.adherencePct}%` : '—'}</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.rmFeedBody}>
+                    <div className={styles.rmFeedBlock}>
+                      <div className={styles.rmFeedBlockHdr}>
+                        <i className="fa-solid fa-dumbbell" />
+                        <span>Programme</span>
+                      </div>
+                      <div className={styles.rmFeedBlockBody}>
+                        {prog ? prog.nom : <span className={styles.rmFeedMuted}>Aucun</span>}
+                      </div>
+                    </div>
+
+                    <div className={styles.rmFeedBlock}>
+                      <div className={styles.rmFeedBlockHdr}>
+                        <i className="fa-solid fa-utensils" style={{ color: '#f59e0b' }} />
+                        <span>Nutrition</span>
+                      </div>
+                      <div className={styles.rmFeedBlockBody}>
+                        {nutri ? (
+                          <>
+                            <div className={styles.rmFeedNutriTop}>
+                              <strong>{nutri.calories_objectif ?? nutri.nom}</strong>
+                              {nutri.calories_objectif != null && <span className={styles.rmFeedUnit}>kcal</span>}
+                            </div>
+                            {(nutri.proteines != null || nutri.glucides != null || nutri.lipides != null) && (
+                              <div className={styles.rmFeedNutriMacros}>
+                                P {nutri.proteines ?? 0}g · G {nutri.glucides ?? 0}g · L {nutri.lipides ?? 0}g
+                              </div>
+                            )}
+                          </>
+                        ) : <span className={styles.rmFeedMuted}>Aucun</span>}
+                      </div>
+                    </div>
+
+                    <div className={styles.rmFeedBlock}>
+                      <div className={styles.rmFeedBlockHdr}>
+                        <i className="fa-solid fa-pills" style={{ color: '#a855f7' }} />
+                        <span>Suppléments</span>
+                        {w.supps.length > 0 && (
+                          <button
+                            type="button"
+                            className={styles.rmFeedToggle}
+                            onClick={() => setExpandedSuppsKey(isExpandedSupps ? null : w.start)}
+                          >
+                            {w.supps.length} actif{w.supps.length > 1 ? 's' : ''} <i className={`fa-solid fa-chevron-${isExpandedSupps ? 'up' : 'down'}`} />
+                          </button>
+                        )}
+                      </div>
+                      <div className={styles.rmFeedBlockBody}>
+                        {w.supps.length === 0 && <span className={styles.rmFeedMuted}>Aucun</span>}
+                        {w.supps.length > 0 && !isExpandedSupps && (
+                          <div className={styles.rmFeedSuppPreview}>
+                            {w.supps.slice(0, 2).map(s => s.supplements?.nom).filter(Boolean).join(', ')}
+                            {w.supps.length > 2 && ` +${w.supps.length - 2}`}
+                          </div>
+                        )}
+                        {isExpandedSupps && (
+                          <ul className={styles.rmFeedSuppList}>
+                            {w.supps.map(s => (
+                              <li key={s.id}>
+                                <span className={styles.rmFeedSuppName}>
+                                  {s.supplements?.nom}
+                                  {s.supplements?.marque && <em>· {s.supplements.marque}</em>}
+                                </span>
+                                <span className={styles.rmFeedSuppDose}>
+                                  {s.dosage ? `${s.dosage}${s.unite || ''}` : ''}
+                                  {s.frequence ? ` · ${s.frequence}` : ''}
+                                  {s.moment_prise ? ` · ${s.moment_prise}` : ''}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <footer className={styles.rmFeedNote}>
+                    <i className="fa-solid fa-note-sticky" style={{ color: '#f59e0b' }} />
+                    {isEditingNote ? (
+                      <input
+                        autoFocus
+                        value={editingNoteValue}
+                        onChange={e => setEditingNoteValue(e.target.value)}
+                        onBlur={commitNote}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitNote() }
+                          if (e.key === 'Escape') { e.preventDefault(); setEditingNoteKey(null) }
+                        }}
+                        placeholder="Note de la semaine…"
+                        className={styles.rmFeedNoteInput}
+                      />
+                    ) : note ? (
+                      <button type="button" className={styles.rmFeedNoteText} onClick={() => startNoteEdit(w.start)}>
+                        {note}
+                      </button>
+                    ) : (
+                      <button type="button" className={styles.rmFeedNoteEmpty} onClick={() => startNoteEdit(w.start)}>
+                        <i className="fa-solid fa-plus" /> Ajouter une note
+                      </button>
+                    )}
+                  </footer>
+                </article>
               )
             })}
           </div>
