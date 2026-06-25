@@ -24,6 +24,7 @@ const TABS = [
   { label: 'Routine', route: 'routine', icon: 'fa-sun' },
   { label: 'Menstr.', route: 'menstrual', icon: 'fa-calendar-days' },
   { label: 'Sang', route: 'bloodtest', icon: 'fa-droplet' },
+  { label: 'IA', route: 'ia', icon: 'fa-wand-magic-sparkles' },
 ]
 
 export default function AthleteDetailLayout({ children }: { children: React.ReactNode }) {
