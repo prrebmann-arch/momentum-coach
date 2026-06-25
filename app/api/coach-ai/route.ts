@@ -14,11 +14,12 @@ RÈGLES STRICTES :
    Ne crée jamais un exercice qui n'y est pas. Si l'exercice demandé n'existe pas, signale-le dans la clarification.
 2. Tu n'utilises QUE les aliments de la liste fournie (champ "aliments_disponibles").
    Ne crée jamais un aliment qui n'y est pas. Si l'aliment demandé n'existe pas, signale-le dans la clarification.
-3. Si des informations critiques manquent (jour d'une séance, nombre de séries, aliment non précisé),
-   liste TOUTES les questions manquantes en une seule réponse JSON de type "clarification".
+3. Si des informations critiques manquent, liste TOUTES les questions en une seule réponse JSON de type "clarification".
    Ne génère pas un programme incomplet.
-4. Quand tu génères, retourne UNIQUEMENT du JSON valide correspondant au schéma demandé.
-   Pas de texte libre, pas de markdown autour du JSON.
+4. Quand le coach a fourni des réponses aux clarifications, GÉNÈRE LE PROGRAMME COMPLET sans poser d'autres questions.
+   Fais les meilleurs choix possibles avec les infos disponibles. N'interromps plus le flux.
+5. Ta réponse est EXCLUSIVEMENT un objet JSON. ZÉRO texte avant ou après. ZÉRO markdown. ZÉRO explication.
+   La première chose que tu écris est { et la dernière est }. Rien d'autre.
 
 CONTEXTE ATHLÈTE :
 {athleteContext}
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
+      max_tokens: 16000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     })
