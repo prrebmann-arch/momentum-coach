@@ -457,13 +457,13 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
                       )}
                     </div>
 
-                    {/* 3. Programme */}
+                    {/* 3. Programme — nom du plan actif, tous horizons (planification) */}
                     <div className={styles.rmFeedKv} title={prog?.nom}>
                       <i className="fa-solid fa-dumbbell" />
                       {prog ? <strong>{prog.nom}</strong> : <span style={{ color: 'var(--text3)' }}>—</span>}
                     </div>
 
-                    {/* 4. Nutrition */}
+                    {/* 4. Nutrition — données réelles uniquement, rien pour le futur */}
                     <div className={styles.rmFeedKv}>
                       <i className="fa-solid fa-utensils" style={{ color: '#f59e0b' }} />
                       {w.weekNutri ? (
@@ -474,11 +474,6 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
                             {w.weekNutri.adherence}%
                           </span>
                         </>
-                      ) : nutri ? (
-                        <>
-                          <strong style={{ color: 'var(--text3)' }}>{nutri.calories_objectif ?? nutri.nom}</strong>
-                          {nutri.calories_objectif != null && <span className="sub" style={{ color: 'var(--text3)' }}>obj · P{nutri.proteines ?? 0} G{nutri.glucides ?? 0} L{nutri.lipides ?? 0}</span>}
-                        </>
                       ) : <span style={{ color: 'var(--text3)' }}>—</span>}
                     </div>
 
@@ -488,7 +483,7 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
                       {w.avgWeight ? <strong>{w.avgWeight} kg</strong> : <span style={{ color: 'var(--text3)' }}>—</span>}
                     </div>
 
-                    {/* 6. Cardio + Suppléments chips */}
+                    {/* 6. Cardio + Suppléments — cardio réel uniquement */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                       <div className={styles.rmFeedKv}>
                         <i className="fa-solid fa-heart-pulse" style={{ color: '#ef4444' }} />
