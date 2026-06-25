@@ -122,8 +122,18 @@ export async function POST(req: NextRequest) {
     const textBlock = response.content.find((b) => b.type === 'text')
     if (!textBlock || textBlock.type !== 'text') throw new Error('no text block in response')
     responseText = textBlock.text.trim()
-    if (responseText.startsWith('```')) {
-      responseText = responseText.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '')
+    // Strip markdown code fences if present
+    if (responseText.includes('```')) {
+      const fenceMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/)
+      if (fenceMatch) responseText = fenceMatch[1].trim()
+    }
+    // Extract JSON object if there's surrounding prose
+    const jsonStart = responseText.indexOf('{')
+    const jsonEnd = responseText.lastIndexOf('}')
+    if (jsonStart > 0 || jsonEnd < responseText.length - 1) {
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        responseText = responseText.slice(jsonStart, jsonEnd + 1)
+      }
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
