@@ -30,6 +30,13 @@ EXERCICES DISPONIBLES :
 ALIMENTS DISPONIBLES :
 {alimentsJson}
 
+TEMPLATES NUTRITION DISPONIBLES :
+Ces templates sont des journées ou repas pré-construits par le coach.
+- template_type 'jour' ou 'repas' : meals_data est un tableau de repas → copier directement dans meals_data du plan.
+- template_type 'diete' : meals_data contient { training: { meals: [...] }, rest: { meals: [...] } } → extraire la bonne journée.
+Quand le coach référence un template par nom, copie ses meals_data dans le plan (sans modifier les aliments).
+{templatesJson}
+
 SCHÉMA CLARIFICATION (quand il manque des infos) :
 {"type":"clarification","questions":["question 1","question 2"]}
 
@@ -76,7 +83,7 @@ export async function POST(req: NextRequest) {
     .single()
   if (!athlete) return NextResponse.json({ error: 'athlete not found or forbidden' }, { status: 404 })
 
-  const [progsRes, nutrRes, exsRes, alimRes] = await Promise.all([
+  const [progsRes, nutrRes, exsRes, alimRes, tplRes] = await Promise.all([
     admin
       .from('workout_programs')
       .select('id, nom, workout_sessions(nom, jour, ordre)')
@@ -97,6 +104,11 @@ export async function POST(req: NextRequest) {
       .select('id, nom, calories, proteines, glucides, lipides')
       .or(`coach_id.eq.${user.id},coach_id.is.null`)
       .limit(1000),
+    admin
+      .from('nutrition_templates')
+      .select('id, nom, template_type, category, calories_objectif, proteines, glucides, lipides, meals_data')
+      .eq('coach_id', user.id)
+      .limit(50),
   ])
 
   const athleteContext = JSON.stringify({
@@ -104,11 +116,17 @@ export async function POST(req: NextRequest) {
     plans_nutritionnels_existants: nutrRes.data || [],
   })
 
+  const templates = (tplRes.data || []).map((t) => ({
+    ...t,
+    meals_data: (() => { try { return typeof t.meals_data === 'string' ? JSON.parse(t.meals_data) : t.meals_data } catch { return [] } })(),
+  }))
+
   const systemPrompt = SYSTEM_PROMPT_TEMPLATE
     .replace('{athleteName}', `${athlete.prenom} ${athlete.nom}`)
     .replace('{athleteContext}', athleteContext)
     .replace('{exercicesJson}', JSON.stringify(exsRes.data || []))
     .replace('{alimentsJson}', JSON.stringify(alimRes.data || []))
+    .replace('{templatesJson}', JSON.stringify(templates))
 
   const userMessage = clarifications
     ? `Instruction initiale : ${instruction}\n\nRéponses aux questions : ${clarifications}`
