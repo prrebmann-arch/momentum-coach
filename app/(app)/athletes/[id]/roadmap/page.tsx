@@ -55,6 +55,12 @@ interface WeekNote {
   note: string
 }
 
+interface NutritionLog {
+  date: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  meals_log: string | any[]
+}
+
 function getNextMonday(from: Date): Date {
   const d = new Date(from)
   const day = d.getDay()
@@ -72,7 +78,7 @@ export default function RoadmapPage() {
   const { selectedAthlete } = useAthleteContext()
 
   const cacheKey = `athlete_${athleteId}_roadmap`
-  const [cached] = useState(() => getPageCache<{ phases: RoadmapPhase[]; programs: ProgramRef[]; nutritions: NutritionRef[]; reports: DailyReport[]; supplements: SupplementRow[]; weekNotes: WeekNote[] }>(cacheKey))
+  const [cached] = useState(() => getPageCache<{ phases: RoadmapPhase[]; programs: ProgramRef[]; nutritions: NutritionRef[]; reports: DailyReport[]; supplements: SupplementRow[]; weekNotes: WeekNote[]; nutritionLogs: NutritionLog[] }>(cacheKey))
 
   const [phases, setPhases] = useState<RoadmapPhase[]>(cached?.phases ?? [])
   const [programs, setPrograms] = useState<ProgramRef[]>(cached?.programs ?? [])
@@ -80,6 +86,7 @@ export default function RoadmapPage() {
   const [reports, setReports] = useState<DailyReport[]>(cached?.reports ?? [])
   const [supplements, setSupplements] = useState<SupplementRow[]>(cached?.supplements ?? [])
   const [weekNotes, setWeekNotes] = useState<WeekNote[]>(cached?.weekNotes ?? [])
+  const [nutritionLogs, setNutritionLogs] = useState<NutritionLog[]>(cached?.nutritionLogs ?? [])
   const [loading, setLoading] = useState(!cached)
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -92,7 +99,7 @@ export default function RoadmapPage() {
     try {
       const userId = athleteUserId
 
-      const [phasesRes, progsRes, nutritionsRes, reportsRes, suppsRes, notesRes] = await Promise.all([
+      const [phasesRes, progsRes, nutritionsRes, reportsRes, suppsRes, notesRes, nutriLogsRes] = await Promise.all([
         supabase
           .from('roadmap_phases')
           .select('id, athlete_id, coach_id, phase, name, start_date, end_date, position, status, programme_id, nutrition_id, description')
@@ -115,6 +122,9 @@ export default function RoadmapPage() {
           .select('athlete_id, week_start, note')
           .eq('athlete_id', athleteId)
           .limit(200),
+        userId
+          ? supabase.from('nutrition_logs').select('date,meals_log').eq('athlete_id', userId).limit(500)
+          : supabase.from('nutrition_logs').select('date,meals_log').eq('athlete_id', athleteId).limit(500),
       ])
 
       const phasesData = (phasesRes.data || []) as RoadmapPhase[]
@@ -123,14 +133,16 @@ export default function RoadmapPage() {
       const reportsData = (reportsRes.data || []) as DailyReport[]
       const suppsData = (suppsRes.data || []) as unknown as SupplementRow[]
       const notesData = (notesRes.data || []) as WeekNote[]
+      const nutriLogsData = (nutriLogsRes.data || []) as NutritionLog[]
       setPhases(phasesData)
       setPrograms(progsData)
       setNutritions(nutritionsData)
       setReports(reportsData)
       setSupplements(suppsData)
       setWeekNotes(notesData)
+      setNutritionLogs(nutriLogsData)
 
-      setPageCache(cacheKey, { phases: phasesData, programs: progsData, nutritions: nutritionsData, reports: reportsData, supplements: suppsData, weekNotes: notesData })
+      setPageCache(cacheKey, { phases: phasesData, programs: progsData, nutritions: nutritionsData, reports: reportsData, supplements: suppsData, weekNotes: notesData, nutritionLogs: nutriLogsData })
     } finally {
       setLoading(false)
     }
@@ -389,6 +401,7 @@ export default function RoadmapPage() {
         reports={reports}
         supplements={supplements}
         weekNotes={weekNotes}
+        nutritionLogs={nutritionLogs}
         onSaveWeekNote={saveWeekNote}
       />
 

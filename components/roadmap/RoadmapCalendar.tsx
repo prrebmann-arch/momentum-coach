@@ -45,6 +45,12 @@ interface WeekNote {
   note: string
 }
 
+interface NutritionLog {
+  date: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  meals_log: string | any[]
+}
+
 interface RoadmapCalendarProps {
   phases: RoadmapPhase[]
   programs: ProgramRef[]
@@ -52,6 +58,7 @@ interface RoadmapCalendarProps {
   reports: DailyReport[]
   supplements?: SupplementRow[]
   weekNotes?: WeekNote[]
+  nutritionLogs?: NutritionLog[]
   onSaveWeekNote?: (weekStart: string, note: string) => Promise<void>
 }
 
@@ -62,7 +69,7 @@ function formatDateShort(dateStr: string): string {
   })
 }
 
-export default function RoadmapCalendar({ phases, programs, nutritions, reports, supplements = [], weekNotes = [], onSaveWeekNote }: RoadmapCalendarProps) {
+export default function RoadmapCalendar({ phases, programs, nutritions, reports, supplements = [], weekNotes = [], nutritionLogs = [], onSaveWeekNote }: RoadmapCalendarProps) {
   const [calOffset, setCalOffset] = useState<number | null>(null)
   const [editingNoteKey, setEditingNoteKey] = useState<string | null>(null)
   const [editingNoteValue, setEditingNoteValue] = useState('')
@@ -190,11 +197,53 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
 
     const weightByDate: Record<string, number> = {}
     const cardioByDate: Record<string, number> = {}
-    const adherenceByDate: Record<string, number> = {}
     reports.forEach((r) => {
       if (r.weight) weightByDate[r.date] = parseFloat(String(r.weight))
       if (r.cardio_minutes) cardioByDate[r.date] = (cardioByDate[r.date] || 0) + r.cardio_minutes
-      if (r.adherence != null) adherenceByDate[r.date] = parseFloat(String(r.adherence))
+    })
+
+    // Compute actual kcal/macros/adherence from nutrition_logs per day
+    type DayNutri = { actualK: number; actualP: number; actualG: number; actualL: number; adherence: number }
+    const nutriByDate: Record<string, DayNutri> = {}
+    nutritionLogs.forEach((log) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let mealsLog: any[] = []
+      try { mealsLog = (typeof log.meals_log === 'string' ? JSON.parse(log.meals_log) : log.meals_log) || [] } catch { /* empty */ }
+      if (!mealsLog.length) return
+
+      let actualK = 0, actualP = 0, actualG = 0, actualL = 0
+      let followedCount = 0, totalFoods = 0
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mealsLog.forEach((meal: any) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(meal?.foods || []).forEach((f: any) => {
+          totalFoods++
+          const orig = f.original || {}
+          if (f.status === 'followed') {
+            followedCount++
+            actualK += parseFloat(orig.kcal) || 0
+            actualP += parseFloat(orig.p) || 0
+            actualG += parseFloat(orig.g) || 0
+            actualL += parseFloat(orig.l) || 0
+          } else if (f.status === 'replaced' && f.replacement) {
+            actualK += parseFloat(f.replacement.kcal) || 0
+            actualP += parseFloat(f.replacement.p) || 0
+            actualG += parseFloat(f.replacement.g) || 0
+            actualL += parseFloat(f.replacement.l) || 0
+          }
+        })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(meal?.extras || []).forEach((ex: any) => {
+          actualK += parseFloat(ex.kcal) || 0
+          actualP += parseFloat(ex.p) || 0
+          actualG += parseFloat(ex.g) || 0
+          actualL += parseFloat(ex.l) || 0
+        })
+      })
+      nutriByDate[log.date] = {
+        actualK, actualP, actualG, actualL,
+        adherence: totalFoods > 0 ? Math.round((followedCount / totalFoods) * 100) : 0,
+      }
     })
 
     // Only 'supplementation' rows are roadmap-relevant. Whether the row is
@@ -211,7 +260,7 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       avgWeight: string | null
       totalCardio: number
       supps: SupplementRow[]
-      adherencePct: number | null
+      weekNutri: { avgK: number; avgP: number; avgG: number; avgL: number; adherence: number; daysLogged: number } | null
     }[] = []
     let weekStart = new Date(min)
     let weekNum = 1
@@ -224,7 +273,7 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       const phase = phases.find((p) => p.start_date <= weekEndKey && p.end_date >= weekKey)
 
       const weightVals: number[] = []
-      const adhVals: number[] = []
+      const nutriVals: DayNutri[] = []
       let cardioSum = 0
       for (let d = 0; d < 7; d++) {
         const dt = new Date(weekStart)
@@ -233,16 +282,19 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         const v = weightByDate[dKey]
         if (v) weightVals.push(v)
         cardioSum += cardioByDate[dKey] || 0
-        const a = adherenceByDate[dKey]
-        if (a != null) adhVals.push(a)
+        if (nutriByDate[dKey]) nutriVals.push(nutriByDate[dKey])
       }
       const avgWeight = weightVals.length
         ? (weightVals.reduce((a, b) => a + b, 0) / weightVals.length).toFixed(1)
         : null
-      // daily_reports.adherence is logged on a /10 scale → × 10 to get %
-      const adherencePct = adhVals.length
-        ? Math.round((adhVals.reduce((a, b) => a + b, 0) / adhVals.length) * 10)
-        : null
+      const weekNutri = nutriVals.length ? {
+        avgK: Math.round(nutriVals.reduce((a, b) => a + b.actualK, 0) / nutriVals.length),
+        avgP: Math.round(nutriVals.reduce((a, b) => a + b.actualP, 0) / nutriVals.length),
+        avgG: Math.round(nutriVals.reduce((a, b) => a + b.actualG, 0) / nutriVals.length),
+        avgL: Math.round(nutriVals.reduce((a, b) => a + b.actualL, 0) / nutriVals.length),
+        adherence: Math.round(nutriVals.reduce((a, b) => a + b.adherence, 0) / nutriVals.length),
+        daysLogged: nutriVals.length,
+      } : null
 
       // Supp cycle overlaps this week iff (start <= weekEnd) AND (end IS NULL OR end >= weekStart).
       // Null start_date is interpreted as "always started", so it overlaps unless end ended before weekStart.
@@ -252,11 +304,11 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         return startOk && endOk
       })
 
-      weeks.push({ num: weekNum++, start: weekKey, end: weekEndKey, phase, avgWeight, totalCardio: cardioSum, supps, adherencePct })
+      weeks.push({ num: weekNum++, start: weekKey, end: weekEndKey, phase, avgWeight, totalCardio: cardioSum, supps, weekNutri })
       weekStart.setDate(weekStart.getDate() + 7)
     }
     return weeks
-  }, [phases, reports, supplements])
+  }, [phases, reports, supplements, nutritionLogs])
 
   return (
     <>
@@ -324,9 +376,9 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
               const note = noteByWeek[w.start] ?? ''
               const isEditingNote = editingNoteKey === w.start
               const isExpandedSupps = expandedSuppsKey === w.start
-              const adhClass = w.adherencePct == null ? 'neutral'
-                : w.adherencePct >= 80 ? 'good'
-                : w.adherencePct >= 60 ? 'mid' : 'bad'
+              const adhClass = w.weekNutri == null ? 'neutral'
+                : w.weekNutri.adherence >= 80 ? 'good'
+                : w.weekNutri.adherence >= 60 ? 'mid' : 'bad'
 
               return (
                 <article
@@ -360,15 +412,18 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
                     {/* 4. Nutrition */}
                     <div className={styles.rmFeedKv}>
                       <i className="fa-solid fa-utensils" style={{ color: '#f59e0b' }} />
-                      {nutri ? (
+                      {w.weekNutri ? (
                         <>
-                          <strong>{nutri.calories_objectif ?? nutri.nom}</strong>
-                          {nutri.calories_objectif != null && <span className="sub">kcal · P{nutri.proteines ?? 0} G{nutri.glucides ?? 0} L{nutri.lipides ?? 0}</span>}
-                          {w.adherencePct != null && (
-                            <span className={`${styles.rmFeedAdh} ${styles[`rmFeedAdh_${adhClass}`]}`} style={{ marginLeft: 6 }}>
-                              {w.adherencePct}%
-                            </span>
-                          )}
+                          <strong>{w.weekNutri.avgK}</strong>
+                          <span className="sub">kcal · P{w.weekNutri.avgP} G{w.weekNutri.avgG} L{w.weekNutri.avgL}</span>
+                          <span className={`${styles.rmFeedAdh} ${styles[`rmFeedAdh_${adhClass}`]}`} style={{ marginLeft: 6 }}>
+                            {w.weekNutri.adherence}%
+                          </span>
+                        </>
+                      ) : nutri ? (
+                        <>
+                          <strong style={{ color: 'var(--text3)' }}>{nutri.calories_objectif ?? nutri.nom}</strong>
+                          {nutri.calories_objectif != null && <span className="sub" style={{ color: 'var(--text3)' }}>obj · P{nutri.proteines ?? 0} G{nutri.glucides ?? 0} L{nutri.lipides ?? 0}</span>}
                         </>
                       ) : <span style={{ color: 'var(--text3)' }}>—</span>}
                     </div>
