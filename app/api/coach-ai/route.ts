@@ -110,44 +110,56 @@ export async function POST(req: NextRequest) {
     ? `Instruction initiale : ${instruction}\n\nRéponses aux questions : ${clarifications}`
     : instruction
 
+  const tools: Anthropic.Tool[] = [
+    {
+      name: 'respond',
+      description: 'Retourne soit une demande de clarification soit un aperçu complet prêt à créer.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          type: { type: 'string', enum: ['clarification', 'preview'] },
+          questions: { type: 'array', items: { type: 'string' }, description: 'Uniquement si type=clarification' },
+          action: { type: 'string', enum: ['create_program', 'update_program', 'create_nutrition', 'update_nutrition'], description: 'Uniquement si type=preview' },
+          summary: { type: 'string', description: 'Uniquement si type=preview — 1-2 phrases' },
+          data: { type: 'object', description: 'Uniquement si type=preview — le programme ou plan complet selon le schéma' },
+        },
+        required: ['type'],
+      },
+    },
+  ]
+
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
-  let responseText: string
+  let parsed: unknown
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 16000,
       system: systemPrompt,
+      tools,
+      tool_choice: { type: 'auto' },
       messages: [{ role: 'user', content: userMessage }],
     })
-    const textBlock = response.content.find((b) => b.type === 'text')
-    if (!textBlock || textBlock.type !== 'text') throw new Error('no text block in response')
-    responseText = textBlock.text.trim()
-    // Strip markdown code fences if present
-    if (responseText.includes('```')) {
-      const fenceMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/)
-      if (fenceMatch) responseText = fenceMatch[1].trim()
-    }
-    // Extract JSON object if there's surrounding prose
-    const jsonStart = responseText.indexOf('{')
-    const jsonEnd = responseText.lastIndexOf('}')
-    if (jsonStart > 0 || jsonEnd < responseText.length - 1) {
-      if (jsonStart !== -1 && jsonEnd !== -1) {
-        responseText = responseText.slice(jsonStart, jsonEnd + 1)
+    const toolBlock = response.content.find((b) => b.type === 'tool_use')
+    if (toolBlock && toolBlock.type === 'tool_use') {
+      parsed = toolBlock.input
+    } else {
+      // Fallback: extract JSON from text block
+      const textBlock = response.content.find((b) => b.type === 'text')
+      if (!textBlock || textBlock.type !== 'text') throw new Error('no usable block in response')
+      let txt = textBlock.text.trim()
+      if (txt.includes('```')) {
+        const m = txt.match(/```(?:json)?\s*([\s\S]*?)```/)
+        if (m) txt = m[1].trim()
       }
+      const s = txt.indexOf('{'), e = txt.lastIndexOf('}')
+      if (s !== -1 && e !== -1) txt = txt.slice(s, e + 1)
+      parsed = JSON.parse(txt)
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error('[coach-ai] claude error', e)
     return NextResponse.json({ error: 'claude_error', detail: msg }, { status: 502 })
-  }
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(responseText)
-  } catch {
-    console.error('[coach-ai] json parse error', responseText.slice(0, 300))
-    return NextResponse.json({ error: 'invalid_json', detail: responseText.slice(0, 300) }, { status: 502 })
   }
 
   return NextResponse.json(parsed)
