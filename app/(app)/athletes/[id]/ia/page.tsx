@@ -8,7 +8,7 @@ type UIState = 'idle' | 'loading' | 'clarification' | 'preview' | 'success'
 
 interface PreviewResponse {
   type: 'preview'
-  action: 'create_program' | 'update_program' | 'create_nutrition' | 'update_nutrition'
+  action: 'create_program' | 'update_program' | 'create_nutrition' | 'create_nutrition_pair' | 'update_nutrition'
   summary: string
   data: Record<string, unknown>
 }
@@ -37,6 +37,25 @@ function ProgramPreview({ data }: { data: Record<string, unknown> }) {
           ))}
         </div>
       ))}
+    </div>
+  )
+}
+
+function NutritionPairPreview({ data }: { data: Record<string, unknown> }) {
+  return (
+    <div>
+      {(['training', 'rest'] as const).map((key) => {
+        const plan = data[key] as Record<string, unknown> | undefined
+        if (!plan) return null
+        return (
+          <div key={key} style={{ marginBottom: 20 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-2)', textTransform: 'uppercase', marginBottom: 8 }}>
+              {key === 'training' ? 'Jour ON (entraînement)' : 'Jour OFF (repos)'}
+            </div>
+            <NutritionPreview data={plan} />
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -182,7 +201,7 @@ export default function IAPage() {
       </p>
 
       {error && (
-        <pre style={{ background: 'rgba(220,38,38,0.08)', color: '#dc2626', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 12, border: '1px solid rgba(220,38,38,0.2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 300, overflowY: 'auto', fontFamily: 'monospace' }}>
+        <pre style={{ background: 'rgba(220,38,38,0.08)', color: '#dc2626', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 12, border: '1px solid rgba(220,38,38,0.2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace' }}>
           {error}
         </pre>
       )}
@@ -248,7 +267,9 @@ export default function IAPage() {
             <p style={{ margin: '0 0 16px', fontSize: 14, color: 'var(--text-2)', fontStyle: 'italic' }}>{preview.summary}</p>
             {isProgram
               ? <ProgramPreview data={preview.data} />
-              : <NutritionPreview data={preview.data} />
+              : preview.action === 'create_nutrition_pair'
+                ? <NutritionPairPreview data={preview.data} />
+                : <NutritionPreview data={preview.data} />
             }
           </div>
           <div style={{ display: 'flex', gap: 8 }}>

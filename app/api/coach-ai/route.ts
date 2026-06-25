@@ -14,11 +14,12 @@ RÈGLES STRICTES :
    Ne crée jamais un exercice qui n'y est pas. Si l'exercice demandé n'existe pas, signale-le dans la clarification.
 2. Tu n'utilises QUE les aliments de la liste fournie (champ "aliments_disponibles").
    Ne crée jamais un aliment qui n'y est pas. Si l'aliment demandé n'existe pas, signale-le dans la clarification.
-3. Si des informations critiques manquent (jour d'une séance, nombre de séries, aliment non précisé),
-   liste TOUTES les questions manquantes en une seule réponse JSON de type "clarification".
+3. Si des informations critiques manquent, liste TOUTES les questions en une seule réponse JSON de type "clarification".
    Ne génère pas un programme incomplet.
-4. Quand tu génères, retourne UNIQUEMENT du JSON valide correspondant au schéma demandé.
-   Pas de texte libre, pas de markdown autour du JSON.
+4. Quand le coach a fourni des réponses aux clarifications, GÉNÈRE LE PROGRAMME COMPLET sans poser d'autres questions.
+   Fais les meilleurs choix possibles avec les infos disponibles. N'interromps plus le flux.
+5. Ta réponse est EXCLUSIVEMENT un objet JSON. ZÉRO texte avant ou après. ZÉRO markdown. ZÉRO explication.
+   La première chose que tu écris est { et la dernière est }. Rien d'autre.
 
 CONTEXTE ATHLÈTE :
 {athleteContext}
@@ -38,8 +39,11 @@ SCHÉMA PROGRAMME (create) :
 SCHÉMA PROGRAMME (update — inclure programme_id) :
 {"type":"preview","action":"update_program","summary":"1-2 phrases","data":{"programme_id":"uuid","nom":"string","pattern_type":"fixed","sessions":[...]}}
 
-SCHÉMA NUTRITION (create) :
-{"type":"preview","action":"create_nutrition","summary":"1-2 phrases","data":{"nom":"string","meal_type":"training","calories_objectif":2500,"proteines":180,"glucides":300,"lipides":70,"meals_data":[{"meal_index":0,"nom":"Petit-déjeuner","foods":[{"aliment_id":"uuid","nom":"string","qte":100,"kcal":350,"p":12,"g":45,"l":8}]}]}}
+SCHÉMA NUTRITION plan unique (create) :
+{"type":"preview","action":"create_nutrition","summary":"1-2 phrases","data":{"nom":"string","meal_type":"both","calories_objectif":2500,"proteines":180,"glucides":300,"lipides":70,"meals_data":[{"meal_index":0,"nom":"Petit-déjeuner","foods":[{"aliment_id":"uuid","nom":"string","qte":100,"kcal":350,"p":12,"g":45,"l":8}]}]}}
+
+SCHÉMA NUTRITION jour ON + jour OFF (create_nutrition_pair) — utilise ce schéma quand le coach veut deux journées distinctes :
+{"type":"preview","action":"create_nutrition_pair","summary":"1-2 phrases","data":{"training":{"nom":"string — Jour ON","meal_type":"training","calories_objectif":2800,"proteines":200,"glucides":350,"lipides":70,"meals_data":[...]},"rest":{"nom":"string — Jour OFF","meal_type":"rest","calories_objectif":2200,"proteines":190,"glucides":250,"lipides":65,"meals_data":[...]}}}
 
 SCHÉMA NUTRITION (update — inclure plan_id) :
 {"type":"preview","action":"update_nutrition","summary":"1-2 phrases","data":{"plan_id":"uuid","nom":"string","meal_type":"training","calories_objectif":2500,"proteines":180,"glucides":300,"lipides":70,"meals_data":[...]}}`
@@ -109,44 +113,56 @@ export async function POST(req: NextRequest) {
     ? `Instruction initiale : ${instruction}\n\nRéponses aux questions : ${clarifications}`
     : instruction
 
+  const tools: Anthropic.Tool[] = [
+    {
+      name: 'respond',
+      description: 'Retourne soit une demande de clarification soit un aperçu complet prêt à créer.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          type: { type: 'string', enum: ['clarification', 'preview'] },
+          questions: { type: 'array', items: { type: 'string' }, description: 'Uniquement si type=clarification' },
+          action: { type: 'string', enum: ['create_program', 'update_program', 'create_nutrition', 'create_nutrition_pair', 'update_nutrition'], description: 'Uniquement si type=preview' },
+          summary: { type: 'string', description: 'Uniquement si type=preview — 1-2 phrases' },
+          data: { type: 'object', description: 'Uniquement si type=preview — le programme ou plan complet selon le schéma' },
+        },
+        required: ['type'],
+      },
+    },
+  ]
+
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
-  let responseText: string
+  let parsed: unknown
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
+      max_tokens: 16000,
       system: systemPrompt,
+      tools,
+      tool_choice: { type: 'auto' },
       messages: [{ role: 'user', content: userMessage }],
     })
-    const textBlock = response.content.find((b) => b.type === 'text')
-    if (!textBlock || textBlock.type !== 'text') throw new Error('no text block in response')
-    responseText = textBlock.text.trim()
-    // Strip markdown code fences if present
-    if (responseText.includes('```')) {
-      const fenceMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/)
-      if (fenceMatch) responseText = fenceMatch[1].trim()
-    }
-    // Extract JSON object if there's surrounding prose
-    const jsonStart = responseText.indexOf('{')
-    const jsonEnd = responseText.lastIndexOf('}')
-    if (jsonStart > 0 || jsonEnd < responseText.length - 1) {
-      if (jsonStart !== -1 && jsonEnd !== -1) {
-        responseText = responseText.slice(jsonStart, jsonEnd + 1)
+    const toolBlock = response.content.find((b) => b.type === 'tool_use')
+    if (toolBlock && toolBlock.type === 'tool_use') {
+      parsed = toolBlock.input
+    } else {
+      // Fallback: extract JSON from text block
+      const textBlock = response.content.find((b) => b.type === 'text')
+      if (!textBlock || textBlock.type !== 'text') throw new Error('no usable block in response')
+      let txt = textBlock.text.trim()
+      if (txt.includes('```')) {
+        const m = txt.match(/```(?:json)?\s*([\s\S]*?)```/)
+        if (m) txt = m[1].trim()
       }
+      const s = txt.indexOf('{'), e = txt.lastIndexOf('}')
+      if (s !== -1 && e !== -1) txt = txt.slice(s, e + 1)
+      parsed = JSON.parse(txt)
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error('[coach-ai] claude error', e)
     return NextResponse.json({ error: 'claude_error', detail: msg }, { status: 502 })
-  }
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(responseText)
-  } catch {
-    console.error('[coach-ai] json parse error', responseText.slice(0, 300))
-    return NextResponse.json({ error: 'invalid_json', detail: responseText.slice(0, 300) }, { status: 502 })
   }
 
   return NextResponse.json(parsed)
