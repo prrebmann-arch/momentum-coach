@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
       max_tokens: 16000,
       system: systemPrompt,
       tools,
-      tool_choice: { type: 'auto' },
+      tool_choice: { type: 'any' },
       messages: [{ role: 'user', content: userMessage }],
     })
     const toolBlock = response.content.find((b) => b.type === 'tool_use')
