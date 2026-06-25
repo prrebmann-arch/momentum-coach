@@ -267,8 +267,8 @@
 
 .rmFeedRow {
   display: grid;
-  grid-template-columns: 130px 1fr 1.2fr 1.4fr 90px 100px 80px;
-  align-items: center;
+  grid-template-columns: 130px 1fr 1.2fr 1.4fr 90px 110px 80px;
+  align-items: start;
   gap: 12px;
 }
 
