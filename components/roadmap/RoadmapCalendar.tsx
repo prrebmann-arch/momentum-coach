@@ -9,6 +9,7 @@ import styles from '@/styles/roadmap.module.css'
 interface ProgramRef {
   id: string
   nom: string
+  created_at: string | null
 }
 
 interface NutritionRef {
@@ -18,6 +19,8 @@ interface NutritionRef {
   proteines: number | null
   glucides: number | null
   lipides: number | null
+  valid_from: string | null
+  actif: boolean | null
 }
 
 interface DailyReport {
@@ -69,11 +72,20 @@ function formatDateShort(dateStr: string): string {
   })
 }
 
+// Parse dosing frequency → times per day (e.g. "2x/jour" → 2, "3x/semaine" → 3/7)
+function freqPerDay(frequence: string | null): number {
+  if (!frequence) return 1
+  const dayM = frequence.match(/(\d+)\s*(?:x|fois)?\s*(?:\/|par)\s*j(?:our)?/i)
+  if (dayM) return parseInt(dayM[1])
+  const semM = frequence.match(/(\d+)\s*(?:x|fois)?\s*(?:\/|par)\s*s(?:em(?:aine)?)?/i)
+  if (semM) return parseInt(semM[1]) / 7
+  return 1
+}
+
 export default function RoadmapCalendar({ phases, programs, nutritions, reports, supplements = [], weekNotes = [], nutritionLogs = [], onSaveWeekNote }: RoadmapCalendarProps) {
   const [calOffset, setCalOffset] = useState<number | null>(null)
   const [editingNoteKey, setEditingNoteKey] = useState<string | null>(null)
   const [editingNoteValue, setEditingNoteValue] = useState('')
-  const [expandedSuppsKey, setExpandedSuppsKey] = useState<string | null>(null)
 
   const noteByWeek = useMemo(() => {
     const m: Record<string, string> = {}
@@ -252,11 +264,50 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
     // end_date set) should still show on the weeks where it WAS active.
     const cycleSupps = supplements.filter(s => s.supplements && s.supplements.type === 'supplementation')
 
+    // Pre-sort by date for efficient fallback lookups
+    const sortedNutritions = [...nutritions].sort((a, b) => {
+      const va = a.valid_from ?? '1970-01-01'
+      const vb = b.valid_from ?? '1970-01-01'
+      return va < vb ? -1 : va > vb ? 1 : 0
+    })
+    const sortedPrograms = [...programs].sort((a, b) => {
+      const ca = a.created_at ?? '1970-01-01'
+      const cb = b.created_at ?? '1970-01-01'
+      return ca < cb ? -1 : ca > cb ? 1 : 0
+    })
+
+    // Find active nutrition plan for a given week end date (fallback when phase.nutrition_id is null)
+    function resolveNutrition(phaseNutritionId: string | null | undefined, weekEndKey: string): NutritionRef | null {
+      if (phaseNutritionId) return nutritions.find(n => n.id === phaseNutritionId) ?? null
+      // Find plan with latest valid_from <= weekEnd
+      let best: NutritionRef | null = null
+      for (const n of sortedNutritions) {
+        const vf = n.valid_from ?? '1970-01-01'
+        if (vf <= weekEndKey) best = n
+      }
+      // Fallback: the currently active plan (for weeks after all valid_from dates)
+      if (!best) best = nutritions.find(n => n.actif) ?? nutritions[0] ?? null
+      return best
+    }
+
+    // Find active program for a given week end date (fallback when phase.programme_id is null)
+    function resolveProgram(phaseProgramId: string | null | undefined, weekEndKey: string): ProgramRef | null {
+      if (phaseProgramId) return programs.find(p => p.id === phaseProgramId) ?? null
+      let best: ProgramRef | null = null
+      for (const p of sortedPrograms) {
+        const ca = p.created_at ?? '1970-01-01'
+        if (ca <= weekEndKey) best = p
+      }
+      return best
+    }
+
     const weeks: {
       num: number
       start: string
       end: string
       phase: RoadmapPhase | undefined
+      prog: ProgramRef | null
+      nutri: NutritionRef | null
       avgWeight: string | null
       totalCardio: number
       supps: SupplementRow[]
@@ -304,11 +355,15 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         return startOk && endOk
       })
 
-      weeks.push({ num: weekNum++, start: weekKey, end: weekEndKey, phase, avgWeight, totalCardio: cardioSum, supps, weekNutri })
+      const prog = resolveProgram(phase?.programme_id, weekEndKey)
+      const nutri = resolveNutrition(phase?.nutrition_id, weekEndKey)
+
+      weeks.push({ num: weekNum++, start: weekKey, end: weekEndKey, phase, prog, nutri, avgWeight, totalCardio: cardioSum, supps, weekNutri })
       weekStart.setDate(weekStart.getDate() + 7)
     }
     return weeks
-  }, [phases, reports, supplements, nutritionLogs])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phases, reports, supplements, nutritionLogs, nutritions, programs])
 
   return (
     <>
@@ -371,11 +426,10 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
               const p = w.phase
               const pi = p ? PROG_PHASES[p.phase as ProgPhaseKey] : null
               const color = pi ? pi.color : 'var(--border)'
-              const prog = p ? programs.find((pr) => pr.id === p.programme_id) : null
-              const nutri = p ? nutritions.find((n) => n.id === p.nutrition_id) : null
+              const prog = w.prog
+              const nutri = w.nutri
               const note = noteByWeek[w.start] ?? ''
               const isEditingNote = editingNoteKey === w.start
-              const isExpandedSupps = expandedSuppsKey === w.start
               const adhClass = w.weekNutri == null ? 'neutral'
                 : w.weekNutri.adherence >= 80 ? 'good'
                 : w.weekNutri.adherence >= 60 ? 'mid' : 'bad'
@@ -440,29 +494,31 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
                         <i className="fa-solid fa-heart-pulse" style={{ color: '#ef4444' }} />
                         {w.totalCardio > 0 ? <strong>{w.totalCardio} min</strong> : <span style={{ color: 'var(--text3)' }}>—</span>}
                       </div>
-                      <div className={styles.rmFeedSuppChips}>
-                        {w.supps.length === 0 ? (
-                          <span style={{ color: 'var(--text3)', fontSize: 10 }}>aucune supp.</span>
-                        ) : (
-                          <>
-                            {w.supps.slice(0, 2).map(s => (
-                              <span key={s.id} className={styles.rmFeedSuppChip} title={`${s.supplements?.nom}${s.dosage ? ` ${s.dosage}${s.unite || ''}` : ''}`}>
-                                {s.supplements?.nom}
-                              </span>
-                            ))}
-                            {w.supps.length > 2 && (
-                              <button type="button" className={styles.rmFeedSuppMore} onClick={() => setExpandedSuppsKey(isExpandedSupps ? null : w.start)}>
-                                {isExpandedSupps ? 'masquer' : `+${w.supps.length - 2}`}
-                              </button>
-                            )}
-                            {w.supps.length > 0 && w.supps.length <= 2 && (
-                              <button type="button" className={styles.rmFeedSuppMore} onClick={() => setExpandedSuppsKey(isExpandedSupps ? null : w.start)} title="Détails dosages">
-                                <i className={`fa-solid fa-chevron-${isExpandedSupps ? 'up' : 'down'}`} />
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
+                      {w.supps.length === 0 ? (
+                        <span style={{ color: 'var(--text3)', fontSize: 10 }}>aucune supp.</span>
+                      ) : (
+                        <ul className={styles.rmFeedSuppList}>
+                          {w.supps.map(s => {
+                            const weeklyQty = s.dosage ? Math.round(s.dosage * freqPerDay(s.frequence) * 7) : null
+                            const isMg = s.unite === 'mg' || s.unite === 'g'
+                            return (
+                              <li key={s.id} className={styles.rmFeedSuppItem}>
+                                <span className={styles.rmFeedSuppName}>{s.supplements?.nom}</span>
+                                {s.dosage != null && (
+                                  <span className={styles.rmFeedSuppDose}>
+                                    {s.dosage}{s.unite || ''}
+                                    {s.frequence ? ` · ${s.frequence}` : ''}
+                                    {isMg && weeklyQty != null && (
+                                      <span className={styles.rmFeedSuppWeekly}> = {weeklyQty}{s.unite}/sem</span>
+                                    )}
+                                  </span>
+                                )}
+                                {s.end_date && <span style={{ color: '#ef4444', fontSize: 9 }}>stop {formatDateShort(s.end_date)}</span>}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      )}
                     </div>
 
                     {/* 7. Note */}
@@ -488,25 +544,6 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
                       )}
                     </div>
                   </div>
-
-                  {isExpandedSupps && w.supps.length > 0 && (
-                    <ul className={styles.rmFeedSuppDetails}>
-                      {w.supps.map(s => (
-                        <li key={s.id}>
-                          <span className="nm">
-                            {s.supplements?.nom}
-                            {s.supplements?.marque && <em>· {s.supplements.marque}</em>}
-                          </span>
-                          <span className="ds">
-                            {s.dosage ? `${s.dosage}${s.unite || ''}` : ''}
-                            {s.frequence ? ` · ${s.frequence}` : ''}
-                            {s.moment_prise ? ` · ${s.moment_prise}` : ''}
-                            {s.end_date && <span style={{ color: '#ef4444', marginLeft: 4 }}>· stop {formatDateShort(s.end_date)}</span>}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
                 </article>
               )
             })}

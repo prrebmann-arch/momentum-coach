@@ -19,6 +19,7 @@ import styles from '@/styles/roadmap.module.css'
 interface ProgramRef {
   id: string
   nom: string
+  created_at: string | null
 }
 
 interface NutritionRef {
@@ -28,6 +29,8 @@ interface NutritionRef {
   proteines: number | null
   glucides: number | null
   lipides: number | null
+  valid_from: string | null
+  actif: boolean | null
 }
 
 interface DailyReport {
@@ -107,8 +110,8 @@ export default function RoadmapPage() {
           .order('position')
           .order('start_date')
           .limit(50),
-        supabase.from('workout_programs').select('id,nom').eq('athlete_id', athleteId).limit(50),
-        supabase.from('nutrition_plans').select('id,nom,calories_objectif,proteines,glucides,lipides').eq('athlete_id', athleteId).limit(50),
+        supabase.from('workout_programs').select('id,nom,created_at').eq('athlete_id', athleteId).limit(50),
+        supabase.from('nutrition_plans').select('id,nom,calories_objectif,proteines,glucides,lipides,valid_from,actif').eq('athlete_id', athleteId).limit(50),
         userId
           ? supabase.from('daily_reports').select('date,weight,cardio_minutes,adherence').eq('user_id', userId).limit(400)
           : Promise.resolve({ data: [] }),
