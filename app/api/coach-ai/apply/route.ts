@@ -113,12 +113,13 @@ async function applyUpdateProgram(admin: SupabaseClient, athleteId: string, data
   return NextResponse.json({ ok: true })
 }
 
-// AI generates { aliment_id, nom, qte, kcal, p, g, l } but MealEditor expects { aliment, qte, kcal, p, g, l }
+// AI generates { aliment_id, nom, qte, kcal, p, g, l }
+// MealEditor FoodItem.aliment = food name (findAliment does a.nom === food.aliment)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeMealsData(mealsData: any[]): any[] {
   return (mealsData || []).map((meal: any) => ({
     foods: (meal.foods || []).map((f: any) => ({
-      aliment: f.aliment_id ?? f.aliment,
+      aliment: f.nom ?? f.aliment,
       qte: f.qte,
       kcal: f.kcal,
       p: f.p,
@@ -153,13 +154,15 @@ async function applyCreateNutrition(admin: SupabaseClient, coachId: string, athl
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function applyCreateNutritionPair(admin: SupabaseClient, coachId: string, athleteId: string, data: any) {
   const today = new Date().toISOString().split('T')[0]
+  // Both plans share the same nom so the nutrition page groups them as one diet (ON + OFF tabs)
+  const sharedNom = data.nom || data.training?.nom || 'Diète'
   const plans = [
     { ...data.training, meal_type: 'training' },
     { ...data.rest, meal_type: 'rest' },
   ]
   for (const plan of plans) {
     const { error } = await admin.from('nutrition_plans').insert({
-      nom: plan.nom,
+      nom: sharedNom,
       athlete_id: athleteId,
       coach_id: coachId,
       meal_type: plan.meal_type,

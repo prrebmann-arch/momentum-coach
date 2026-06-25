@@ -43,7 +43,8 @@ SCHÉMA NUTRITION plan unique (create) :
 {"type":"preview","action":"create_nutrition","summary":"1-2 phrases","data":{"nom":"string","meal_type":"both","calories_objectif":2500,"proteines":180,"glucides":300,"lipides":70,"meals_data":[{"meal_index":0,"nom":"Petit-déjeuner","foods":[{"aliment_id":"uuid","nom":"string","qte":100,"kcal":350,"p":12,"g":45,"l":8}]}]}}
 
 SCHÉMA NUTRITION jour ON + jour OFF (create_nutrition_pair) — utilise ce schéma quand le coach veut deux journées distinctes :
-{"type":"preview","action":"create_nutrition_pair","summary":"1-2 phrases","data":{"training":{"nom":"string — Jour ON","meal_type":"training","calories_objectif":2800,"proteines":200,"glucides":350,"lipides":70,"meals_data":[...]},"rest":{"nom":"string — Jour OFF","meal_type":"rest","calories_objectif":2200,"proteines":190,"glucides":250,"lipides":65,"meals_data":[...]}}}
+IMPORTANT : "nom" à la racine de data = nom PARTAGÉ des deux plans (ils s'affichent sous la même diète).
+{"type":"preview","action":"create_nutrition_pair","summary":"1-2 phrases","data":{"nom":"string — nom commun (ex: Prise de Masse)","training":{"meal_type":"training","calories_objectif":2800,"proteines":200,"glucides":350,"lipides":70,"meals_data":[...]},"rest":{"meal_type":"rest","calories_objectif":2200,"proteines":190,"glucides":250,"lipides":65,"meals_data":[...]}}}
 
 SCHÉMA NUTRITION (update — inclure plan_id) :
 {"type":"preview","action":"update_nutrition","summary":"1-2 phrases","data":{"plan_id":"uuid","nom":"string","meal_type":"training","calories_objectif":2500,"proteines":180,"glucides":300,"lipides":70,"meals_data":[...]}}`
