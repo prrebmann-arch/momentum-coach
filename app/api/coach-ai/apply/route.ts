@@ -31,10 +31,11 @@ export async function POST(req: NextRequest) {
     .single()
   if (!athlete) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 
-  if (action === 'create_program')   return applyCreateProgram(admin, user.id, athleteId, data)
-  if (action === 'update_program')   return applyUpdateProgram(admin, athleteId, data)
-  if (action === 'create_nutrition') return applyCreateNutrition(admin, user.id, athleteId, data)
-  if (action === 'update_nutrition') return applyUpdateNutrition(admin, athleteId, data)
+  if (action === 'create_program')       return applyCreateProgram(admin, user.id, athleteId, data)
+  if (action === 'update_program')       return applyUpdateProgram(admin, athleteId, data)
+  if (action === 'create_nutrition')     return applyCreateNutrition(admin, user.id, athleteId, data)
+  if (action === 'create_nutrition_pair') return applyCreateNutritionPair(admin, user.id, athleteId, data)
+  if (action === 'update_nutrition')     return applyUpdateNutrition(admin, athleteId, data)
 
   return NextResponse.json({ error: 'unknown action' }, { status: 400 })
 }
@@ -112,6 +113,21 @@ async function applyUpdateProgram(admin: SupabaseClient, athleteId: string, data
   return NextResponse.json({ ok: true })
 }
 
+// AI generates { aliment_id, nom, qte, kcal, p, g, l } but MealEditor expects { aliment, qte, kcal, p, g, l }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeMealsData(mealsData: any[]): any[] {
+  return (mealsData || []).map((meal: any) => ({
+    foods: (meal.foods || []).map((f: any) => ({
+      aliment: f.aliment_id ?? f.aliment,
+      qte: f.qte,
+      kcal: f.kcal,
+      p: f.p,
+      g: f.g,
+      l: f.l,
+    })),
+  }))
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function applyCreateNutrition(admin: SupabaseClient, coachId: string, athleteId: string, data: any) {
   const { error } = await admin.from('nutrition_plans').insert({
@@ -123,13 +139,42 @@ async function applyCreateNutrition(admin: SupabaseClient, coachId: string, athl
     proteines: data.proteines,
     glucides: data.glucides,
     lipides: data.lipides,
-    meals_data: JSON.stringify(data.meals_data || []),
+    meals_data: JSON.stringify(normalizeMealsData(data.meals_data)),
     actif: true,
     valid_from: new Date().toISOString().split('T')[0],
   })
   if (error) {
     console.error('[coach-ai/apply] create_nutrition', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  return NextResponse.json({ ok: true })
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function applyCreateNutritionPair(admin: SupabaseClient, coachId: string, athleteId: string, data: any) {
+  const today = new Date().toISOString().split('T')[0]
+  const plans = [
+    { ...data.training, meal_type: 'training' },
+    { ...data.rest, meal_type: 'rest' },
+  ]
+  for (const plan of plans) {
+    const { error } = await admin.from('nutrition_plans').insert({
+      nom: plan.nom,
+      athlete_id: athleteId,
+      coach_id: coachId,
+      meal_type: plan.meal_type,
+      calories_objectif: plan.calories_objectif,
+      proteines: plan.proteines,
+      glucides: plan.glucides,
+      lipides: plan.lipides,
+      meals_data: JSON.stringify(normalizeMealsData(plan.meals_data)),
+      actif: true,
+      valid_from: today,
+    })
+    if (error) {
+      console.error('[coach-ai/apply] create_nutrition_pair', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
   }
   return NextResponse.json({ ok: true })
 }
@@ -154,7 +199,7 @@ async function applyUpdateNutrition(admin: SupabaseClient, athleteId: string, da
     proteines: data.proteines,
     glucides: data.glucides,
     lipides: data.lipides,
-    meals_data: JSON.stringify(data.meals_data || []),
+    meals_data: JSON.stringify(normalizeMealsData(data.meals_data)),
   }).eq('id', planId)
   if (error) {
     console.error('[coach-ai/apply] update_nutrition', error)
