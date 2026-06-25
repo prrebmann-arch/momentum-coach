@@ -44,6 +44,7 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/athletes/[id]/fodmap` | fodmap test tab | FODMAP reintro tracking |
 | `/athletes/[id]/bloodtest` | bloodtest tab | Blood test PDF upload + extraction + validation + history graphs |
 | `/athletes/[id]/bloodtest/validate/[upload_id]` | validation page | Coach split-view PDF / extracted markers |
+| `/athletes/[id]/ia` | `ia/page.tsx` | Coach AI tab — natural-language instruction → Claude preview → DB write |
 | `/athletes/[id]/questionnaires` | quest. assignments | — |
 | `/athletes/[id]/supplements` | suppl. tracking | — |
 | `/athletes/[id]/routine` | morning routine | — |
@@ -92,6 +93,8 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/api/bloodtest/extract` | POST | `bloodtest/extract/route.ts` | Calls Claude Haiku with PDF, persists `extracted_data`. Server-only ANTHROPIC_API_KEY. |
 | `/api/bloodtest/validate` | POST | `bloodtest/validate/route.ts` | Coach submits validated markers + dated_at. |
 | `/api/bloodtest/signed-url` | GET `?id=` | `bloodtest/signed-url/route.ts` | 1h signed URL for PDF preview. |
+| `/api/coach-ai` | POST | `coach-ai/route.ts` | Gathers athlete context (programs, nutrition, exercises, foods) + calls Claude Sonnet → `{type:'clarification'}` or `{type:'preview'}` |
+| `/api/coach-ai/apply` | POST | `coach-ai/apply/route.ts` | Writes validated preview to DB: `workout_programs`+`workout_sessions` or `nutrition_plans` |
 
 All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer JWT -> `supabase.auth.getUser()`).
 
@@ -360,6 +363,9 @@ useRefetchOnResume(load, loading)
 | Modify bloodtest validation queue | `app/(app)/athletes/[id]/bloodtest/validate/[upload_id]/page.tsx` |
 | Modify bloodtest catalog | `lib/bloodtestCatalog.ts` (mirror in ATHLETE/src/utils/bloodtestCatalog.js) |
 | Modify Claude extraction prompt or model | `app/api/bloodtest/extract/route.ts` |
+| Modify Coach AI system prompt or model | `app/api/coach-ai/route.ts` (`SYSTEM_PROMPT_TEMPLATE`) |
+| Modify Coach AI DB write logic | `app/api/coach-ai/apply/route.ts` |
+| Modify Coach AI UI states | `app/(app)/athletes/[id]/ia/page.tsx` |
 | Modify bloodtest analysis progress UI / loading bar | `components/bloodtest/BloodtestAnalysisProgress.tsx` |
 | Modify splitMarkers logic (3-section split) | `lib/bloodtest.ts` (`splitMarkers`) |
 | Modify zone classification logic | `lib/bloodtest.ts` (`classifyValue`) |
