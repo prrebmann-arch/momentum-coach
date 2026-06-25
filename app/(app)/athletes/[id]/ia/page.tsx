@@ -85,7 +85,7 @@ export default function IAPage() {
       body: JSON.stringify(body),
     })
     const json = await res.json()
-    if (!res.ok) throw new Error(json.error || 'Erreur serveur')
+    if (!res.ok) throw new Error(json.detail || json.error || 'Erreur serveur')
     return json
   }
 
