@@ -6,60 +6,101 @@ import Anthropic from '@anthropic-ai/sdk'
 export const runtime = 'nodejs'
 export const maxDuration = 120
 
-const SYSTEM_PROMPT_TEMPLATE = `Tu es l'assistant IA du coach sur l'app Momentum.
-Tu travailles TOUJOURS sur un athlète spécifique : {athleteName}.
+// ── intent detection — only load relevant data ────────────────────────────────
 
-RÈGLES STRICTES :
-1. Tu n'utilises QUE les exercices de la liste fournie (champ "exercices_disponibles").
-   Ne crée jamais un exercice qui n'y est pas. Si l'exercice demandé n'existe pas, signale-le dans la clarification.
-2. Tu n'utilises QUE les aliments de la liste fournie (champ "aliments_disponibles").
-   Ne crée jamais un aliment qui n'y est pas. Si l'aliment demandé n'existe pas, signale-le dans la clarification.
-3. Si des informations critiques manquent, liste TOUTES les questions en une seule réponse JSON de type "clarification".
-   Ne génère pas un programme incomplet.
-4. Quand le coach a fourni des réponses aux clarifications, GÉNÈRE LE PROGRAMME COMPLET sans poser d'autres questions.
-   Fais les meilleurs choix possibles avec les infos disponibles. N'interromps plus le flux.
-5. Ta réponse est EXCLUSIVEMENT un objet JSON. ZÉRO texte avant ou après. ZÉRO markdown. ZÉRO explication.
-   La première chose que tu écris est { et la dernière est }. Rien d'autre.
+function detectIntent(text: string): 'training' | 'nutrition' | 'both' {
+  const lower = text.toLowerCase()
+  const trainingKw = ['programme', 'entraîn', 'séance', 'session', 'push', 'pull', 'upper', 'lower', 'legs', 'ppl', 'split', 'exercice', 'muscl', 'squat', 'bench', 'deadlift', 'template']
+  const nutritionKw = ['plan', 'diète', 'diete', 'repas', 'aliment', 'calorie', 'protéine', 'proteines', 'nutrition', 'kcal', 'macro', 'glucide', 'lipide', 'manger', 'alimentation', 'calories']
+  const isT = trainingKw.some(w => lower.includes(w))
+  const isN = nutritionKw.some(w => lower.includes(w))
+  if (isT && !isN) return 'training'
+  if (isN && !isT) return 'nutrition'
+  return 'both'
+}
 
-CONTEXTE ATHLÈTE :
-{athleteContext}
+// ── system prompt ─────────────────────────────────────────────────────────────
 
-EXERCICES DISPONIBLES :
-{exercicesJson}
+function buildSystemPrompt(params: {
+  athleteName: string
+  athleteProfile: string
+  existingPrograms: string
+  existingNutrition: string
+  exercicesJson: string
+  alimentsJson: string
+  nutritionTemplatesJson: string
+  trainingTemplatesJson: string
+  intent: 'training' | 'nutrition' | 'both'
+}): string {
+  const {
+    athleteName, athleteProfile, existingPrograms, existingNutrition,
+    exercicesJson, alimentsJson, nutritionTemplatesJson, trainingTemplatesJson, intent,
+  } = params
 
-ALIMENTS DISPONIBLES :
-{alimentsJson}
+  const trainingSection = intent !== 'nutrition' ? `
+EXERCICES DISPONIBLES (utilise UNIQUEMENT ces exercices — référence par exercice_id) :
+${exercicesJson}
 
-TEMPLATES NUTRITION DISPONIBLES :
-Ces templates sont des journées ou repas pré-construits par le coach.
-- template_type 'jour' ou 'repas' : meals_data est un tableau de repas → copier directement dans meals_data du plan.
-- template_type 'diete' : meals_data contient { training: { meals: [...] }, rest: { meals: [...] } } → extraire la bonne journée.
-Quand le coach référence un template par nom, copie ses meals_data dans le plan (sans modifier les aliments).
-{templatesJson}
+TEMPLATES ENTRAÎNEMENT (copie sessions_data directement si le coach en référence un par nom) :
+${trainingTemplatesJson}` : ''
 
-TEMPLATES ENTRAÎNEMENT DISPONIBLES :
-Ces templates sont des programmes pré-construits par le coach. Chaque template a : id, nom, category, sessions_data (tableau de séances avec exercices).
-Quand le coach référence un template par nom, copie ses sessions_data directement dans les sessions du programme.
-{trainingTemplatesJson}
+  const nutritionSection = intent !== 'training' ? `
+ALIMENTS DISPONIBLES (utilise UNIQUEMENT ces aliments — référence par le champ "nom" exact) :
+${alimentsJson}
 
-SCHÉMA CLARIFICATION (quand il manque des infos) :
+TEMPLATES NUTRITION (copie meals_data directement si le coach en référence un par nom) :
+${nutritionTemplatesJson}` : ''
+
+  return `Tu es l'assistant IA du coach sur l'app Momentum — expert en programmation sportive et nutrition sportive.
+Tu travailles sur l'athlète : ${athleteName}.
+
+## PROFIL ATHLÈTE
+${athleteProfile}
+
+## PROGRAMMES EN COURS
+${existingPrograms}
+
+## PLANS NUTRITIONNELS EN COURS
+${existingNutrition}
+${trainingSection}${nutritionSection}
+
+## RÈGLES DE COMPORTEMENT
+1. **Autonomie maximale** : fais des choix techniques toi-même (sélection d'exercices, volumes, intensité, répartition des macros, timing des repas). Ne demande une clarification QUE si une info BLOQUANTE manque (ex: nombre de séances souhaité, objectif calorique précis).
+2. **Une seule clarification** : si tu dois clarifier, liste TOUTES tes questions en une seule fois. Jamais deux rounds de questions.
+3. **Après clarification → génère directement** : quand le coach répond, produis le plan complet sans redemander.
+4. **Exercices** : uniquement dans la liste fournie. Si un exercice demandé est absent, signale-le dans la clarification.
+5. **Aliments** : uniquement dans la liste fournie, référencés par leur champ "nom" exact. Ne invente pas d'aliment absent.
+6. **Templates** : si le coach cite un template par nom, copie ses données exactement (sessions_data ou meals_data), puis applique les modifications demandées.
+
+## CONVENTIONS DE L'APP
+- **tempo** : "excentrique-pause basse-concentrique-pause haute" → ex: "3-1-2-0"
+- **repos** : en secondes → ex: 90
+- **reps** : plage recommandée → ex: "8-10"
+- **pattern_type** : "fixed" (jours de la semaine fixes) | "flexible" (ordre libre)
+- **meal_type** : "training" (jour d'entraînement) | "rest" (jour de repos) | "both" (universel)
+
+## SCHÉMAS DE SORTIE
+
+CLARIFICATION (infos bloquantes manquantes) :
 {"type":"clarification","questions":["question 1","question 2"]}
 
-SCHÉMA PROGRAMME (create) :
+PROGRAMME — créer :
 {"type":"preview","action":"create_program","summary":"1-2 phrases","data":{"nom":"string","pattern_type":"fixed","sessions":[{"nom":"string","jour":1,"ordre":0,"exercices":[{"exercice_id":"uuid","nom":"string","muscle_principal":"string","sets":[{"type":"normal","reps":"8-10","tempo":"3-1-2-0","repos":90,"kg":null}]}]}]}}
 
-SCHÉMA PROGRAMME (update — inclure programme_id) :
+PROGRAMME — modifier (inclure programme_id) :
 {"type":"preview","action":"update_program","summary":"1-2 phrases","data":{"programme_id":"uuid","nom":"string","pattern_type":"fixed","sessions":[...]}}
 
-SCHÉMA NUTRITION plan unique (create) :
-{"type":"preview","action":"create_nutrition","summary":"1-2 phrases","data":{"nom":"string","meal_type":"both","calories_objectif":2500,"proteines":180,"glucides":300,"lipides":70,"meals_data":[{"meal_index":0,"nom":"Petit-déjeuner","foods":[{"aliment_id":"uuid","nom":"string","qte":100,"kcal":350,"p":12,"g":45,"l":8}]}]}}
+NUTRITION — plan unique :
+{"type":"preview","action":"create_nutrition","summary":"1-2 phrases","data":{"nom":"string","meal_type":"both","calories_objectif":2500,"proteines":180,"glucides":300,"lipides":70,"meals_data":[{"nom":"Petit-déjeuner","foods":[{"nom":"Flocons d'avoine/farine d'avoine","qte":80,"kcal":312,"p":10.4,"g":54,"l":5.6}]}]}}
 
-SCHÉMA NUTRITION jour ON + jour OFF (create_nutrition_pair) — utilise ce schéma quand le coach veut deux journées distinctes :
-IMPORTANT : "nom" à la racine de data = nom PARTAGÉ des deux plans (ils s'affichent sous la même diète).
-{"type":"preview","action":"create_nutrition_pair","summary":"1-2 phrases","data":{"nom":"string — nom commun (ex: Prise de Masse)","training":{"meal_type":"training","calories_objectif":2800,"proteines":200,"glucides":350,"lipides":70,"meals_data":[...]},"rest":{"meal_type":"rest","calories_objectif":2200,"proteines":190,"glucides":250,"lipides":65,"meals_data":[...]}}}
+NUTRITION — jour ON + jour OFF (même nom partagé pour grouper dans l'app) :
+{"type":"preview","action":"create_nutrition_pair","summary":"1-2 phrases","data":{"nom":"string — nom commun","training":{"meal_type":"training","calories_objectif":2800,"proteines":200,"glucides":350,"lipides":70,"meals_data":[...]},"rest":{"meal_type":"rest","calories_objectif":2200,"proteines":190,"glucides":250,"lipides":65,"meals_data":[...]}}}
 
-SCHÉMA NUTRITION (update — inclure plan_id) :
+NUTRITION — modifier (inclure plan_id) :
 {"type":"preview","action":"update_nutrition","summary":"1-2 phrases","data":{"plan_id":"uuid","nom":"string","meal_type":"training","calories_objectif":2500,"proteines":180,"glucides":300,"lipides":70,"meals_data":[...]}}`
+}
+
+// ── route ─────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   let user: { id: string }
@@ -75,6 +116,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'missing athleteId or instruction' }, { status: 400 })
   }
 
+  const intent = detectIntent(clarifications ? `${instruction} ${clarifications}` : instruction)
+
   const admin = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_KEY!,
@@ -82,62 +125,56 @@ export async function POST(req: NextRequest) {
 
   const { data: athlete } = await admin
     .from('athletes')
-    .select('id, prenom, nom')
+    .select('id, prenom, nom, objectif')
     .eq('id', athleteId)
     .eq('coach_id', user.id)
     .single()
   if (!athlete) return NextResponse.json({ error: 'athlete not found or forbidden' }, { status: 404 })
 
-  const [progsRes, nutrRes, exsRes, alimRes, tplRes, trainingTplRes] = await Promise.all([
-    admin
-      .from('workout_programs')
-      .select('id, nom, workout_sessions(nom, jour, ordre)')
-      .eq('athlete_id', athleteId)
-      .limit(20),
-    admin
-      .from('nutrition_plans')
-      .select('id, nom, calories_objectif, proteines, glucides, lipides')
-      .eq('athlete_id', athleteId)
-      .limit(20),
-    admin
-      .from('exercices')
-      .select('id, nom, muscle_principal, muscle_secondaire, categorie')
-      .or(`coach_id.eq.${user.id},coach_id.is.null`)
-      .limit(500),
-    admin
-      .from('aliments_db')
-      .select('id, nom, calories, proteines, glucides, lipides')
-      .or(`coach_id.eq.${user.id},coach_id.is.null`)
-      .limit(1000),
-    admin
-      .from('nutrition_templates')
-      .select('id, nom, template_type, category, calories_objectif, proteines, glucides, lipides, meals_data')
-      .eq('coach_id', user.id)
-      .limit(50),
-    admin
-      .from('training_templates')
-      .select('id, nom, category, sessions_data')
-      .eq('coach_id', user.id)
-      .limit(50),
+  const needsTraining = intent !== 'nutrition'
+  const needsNutrition = intent !== 'training'
+
+  const [progsRes, nutrRes, weekRes, exsRes, trainingTplRes, alimRes, nutritionTplRes] = await Promise.all([
+    admin.from('workout_programs').select('id, nom, workout_sessions(nom, jour, ordre)').eq('athlete_id', athleteId).limit(20),
+    admin.from('nutrition_plans').select('id, nom, meal_type, calories_objectif, proteines, glucides, lipides').eq('athlete_id', athleteId).limit(20),
+    admin.from('programming_weeks').select('pdc_moyenne, week_date').eq('athlete_id', athleteId).order('week_date', { ascending: false }).limit(1),
+    needsTraining
+      ? admin.from('exercices').select('id, nom, muscle_principal, categorie').or(`coach_id.eq.${user.id},coach_id.is.null`).limit(500)
+      : Promise.resolve({ data: [] }),
+    needsTraining
+      ? admin.from('training_templates').select('id, nom, category, sessions_data').eq('coach_id', user.id).limit(50)
+      : Promise.resolve({ data: [] }),
+    needsNutrition
+      ? admin.from('aliments_db').select('id, nom, calories, proteines, glucides, lipides').or(`coach_id.eq.${user.id},coach_id.is.null`).limit(1000)
+      : Promise.resolve({ data: [] }),
+    needsNutrition
+      ? admin.from('nutrition_templates').select('id, nom, template_type, category, calories_objectif, proteines, glucides, lipides, meals_data').eq('coach_id', user.id).limit(50)
+      : Promise.resolve({ data: [] }),
   ])
 
-  const athleteContext = JSON.stringify({
-    programmes_existants: progsRes.data || [],
-    plans_nutritionnels_existants: nutrRes.data || [],
+  // Build athlete profile context
+  const latestWeight = (weekRes as any)?.data?.[0]?.pdc_moyenne
+  const athleteProfile = JSON.stringify({
+    objectif: athlete.objectif || 'non renseigné',
+    ...(latestWeight ? { poids_actuel_kg: latestWeight } : {}),
   })
 
-  const templates = (tplRes.data || []).map((t) => ({
+  const nutritionTemplates = ((nutritionTplRes as any)?.data || []).map((t: any) => ({
     ...t,
     meals_data: (() => { try { return typeof t.meals_data === 'string' ? JSON.parse(t.meals_data) : t.meals_data } catch { return [] } })(),
   }))
 
-  const systemPrompt = SYSTEM_PROMPT_TEMPLATE
-    .replace('{athleteName}', `${athlete.prenom} ${athlete.nom}`)
-    .replace('{athleteContext}', athleteContext)
-    .replace('{exercicesJson}', JSON.stringify(exsRes.data || []))
-    .replace('{alimentsJson}', JSON.stringify(alimRes.data || []))
-    .replace('{templatesJson}', JSON.stringify(templates))
-    .replace('{trainingTemplatesJson}', JSON.stringify(trainingTplRes.data || []))
+  const systemPrompt = buildSystemPrompt({
+    athleteName: `${athlete.prenom} ${athlete.nom}`,
+    athleteProfile,
+    existingPrograms: JSON.stringify((progsRes as any)?.data || []),
+    existingNutrition: JSON.stringify((nutrRes as any)?.data || []),
+    exercicesJson: JSON.stringify((exsRes as any)?.data || []),
+    alimentsJson: JSON.stringify((alimRes as any)?.data || []),
+    nutritionTemplatesJson: JSON.stringify(nutritionTemplates),
+    trainingTemplatesJson: JSON.stringify((trainingTplRes as any)?.data || []),
+    intent,
+  })
 
   const userMessage = clarifications
     ? `Instruction initiale : ${instruction}\n\nRéponses aux questions : ${clarifications}`
@@ -177,17 +214,7 @@ export async function POST(req: NextRequest) {
     if (toolBlock && toolBlock.type === 'tool_use') {
       parsed = toolBlock.input
     } else {
-      // Fallback: extract JSON from text block
-      const textBlock = response.content.find((b) => b.type === 'text')
-      if (!textBlock || textBlock.type !== 'text') throw new Error('no usable block in response')
-      let txt = textBlock.text.trim()
-      if (txt.includes('```')) {
-        const m = txt.match(/```(?:json)?\s*([\s\S]*?)```/)
-        if (m) txt = m[1].trim()
-      }
-      const s = txt.indexOf('{'), e = txt.lastIndexOf('}')
-      if (s !== -1 && e !== -1) txt = txt.slice(s, e + 1)
-      parsed = JSON.parse(txt)
+      throw new Error('no tool_use block in response')
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
