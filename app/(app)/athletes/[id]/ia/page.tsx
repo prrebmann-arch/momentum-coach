@@ -182,9 +182,9 @@ export default function IAPage() {
       </p>
 
       {error && (
-        <div style={{ background: 'rgba(220,38,38,0.08)', color: '#dc2626', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13, border: '1px solid rgba(220,38,38,0.2)' }}>
+        <pre style={{ background: 'rgba(220,38,38,0.08)', color: '#dc2626', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: 12, border: '1px solid rgba(220,38,38,0.2)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 300, overflowY: 'auto', fontFamily: 'monospace' }}>
           {error}
-        </div>
+        </pre>
       )}
 
       {uiState === 'idle' && (
