@@ -8,9 +8,11 @@ export const maxDuration = 120
 
 // ── intent detection — only load relevant data ────────────────────────────────
 
+// Only used to decide whether to load the heavy exercices/aliments lists (500-1000 rows each).
+// Templates are ALWAYS loaded regardless of intent — coach always references them.
 function detectIntent(text: string): 'training' | 'nutrition' | 'both' {
   const lower = text.toLowerCase()
-  const trainingKw = ['programme', 'entraîn', 'séance', 'session', 'push', 'pull', 'upper', 'lower', 'legs', 'ppl', 'split', 'exercice', 'muscl', 'squat', 'bench', 'deadlift', 'template']
+  const trainingKw = ['programme', 'entraîn', 'séance', 'session', 'push', 'pull', 'upper', 'lower', 'legs', 'ppl', 'split', 'exercice', 'muscl', 'squat', 'bench', 'deadlift']
   const nutritionKw = ['plan', 'diète', 'diete', 'repas', 'aliment', 'calorie', 'protéine', 'proteines', 'nutrition', 'kcal', 'macro', 'glucide', 'lipide', 'manger', 'alimentation', 'calories']
   const isT = trainingKw.some(w => lower.includes(w))
   const isN = nutritionKw.some(w => lower.includes(w))
@@ -141,15 +143,13 @@ export async function POST(req: NextRequest) {
     needsTraining
       ? admin.from('exercices').select('id, nom, muscle_principal, categorie').or(`coach_id.eq.${user.id},coach_id.is.null`).limit(500)
       : Promise.resolve({ data: [] }),
-    needsTraining
-      ? admin.from('training_templates').select('id, nom, category, sessions_data').eq('coach_id', user.id).limit(50)
-      : Promise.resolve({ data: [] }),
+    // Templates always loaded — coach always references them by name
+    admin.from('training_templates').select('id, nom, category, sessions_data').eq('coach_id', user.id).limit(50),
     needsNutrition
       ? admin.from('aliments_db').select('id, nom, calories, proteines, glucides, lipides').or(`coach_id.eq.${user.id},coach_id.is.null`).limit(1000)
       : Promise.resolve({ data: [] }),
-    needsNutrition
-      ? admin.from('nutrition_templates').select('id, nom, template_type, category, calories_objectif, proteines, glucides, lipides, meals_data').eq('coach_id', user.id).limit(50)
-      : Promise.resolve({ data: [] }),
+    // Nutrition templates always loaded too
+    admin.from('nutrition_templates').select('id, nom, template_type, category, calories_objectif, proteines, glucides, lipides, meals_data').eq('coach_id', user.id).limit(50),
   ])
 
   // Build athlete profile context
