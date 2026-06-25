@@ -37,6 +37,11 @@ Ces templates sont des journées ou repas pré-construits par le coach.
 Quand le coach référence un template par nom, copie ses meals_data dans le plan (sans modifier les aliments).
 {templatesJson}
 
+TEMPLATES ENTRAÎNEMENT DISPONIBLES :
+Ces templates sont des programmes pré-construits par le coach. Chaque template a : id, nom, category, sessions_data (tableau de séances avec exercices).
+Quand le coach référence un template par nom, copie ses sessions_data directement dans les sessions du programme.
+{trainingTemplatesJson}
+
 SCHÉMA CLARIFICATION (quand il manque des infos) :
 {"type":"clarification","questions":["question 1","question 2"]}
 
@@ -83,7 +88,7 @@ export async function POST(req: NextRequest) {
     .single()
   if (!athlete) return NextResponse.json({ error: 'athlete not found or forbidden' }, { status: 404 })
 
-  const [progsRes, nutrRes, exsRes, alimRes, tplRes] = await Promise.all([
+  const [progsRes, nutrRes, exsRes, alimRes, tplRes, trainingTplRes] = await Promise.all([
     admin
       .from('workout_programs')
       .select('id, nom, workout_sessions(nom, jour, ordre)')
@@ -109,6 +114,11 @@ export async function POST(req: NextRequest) {
       .select('id, nom, template_type, category, calories_objectif, proteines, glucides, lipides, meals_data')
       .eq('coach_id', user.id)
       .limit(50),
+    admin
+      .from('training_templates')
+      .select('id, nom, category, sessions_data')
+      .eq('coach_id', user.id)
+      .limit(50),
   ])
 
   const athleteContext = JSON.stringify({
@@ -127,6 +137,7 @@ export async function POST(req: NextRequest) {
     .replace('{exercicesJson}', JSON.stringify(exsRes.data || []))
     .replace('{alimentsJson}', JSON.stringify(alimRes.data || []))
     .replace('{templatesJson}', JSON.stringify(templates))
+    .replace('{trainingTemplatesJson}', JSON.stringify(trainingTplRes.data || []))
 
   const userMessage = clarifications
     ? `Instruction initiale : ${instruction}\n\nRéponses aux questions : ${clarifications}`
