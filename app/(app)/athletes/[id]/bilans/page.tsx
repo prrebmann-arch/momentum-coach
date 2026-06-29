@@ -236,6 +236,37 @@ export default function BilansPage() {
   // Bilan traite popup state
   const [bilanTraiteOpen, setBilanTraiteOpen] = useState(false)
 
+  // Rappel bilan en retard
+  const [sendingRappel, setSendingRappel] = useState(false)
+  const [rappelSent, setRappelSent] = useState(false)
+
+  const sendBilanRappel = useCallback(async () => {
+    let userId = athleteUserId
+    if (!userId) {
+      const { data: ath } = await supabase.from('athletes').select('user_id').eq('id', athleteId).single()
+      userId = ath?.user_id ?? undefined
+    }
+    if (!userId) return
+    if (sendingRappel) return
+    setSendingRappel(true)
+    try {
+      const todayStr = new Date().toISOString().split('T')[0]
+      const { data: existing } = await supabase.from('notifications').select('id').eq('user_id', userId).eq('type', 'rappel').gte('created_at', todayStr + 'T00:00:00').limit(1)
+      if (existing && existing.length > 0) {
+        toast('Rappel déjà envoyé aujourd\'hui', 'error')
+        return
+      }
+      await notifyAthlete(userId, 'rappel', 'Rappel bilan', 'Ton bilan est en retard, pense à le remplir !')
+      setRappelSent(true)
+      toast(`Rappel envoyé à ${athlete?.prenom ?? 'l\'athlète'}`, 'success')
+    } catch {
+      toast('Erreur lors de l\'envoi du rappel', 'error')
+    } finally {
+      setSendingRappel(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [athleteUserId, athleteId, athlete?.prenom, sendingRappel, toast])
+
   // Photo import modal state
   const [photoImportOpen, setPhotoImportOpen] = useState(false)
 
@@ -397,6 +428,20 @@ export default function BilansPage() {
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={sendBilanRappel}
+            disabled={sendingRappel || rappelSent}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)',
+              background: rappelSent ? 'var(--bg2)' : 'var(--bg2)', color: rappelSent ? 'var(--text-2)' : 'var(--text)',
+              fontSize: 13, fontWeight: 600, cursor: sendingRappel || rappelSent ? 'default' : 'pointer',
+              opacity: rappelSent ? 0.6 : 1,
+            }}
+          >
+            <i className={sendingRappel ? 'fas fa-spinner fa-spin' : 'fas fa-bell'} />
+            {rappelSent ? 'Rappel envoyé' : 'Bilan en retard'}
+          </button>
           <button
             onClick={() => setPhotoImportOpen(true)}
             style={{
