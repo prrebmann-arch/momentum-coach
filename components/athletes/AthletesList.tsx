@@ -136,6 +136,7 @@ export default function AthletesList() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [credentialsMessage, setCredentialsMessage] = useState<string | null>(null)
   const [sortMode, setSortMode] = useState<SortMode>('created')
+  const [showPaused, setShowPaused] = useState(false)
 
   // Persist sort mode in localStorage (read in effect, lessons #418 hydration)
   useEffect(() => {
@@ -153,7 +154,7 @@ export default function AthletesList() {
     try { window.localStorage.setItem('athletes:sort', next) } catch { /* noop */ }
   }
 
-  const filtered = useMemo(() => {
+  const { activeAthletes, pausedAthletes } = useMemo(() => {
     let list = athletes
     if (search.trim()) {
       const q = search.toLowerCase()
@@ -164,12 +165,15 @@ export default function AthletesList() {
           a.email?.toLowerCase().includes(q)
       )
     }
+    const active = list.filter((a) => a.access_mode !== 'paused')
+    const paused = list.filter((a) => a.access_mode === 'paused')
     if (sortMode === 'urgency') {
-      list = [...list].sort((a, b) => urgencyRank(a) - urgencyRank(b))
+      active.sort((a, b) => urgencyRank(a) - urgencyRank(b))
     } else if (sortMode === 'alpha') {
-      list = [...list].sort((a, b) => (a.prenom || '').localeCompare(b.prenom || ''))
+      active.sort((a, b) => (a.prenom || '').localeCompare(b.prenom || ''))
+      paused.sort((a, b) => (a.prenom || '').localeCompare(b.prenom || ''))
     }
-    return list
+    return { activeAthletes: active, pausedAthletes: paused }
   }, [athletes, search, sortMode])
 
   if (loading) {
@@ -193,7 +197,7 @@ export default function AthletesList() {
         <h1 className={styles.pageTitle}>
           Athletes
           <span className={styles.countLabel}>
-            {athletes.length} athlete{athletes.length > 1 ? 's' : ''} enregistre{athletes.length > 1 ? 's' : ''}
+            {activeAthletes.length} athlete{activeAthletes.length > 1 ? 's' : ''} actif{activeAthletes.length > 1 ? 's' : ''}
           </span>
         </h1>
         <button className="btn btn-red" onClick={() => setShowAddModal(true)}>
@@ -232,7 +236,7 @@ export default function AthletesList() {
         </select>
       </div>
 
-      {filtered.length === 0 ? (
+      {activeAthletes.length === 0 && pausedAthletes.length === 0 ? (
         <EmptyState
           icon="fa-solid fa-users"
           message={search ? 'Aucun athlete trouve' : 'Aucun athlete'}
@@ -246,15 +250,45 @@ export default function AthletesList() {
           }
         />
       ) : (
-        <div className={styles.athleteGrid}>
-          {filtered.map((athlete) => (
-            <AthleteCard
-              key={athlete.id}
-              athlete={athlete}
-              href={`/athletes/${athlete.id}/apercu`}
-            />
-          ))}
-        </div>
+        <>
+          {activeAthletes.length > 0 && (
+            <div className={styles.athleteGrid}>
+              {activeAthletes.map((athlete) => (
+                <AthleteCard
+                  key={athlete.id}
+                  athlete={athlete}
+                  href={`/athletes/${athlete.id}/apercu`}
+                />
+              ))}
+            </div>
+          )}
+          {activeAthletes.length === 0 && !search && (
+            <EmptyState icon="fa-solid fa-users" message="Aucun athlete actif" />
+          )}
+
+          {pausedAthletes.length > 0 && (
+            <div style={{ marginTop: 32 }}>
+              <button
+                onClick={() => setShowPaused((v) => !v)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', color: 'var(--text-2)', cursor: 'pointer', fontSize: 13, fontWeight: 600, padding: '4px 0', marginBottom: 12 }}
+              >
+                <i className={`fa-solid fa-chevron-${showPaused ? 'down' : 'right'}`} style={{ fontSize: 11 }} />
+                Anciens athlètes ({pausedAthletes.length})
+              </button>
+              {showPaused && (
+                <div className={styles.athleteGrid} style={{ opacity: 0.6 }}>
+                  {pausedAthletes.map((athlete) => (
+                    <AthleteCard
+                      key={athlete.id}
+                      athlete={athlete}
+                      href={`/athletes/${athlete.id}/apercu`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       <AddAthleteForm
