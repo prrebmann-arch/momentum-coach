@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -9,6 +9,7 @@ import { useAthleteContext } from '@/contexts/AthleteContext'
 import { useToast } from '@/contexts/ToastContext'
 import { toDateStr, getLastExpectedBilanDate, getNextBilanDate } from '@/lib/utils'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
+import { notifyAthlete } from '@/lib/push'
 import Skeleton from '@/components/ui/Skeleton'
 import styles from '@/styles/bilans.module.css'
 import type { Athlete } from '@/lib/types'
@@ -64,6 +65,8 @@ export default function BilansOverview() {
   const [reports, setReports] = useState<DailyReport[]>([])
   const [loading, setLoading] = useState(true)
   const [marking, setMarking] = useState<string | null>(null)
+  const [sendingRappel, setSendingRappel] = useState<string | null>(null)
+  const rappelSentRef = useRef<Set<string>>(new Set())
 
   const supabase = createClient()
 
@@ -153,6 +156,27 @@ export default function BilansOverview() {
     const order: Record<string, number> = { late: 0, done: 1, treated: 2, upcoming: 3 }
     return [...data].sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4))
   }, [athleteData, filter])
+
+  const sendRappel = useCallback(async (athlete: Athlete) => {
+    const userId = athlete.user_id
+    if (!userId || sendingRappel) return
+    setSendingRappel(athlete.id)
+    try {
+      const todayStr = new Date().toISOString().split('T')[0]
+      const { data: existing } = await supabase.from('notifications').select('id').eq('user_id', userId).eq('type', 'rappel').gte('created_at', todayStr + 'T00:00:00').limit(1)
+      if (existing && existing.length > 0) {
+        toast('Rappel déjà envoyé aujourd\'hui', 'error')
+        return
+      }
+      await notifyAthlete(userId, 'rappel', 'Rappel bilan', 'Ton bilan est en retard, pense à le remplir !')
+      rappelSentRef.current.add(athlete.id)
+      toast(`Rappel envoyé à ${athlete.prenom}`, 'success')
+    } catch {
+      toast('Erreur lors de l\'envoi du rappel', 'error')
+    } finally {
+      setSendingRappel(null)
+    }
+  }, [sendingRappel, supabase, toast])
 
   const markAsTreated = useCallback(async (reportId: string) => {
     setMarking(reportId)
@@ -264,6 +288,20 @@ export default function BilansOverview() {
                         title="Marquer comme traite"
                       >
                         <i className={marking === d.bilanReport.id ? 'fas fa-spinner fa-spin' : 'fas fa-check'} />
+                      </button>
+                    )}
+                    {d.status === 'late' && a.user_id && (
+                      <button
+                        className={styles.boActionBtn}
+                        style={{ color: rappelSentRef.current.has(a.id) ? 'var(--text3)' : 'var(--primary)' }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          sendRappel(a)
+                        }}
+                        disabled={sendingRappel === a.id || rappelSentRef.current.has(a.id)}
+                        title={rappelSentRef.current.has(a.id) ? 'Rappel envoyé' : 'Envoyer un rappel'}
+                      >
+                        <i className={sendingRappel === a.id ? 'fas fa-spinner fa-spin' : rappelSentRef.current.has(a.id) ? 'fas fa-bell-slash' : 'fas fa-bell'} />
                       </button>
                     )}
                     <Link
