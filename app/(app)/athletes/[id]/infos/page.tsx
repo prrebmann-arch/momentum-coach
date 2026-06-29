@@ -26,6 +26,7 @@ const ACCESS_LABELS: Record<string, string> = {
   training_only: 'Training uniquement',
   nutrition_only: 'Diete uniquement',
   full: 'Complet',
+  paused: 'En pause',
 }
 
 const COMPLETE_FREQ_OPTS = [
@@ -661,6 +662,21 @@ export default function InfosPage() {
     router.push('/athletes')
   }
 
+  async function handlePause() {
+    if (!confirm(`Arrêter ${a.prenom} ${a.nom} ? L'athlète sera déplacé dans "Anciens athlètes".`)) return
+    const { error } = await supabase.from('athletes').update({ access_mode: 'paused' }).eq('id', a.id)
+    if (error) { toast('Erreur lors de la mise en pause', 'error'); return }
+    toast('Athlète mis en pause', 'success')
+    refreshAthletes()
+  }
+
+  async function handleResume() {
+    const { error } = await supabase.from('athletes').update({ access_mode: 'full' }).eq('id', a.id)
+    if (error) { toast('Erreur lors de la reprise', 'error'); return }
+    toast('Athlète réactivé', 'success')
+    refreshAthletes()
+  }
+
   // -- Avatar --
   const initials = (a.prenom?.charAt(0) || '') + (a.nom?.charAt(0) || '')
 
@@ -772,8 +788,17 @@ export default function InfosPage() {
       {/* Payment card */}
       <PaymentCard />
 
-      {/* Delete athlete */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+      {/* Delete / Pause athlete */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+        {a.access_mode === 'paused' ? (
+          <button className="btn btn-outline btn-sm" onClick={handleResume}>
+            <i className="fas fa-play" /> Reprendre l&apos;athlète
+          </button>
+        ) : (
+          <button className="btn btn-outline btn-sm" style={{ color: 'var(--text-2)' }} onClick={handlePause}>
+            <i className="fas fa-pause" /> Arrêter l&apos;athlète
+          </button>
+        )}
         <button className="btn btn-outline btn-sm" style={{ color: 'var(--danger)' }} onClick={handleDelete}>
           <i className="fas fa-trash" /> Supprimer l&apos;athlete
         </button>
