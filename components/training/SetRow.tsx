@@ -2,6 +2,24 @@
 
 import styles from '@/styles/training.module.css'
 
+function parseRepos(val: string): number {
+  const s = (val || '').trim()
+  const mm = s.match(/^(\d+)m(\d*)s?$/)
+  if (mm) return (parseInt(mm[1]) || 0) * 60 + (parseInt(mm[2] || '0') || 0)
+  const sm = s.match(/^(\d+)s?$/)
+  if (sm) return parseInt(sm[1]) || 0
+  return 90
+}
+
+function formatRepos(secs: number): string {
+  secs = Math.max(0, secs)
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
+  if (m === 0) return `${s}s`
+  if (s === 0) return `${m}m`
+  return `${m}m${s}`
+}
+
 export interface SetData {
   type: 'normal' | 'dropset' | 'rest_pause'
   reps: string
@@ -159,13 +177,33 @@ export default function SetRow({ exIdx, setIdx, set, onChange, onRemove, onToggl
         />
       </td>
       <td>
-        <input
-          type="text"
-          value={set.repos || ''}
-          placeholder="1m30"
-          onChange={(e) => onChange(exIdx, setIdx, 'repos', e.target.value)}
-          readOnly={readOnly}
-        />
+        {readOnly ? (
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{set.repos || '—'}</span>
+        ) : (
+          <div className={styles.tpReposCtrl}>
+            {([-15, -5, -1] as number[]).map(d => (
+              <button
+                key={d}
+                type="button"
+                className={styles.tpReposBtn}
+                onClick={() => onChange(exIdx, setIdx, 'repos', formatRepos(parseRepos(set.repos || '1m30') + d))}
+              >
+                {d}s
+              </button>
+            ))}
+            <span className={styles.tpReposCenter}>{set.repos || '1m30'}</span>
+            {([1, 5, 15] as number[]).map(d => (
+              <button
+                key={d}
+                type="button"
+                className={styles.tpReposBtn}
+                onClick={() => onChange(exIdx, setIdx, 'repos', formatRepos(parseRepos(set.repos || '1m30') + d))}
+              >
+                +{d}s
+              </button>
+            ))}
+          </div>
+        )}
       </td>
       <td>
         {!readOnly && (
