@@ -488,6 +488,26 @@
 .tpRpLbl { font-size: 9px; color: var(--text3); margin-left: 2px; margin-right: 6px; font-weight: 600; }
 .tpRpParams { white-space: nowrap; }
 
+/* Repos step-control */
+.tpReposCtrl {
+  display: flex; align-items: center; gap: 3px; justify-content: center; white-space: nowrap;
+}
+.tpReposBtn {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text3); font-size: 7px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s; padding: 0; font-family: inherit; flex-shrink: 0; line-height: 1;
+}
+.tpReposBtn:hover { border-color: var(--primary); color: var(--primary); }
+.tpReposCenter {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--border);
+  color: var(--text); font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; text-align: center; line-height: 1;
+}
+
 /* Superset badge */
 .tpSupersetBadge {
   font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 4px;

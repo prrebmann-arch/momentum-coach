@@ -821,7 +821,12 @@ export default function TrainingPage() {
                     {/* Exercise rows */}
                     {baseExs.map((pEx, i) => {
                       const name = String(pEx.nom || '')
-                      const le = logExs.find((e) => e.nom && String(e.nom).toLowerCase() === name.toLowerCase())
+                      const le = logExs.find((e) => {
+                        const n = e.nom ? String(e.nom).toLowerCase() : ''
+                        const rf = e.replaced_from ? String(e.replaced_from).toLowerCase() : ''
+                        return n === name.toLowerCase() || rf === name.toLowerCase()
+                      })
+                      const isReplacement = !!(le?.replaced_from)
                       const pe = prevExs.find((e) => e.nom && String(e.nom).toLowerCase() === name.toLowerCase())
                       const missed = !le
                       const leSeries = (le?.series || le?.sets || []) as Record<string, unknown>[]
@@ -838,6 +843,11 @@ export default function TrainingPage() {
                           <div className={`${styles.htCellName}${missed ? ` ${styles.htNameMissed}` : ''}`}>
                             <span className={styles.htNum}>{i + 1}</span>
                             {name}
+                            {isReplacement && (
+                              <span style={{ fontSize: 9, color: 'var(--warning)', fontWeight: 700, marginLeft: 4, whiteSpace: 'nowrap' }}>
+                                → {String(le!.nom)}
+                              </span>
+                            )}
                             {missed && <span className={styles.htMissedTag}>Non fait</span>}
                             {seriesMismatch && <span className={styles.htSeriesMismatch}>{doneCount}/{plannedCount} series</span>}
                           </div>
@@ -851,9 +861,16 @@ export default function TrainingPage() {
                       )
                     })}
 
-                    {/* Extra exercises (done but not programmed) */}
+                    {/* Extra exercises (done but not programmed, and not replacements) */}
                     {programmedExs.length > 0 && logExs
-                      .filter((le) => !programmedExs.some((pe) => String(pe.nom || '').toLowerCase() === String(le.nom || '').toLowerCase()))
+                      .filter((le) => {
+                        const nom = String(le.nom || '').toLowerCase()
+                        const rf = le.replaced_from ? String(le.replaced_from).toLowerCase() : ''
+                        return !programmedExs.some((pe) => {
+                          const pn = String(pe.nom || '').toLowerCase()
+                          return pn === nom || (rf && pn === rf)
+                        })
+                      })
                       .map((ex, i) => {
                         const pe = prevExs.find((e) => e.nom && String(e.nom).toLowerCase() === String(ex.nom || '').toLowerCase())
                         const leSeries = (ex.series || ex.sets || []) as Record<string, unknown>[]
