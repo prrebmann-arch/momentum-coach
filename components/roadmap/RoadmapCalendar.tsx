@@ -48,6 +48,26 @@ interface WeekNote {
   note: string
 }
 
+interface AthleteEvent {
+  id: string
+  type: 'vacances' | 'competition' | 'medical' | 'autre'
+  title: string
+  start_date: string
+  end_date: string
+  notes: string | null
+}
+
+const EVENT_COLORS: Record<string, string> = {
+  vacances:    '#f59e0b',
+  competition: '#8b5cf6',
+  medical:     '#ef4444',
+  autre:       '#6b7280',
+}
+
+const EVENT_EMOJI: Record<string, string> = {
+  vacances: '🏖️', competition: '🏆', medical: '🤕', autre: '📌',
+}
+
 interface NutritionLog {
   date: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,6 +82,7 @@ interface RoadmapCalendarProps {
   supplements?: SupplementRow[]
   weekNotes?: WeekNote[]
   nutritionLogs?: NutritionLog[]
+  events?: AthleteEvent[]
   onSaveWeekNote?: (weekStart: string, note: string) => Promise<void>
 }
 
@@ -82,7 +103,7 @@ function freqPerDay(frequence: string | null): number {
   return 1
 }
 
-export default function RoadmapCalendar({ phases, programs, nutritions, reports, supplements = [], weekNotes = [], nutritionLogs = [], onSaveWeekNote }: RoadmapCalendarProps) {
+export default function RoadmapCalendar({ phases, programs, nutritions, reports, supplements = [], weekNotes = [], nutritionLogs = [], events = [], onSaveWeekNote }: RoadmapCalendarProps) {
   const [calOffset, setCalOffset] = useState<number | null>(null)
   const [editingNoteKey, setEditingNoteKey] = useState<string | null>(null)
   const [editingNoteValue, setEditingNoteValue] = useState('')
@@ -161,6 +182,7 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       const pi = phase ? PROG_PHASES[phase.phase as ProgPhaseKey] : null
       const color = pi ? pi.color : null
       const isToday = dateStr === todayStr
+      const dayEvents = events.filter(ev => ev.start_date <= dateStr && ev.end_date >= dateStr)
 
       let style: React.CSSProperties = {}
       if (isToday) {
@@ -173,9 +195,32 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         <span
           key={d}
           className={`${styles.rmCalDay} ${isToday ? styles.rmCalToday : ''} ${phase ? styles.rmCalInPhase : ''}`}
-          style={style}
+          style={{ ...style, position: 'relative' }}
         >
           {d}
+          {dayEvents.length > 0 && (
+            <span style={{
+              position: 'absolute',
+              bottom: 2,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              display: 'flex',
+              gap: 2,
+            }}>
+              {dayEvents.slice(0, 3).map(ev => (
+                <span
+                  key={ev.id}
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: '50%',
+                    background: EVENT_COLORS[ev.type] ?? '#6b7280',
+                    display: 'inline-block',
+                  }}
+                />
+              ))}
+            </span>
+          )}
         </span>,
       )
     }
@@ -539,6 +584,43 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
                       )}
                     </div>
                   </div>
+                  {/* Événements de l'athlète sur cette semaine */}
+                  {(() => {
+                    const weekEvents = events.filter(ev =>
+                      ev.start_date <= w.end && ev.end_date >= w.start
+                    )
+                    if (!weekEvents.length) return null
+                    return (
+                      <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {weekEvents.map(ev => {
+                          const evColor = EVENT_COLORS[ev.type] ?? '#6b7280'
+                          const evEmoji = EVENT_EMOJI[ev.type] ?? '📌'
+                          return (
+                            <div
+                              key={ev.id}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 8,
+                                background: evColor + '18',
+                                border: `1px solid ${evColor}44`,
+                                borderRadius: 6, padding: '4px 10px',
+                                fontSize: 12,
+                              }}
+                            >
+                              <span>{evEmoji}</span>
+                              <strong style={{ color: evColor }}>{ev.title}</strong>
+                              <span style={{ color: 'var(--text3)', fontSize: 11 }}>
+                                {new Date(ev.start_date + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                                {ev.start_date !== ev.end_date && (
+                                  <> — {new Date(ev.end_date + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</>
+                                )}
+                              </span>
+                              {ev.notes && <span style={{ color: 'var(--text3)', fontStyle: 'italic', fontSize: 11 }}>· {ev.notes}</span>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()}
                 </article>
               )
             })}
