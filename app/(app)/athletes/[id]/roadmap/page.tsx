@@ -58,6 +58,15 @@ interface WeekNote {
   note: string
 }
 
+interface AthleteEvent {
+  id: string
+  type: 'vacances' | 'competition' | 'medical' | 'autre'
+  title: string
+  start_date: string
+  end_date: string
+  notes: string | null
+}
+
 interface NutritionLog {
   date: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,7 +90,7 @@ export default function RoadmapPage() {
   const { selectedAthlete } = useAthleteContext()
 
   const cacheKey = `athlete_${athleteId}_roadmap`
-  const [cached] = useState(() => getPageCache<{ phases: RoadmapPhase[]; programs: ProgramRef[]; nutritions: NutritionRef[]; reports: DailyReport[]; supplements: SupplementRow[]; weekNotes: WeekNote[]; nutritionLogs: NutritionLog[] }>(cacheKey))
+  const [cached] = useState(() => getPageCache<{ phases: RoadmapPhase[]; programs: ProgramRef[]; nutritions: NutritionRef[]; reports: DailyReport[]; supplements: SupplementRow[]; weekNotes: WeekNote[]; nutritionLogs: NutritionLog[]; events: AthleteEvent[] }>(cacheKey))
 
   const [phases, setPhases] = useState<RoadmapPhase[]>(cached?.phases ?? [])
   const [programs, setPrograms] = useState<ProgramRef[]>(cached?.programs ?? [])
@@ -90,6 +99,7 @@ export default function RoadmapPage() {
   const [supplements, setSupplements] = useState<SupplementRow[]>(cached?.supplements ?? [])
   const [weekNotes, setWeekNotes] = useState<WeekNote[]>(cached?.weekNotes ?? [])
   const [nutritionLogs, setNutritionLogs] = useState<NutritionLog[]>(cached?.nutritionLogs ?? [])
+  const [events, setEvents] = useState<AthleteEvent[]>(cached?.events ?? [])
   const [loading, setLoading] = useState(!cached)
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -102,7 +112,7 @@ export default function RoadmapPage() {
     try {
       const userId = athleteUserId
 
-      const [phasesRes, progsRes, nutritionsRes, reportsRes, suppsRes, notesRes, nutriLogsRes] = await Promise.all([
+      const [phasesRes, progsRes, nutritionsRes, reportsRes, suppsRes, notesRes, nutriLogsRes, eventsRes] = await Promise.all([
         supabase
           .from('roadmap_phases')
           .select('id, athlete_id, coach_id, phase, name, start_date, end_date, position, status, programme_id, nutrition_id, description')
@@ -128,6 +138,12 @@ export default function RoadmapPage() {
         userId
           ? supabase.from('nutrition_logs').select('date,meals_log').eq('athlete_id', userId).limit(500)
           : supabase.from('nutrition_logs').select('date,meals_log').eq('athlete_id', athleteId).limit(500),
+        supabase
+          .from('athlete_events')
+          .select('id, type, title, start_date, end_date, notes')
+          .eq('athlete_id', athleteId)
+          .order('start_date', { ascending: true })
+          .limit(200),
       ])
 
       const phasesData = (phasesRes.data || []) as RoadmapPhase[]
@@ -137,6 +153,7 @@ export default function RoadmapPage() {
       const suppsData = (suppsRes.data || []) as unknown as SupplementRow[]
       const notesData = (notesRes.data || []) as WeekNote[]
       const nutriLogsData = (nutriLogsRes.data || []) as NutritionLog[]
+      const eventsData = (eventsRes.data || []) as AthleteEvent[]
       setPhases(phasesData)
       setPrograms(progsData)
       setNutritions(nutritionsData)
@@ -144,8 +161,9 @@ export default function RoadmapPage() {
       setSupplements(suppsData)
       setWeekNotes(notesData)
       setNutritionLogs(nutriLogsData)
+      setEvents(eventsData)
 
-      setPageCache(cacheKey, { phases: phasesData, programs: progsData, nutritions: nutritionsData, reports: reportsData, supplements: suppsData, weekNotes: notesData, nutritionLogs: nutriLogsData })
+      setPageCache(cacheKey, { phases: phasesData, programs: progsData, nutritions: nutritionsData, reports: reportsData, supplements: suppsData, weekNotes: notesData, nutritionLogs: nutriLogsData, events: eventsData })
     } finally {
       setLoading(false)
     }
@@ -405,6 +423,7 @@ export default function RoadmapPage() {
         supplements={supplements}
         weekNotes={weekNotes}
         nutritionLogs={nutritionLogs}
+        events={events}
         onSaveWeekNote={saveWeekNote}
       />
 
