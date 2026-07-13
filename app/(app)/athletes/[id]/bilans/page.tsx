@@ -82,6 +82,7 @@ function BilanTraitePopupInline({
     const meta: Record<string, string> = {}
     if (hasAudio && recorder.audioUrl) meta.audio_url = recorder.audioUrl
     if (hasLoom) meta.loom_url = loomUrl.trim()
+    if (finalMsg) meta.commentaire = finalMsg
 
     const title = hasAudio
       ? 'Message vocal de ton coach'
