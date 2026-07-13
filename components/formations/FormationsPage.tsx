@@ -20,6 +20,7 @@ interface Formation {
   video_count: number
   visibility: 'all' | 'selected'
   created_at: string
+  thumbnail_url?: string | null
 }
 
 interface FormationVideo {
@@ -85,10 +86,11 @@ export default function FormationsPage() {
   const [editVisibility, setEditVisibility] = useState<'all' | 'selected'>('all')
   const [editSelectedAthletes, setEditSelectedAthletes] = useState<Set<string>>(new Set())
 
-  // Edit formation modal (rename + description)
+  // Edit formation modal (rename + description + thumbnail)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [thumbnailUploading, setThumbnailUploading] = useState(false)
 
   // ── Load formations list ──
   const loadFormations = useCallback(async () => {
@@ -96,7 +98,7 @@ export default function FormationsPage() {
     if (!formations.length) setLoading(true)
     try {
       const [fRes, mRes] = await Promise.all([
-        supabase.from('formations').select('id, coach_id, title, description, visibility, video_count, created_at').eq('coach_id', user.id).order('created_at', { ascending: false }).limit(100),
+        supabase.from('formations').select('id, coach_id, title, description, visibility, video_count, thumbnail_url, created_at').eq('coach_id', user.id).order('created_at', { ascending: false }).limit(100),
         supabase.from('formation_members').select('formation_id, athlete_id').limit(500),
       ])
       setFormations(fRes.data || [])
@@ -129,7 +131,7 @@ export default function FormationsPage() {
   const viewFormation = useCallback(async (formationId: string) => {
     if (!user) return
     const [fRes, vRes, mRes, progRes] = await Promise.all([
-      supabase.from('formations').select('id, coach_id, title, description, visibility, video_count, created_at').eq('id', formationId).single(),
+      supabase.from('formations').select('id, coach_id, title, description, visibility, video_count, thumbnail_url, created_at').eq('id', formationId).single(),
       supabase.from('formation_videos').select('id, formation_id, title, video_url, position, available_from_day, created_at').eq('formation_id', formationId).order('position').limit(100),
       supabase.from('formation_members').select('athlete_id, athletes(id, prenom, nom, email, user_id)').eq('formation_id', formationId).limit(200),
       supabase.from('formation_video_progress').select('user_id, video_id, watched').limit(1000),
@@ -270,6 +272,26 @@ export default function FormationsPage() {
     const { error } = await supabase.from('formation_videos').update({ available_from_day: parsed }).eq('id', videoId)
     if (error) { toast('Erreur mise a jour', 'error'); return }
     if (currentFormation) await viewFormation(currentFormation.id)
+  }
+
+  // ── Upload thumbnail ──
+  const uploadThumbnail = async (file: File) => {
+    if (!currentFormation) return
+    setThumbnailUploading(true)
+    try {
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `thumbnails/${currentFormation.id}.${ext}`
+      const { error: upErr } = await supabase.storage.from('formations').upload(path, file, { upsert: true })
+      if (upErr) { toast('Erreur upload miniature', 'error'); return }
+      const { data: { publicUrl } } = supabase.storage.from('formations').getPublicUrl(path)
+      const { error: dbErr } = await supabase.from('formations').update({ thumbnail_url: publicUrl }).eq('id', currentFormation.id)
+      if (dbErr) { toast('Erreur sauvegarde miniature', 'error'); return }
+      setCurrentFormation(prev => prev ? { ...prev, thumbnail_url: publicUrl } : prev)
+      setFormations(prev => prev.map(f => f.id === currentFormation.id ? { ...f, thumbnail_url: publicUrl } : f))
+      toast('Miniature mise à jour', 'success')
+    } finally {
+      setThumbnailUploading(false)
+    }
   }
 
   // ── Edit formation (rename + description) ──
@@ -529,6 +551,36 @@ export default function FormationsPage() {
               <label className="field-label">Description</label>
               <textarea className="field-input" rows={2} value={editDescription} onChange={e => setEditDescription(e.target.value)} />
             </div>
+            <div>
+              <label className="field-label">Miniature</label>
+              {currentFormation?.thumbnail_url && (
+                <img
+                  src={currentFormation.thumbnail_url}
+                  alt="Miniature"
+                  style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 8, marginBottom: 8, border: '1px solid var(--border)' }}
+                />
+              )}
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: thumbnailUploading ? 'wait' : 'pointer' }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  disabled={thumbnailUploading}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadThumbnail(f) }}
+                />
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  background: 'var(--bg3)', color: 'var(--text)',
+                  border: '1px solid var(--border)', opacity: thumbnailUploading ? 0.6 : 1,
+                }}>
+                  {thumbnailUploading
+                    ? <><i className="fas fa-spinner fa-spin" /> Upload en cours...</>
+                    : <><i className="fas fa-image" /> {currentFormation?.thumbnail_url ? 'Changer la miniature' : 'Ajouter une miniature'}</>
+                  }
+                </span>
+              </label>
+            </div>
             <Button variant="primary" style={{ marginTop: 8 }} onClick={submitEdit}>
               <i className="fas fa-check" /> Enregistrer
             </Button>
@@ -609,7 +661,10 @@ export default function FormationsPage() {
               : 'Tous les athletes'
             return (
               <div key={f.id} className={styles.fmCard} onClick={() => viewFormation(f.id)}>
-                <div className={styles.fmCardIcon}><i className="fas fa-play-circle" /></div>
+                {f.thumbnail_url
+                  ? <img src={f.thumbnail_url} alt={f.title} className={styles.fmCardThumb} />
+                  : <div className={styles.fmCardIcon}><i className="fas fa-play-circle" /></div>
+                }
                 <div className={styles.fmCardBody}>
                   <div className={styles.fmCardTitle}>{f.title}</div>
                   {f.description && <div className={styles.fmCardDesc}>{f.description}</div>}
