@@ -49,6 +49,15 @@
   flex-wrap: wrap;
 }
 
+.fmCardThumb {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
 .fmCardDel {
   position: absolute;
   top: 12px;
