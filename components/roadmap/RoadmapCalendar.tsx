@@ -15,6 +15,7 @@ interface ProgramRef {
 interface NutritionRef {
   id: string
   nom: string
+  meal_type: string | null
   calories_objectif: number | null
   proteines: number | null
   glucides: number | null
@@ -321,18 +322,39 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       return ca < cb ? -1 : ca > cb ? 1 : 0
     })
 
-    // Find active nutrition plan for a given week end date (fallback when phase.nutrition_id is null)
-    function resolveNutrition(phaseNutritionId: string | null | undefined, weekEndKey: string): NutritionRef | null {
-      if (phaseNutritionId) return nutritions.find(n => n.id === phaseNutritionId) ?? null
-      // Find plan with latest valid_from <= weekEnd
-      let best: NutritionRef | null = null
-      for (const n of sortedNutritions) {
+    const isTrainingPlan = (n: NutritionRef) =>
+      !n.meal_type || n.meal_type === 'training' || n.meal_type === 'entrainement' || n.meal_type === 'on'
+    const isRestPlan = (n: NutritionRef) =>
+      n.meal_type === 'rest' || n.meal_type === 'repos' || n.meal_type === 'off'
+
+    const sortedTraining = sortedNutritions.filter(isTrainingPlan)
+    const sortedRest = sortedNutritions.filter(isRestPlan)
+
+    function resolveNutritionPair(phaseNutritionId: string | null | undefined, weekEndKey: string): { training: NutritionRef | null; rest: NutritionRef | null } {
+      let bestTraining: NutritionRef | null = null
+      for (const n of sortedTraining) {
         const vf = n.valid_from ?? '1970-01-01'
-        if (vf <= weekEndKey) best = n
+        if (vf <= weekEndKey) bestTraining = n
       }
-      // Fallback: the currently active plan (for weeks after all valid_from dates)
-      if (!best) best = nutritions.find(n => n.actif) ?? nutritions[0] ?? null
-      return best
+      if (!bestTraining) bestTraining = sortedTraining.find(n => n.actif) ?? sortedTraining[0] ?? null
+
+      let bestRest: NutritionRef | null = null
+      for (const n of sortedRest) {
+        const vf = n.valid_from ?? '1970-01-01'
+        if (vf <= weekEndKey) bestRest = n
+      }
+      if (!bestRest) bestRest = sortedRest.find(n => n.actif) ?? sortedRest[0] ?? null
+
+      // If phase has a specific nutrition_id, use it and override the appropriate type
+      if (phaseNutritionId) {
+        const specified = nutritions.find(n => n.id === phaseNutritionId) ?? null
+        if (specified) {
+          if (isRestPlan(specified)) bestRest = specified
+          else bestTraining = specified
+        }
+      }
+
+      return { training: bestTraining, rest: bestRest }
     }
 
     // Find active program for a given week end date (fallback when phase.programme_id is null)
@@ -352,7 +374,7 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       end: string
       phase: RoadmapPhase | undefined
       prog: ProgramRef | null
-      nutri: NutritionRef | null
+      nutri: { training: NutritionRef | null; rest: NutritionRef | null }
       avgWeight: string | null
       totalCardio: number
       supps: SupplementRow[]
@@ -401,7 +423,7 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       })
 
       const prog = resolveProgram(phase?.programme_id, weekEndKey)
-      const nutri = resolveNutrition(phase?.nutrition_id, weekEndKey)
+      const nutri = resolveNutritionPair(phase?.nutrition_id, weekEndKey)
 
       weeks.push({ num: weekNum++, start: weekKey, end: weekEndKey, phase, prog, nutri, avgWeight, totalCardio: cardioSum, supps, weekNutri })
       weekStart.setDate(weekStart.getDate() + 7)
@@ -472,7 +494,7 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
               const pi = p ? PROG_PHASES[p.phase as ProgPhaseKey] : null
               const color = pi ? pi.color : 'var(--border)'
               const prog = w.prog
-              const nutri = w.nutri
+              const { training: nutriOn, rest: nutriOff } = w.nutri
               const note = noteByWeek[w.start] ?? ''
               const isEditingNote = editingNoteKey === w.start
               const adhClass = w.weekNutri == null ? 'neutral'
@@ -508,18 +530,32 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
                       {prog ? <strong>{prog.nom}</strong> : <span style={{ color: 'var(--text3)' }}>—</span>}
                     </div>
 
-                    {/* 4. Nutrition — données réelles uniquement, rien pour le futur */}
-                    <div className={styles.rmFeedKv}>
-                      <i className="fa-solid fa-utensils" style={{ color: '#f59e0b' }} />
-                      {w.weekNutri ? (
-                        <>
-                          <strong>{w.weekNutri.avgK}</strong>
-                          <span className="sub">kcal · P{w.weekNutri.avgP} G{w.weekNutri.avgG} L{w.weekNutri.avgL}</span>
-                          <span className={`${styles.rmFeedAdh} ${styles[`rmFeedAdh_${adhClass}`]}`} style={{ marginLeft: 6 }}>
-                            {w.weekNutri.adherence}%
-                          </span>
-                        </>
-                      ) : <span style={{ color: 'var(--text3)' }}>—</span>}
+                    {/* 4. Nutrition — plans ON/OFF planifiés + données réelles */}
+                    <div className={styles.rmFeedNutriCol}>
+                      <i className="fa-solid fa-utensils" style={{ color: '#f59e0b', flexShrink: 0 }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
+                        {nutriOn && (
+                          <div className={styles.rmFeedNutriRow}>
+                            <span className={styles.rmFeedNutriLabel}>ON</span>
+                            <strong>{nutriOn.calories_objectif ?? '?'}</strong>
+                            <span className={styles.rmFeedNutriMacros}>kcal · P{nutriOn.proteines ?? '?'} G{nutriOn.glucides ?? '?'} L{nutriOn.lipides ?? '?'}</span>
+                          </div>
+                        )}
+                        {nutriOff && (
+                          <div className={styles.rmFeedNutriRow}>
+                            <span className={`${styles.rmFeedNutriLabel} ${styles.rmFeedNutriLabelOff}`}>OFF</span>
+                            <strong>{nutriOff.calories_objectif ?? '?'}</strong>
+                            <span className={styles.rmFeedNutriMacros}>kcal · P{nutriOff.proteines ?? '?'} G{nutriOff.glucides ?? '?'} L{nutriOff.lipides ?? '?'}</span>
+                          </div>
+                        )}
+                        {!nutriOn && !nutriOff && <span style={{ color: 'var(--text3)', fontSize: 11 }}>—</span>}
+                        {w.weekNutri && (
+                          <div className={styles.rmFeedNutriReal}>
+                            Réel: <strong>{w.weekNutri.avgK}</strong> kcal
+                            <span className={`${styles.rmFeedAdh} ${styles[`rmFeedAdh_${adhClass}`]}`}>{w.weekNutri.adherence}%</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* 5. Poids */}
@@ -561,29 +597,37 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
                       )}
                     </div>
 
-                    {/* 7. Note */}
-                    <div className={styles.rmFeedNoteCol}>
-                      <i className="fa-solid fa-note-sticky" style={{ color: '#f59e0b', fontSize: 11 }} />
-                      {isEditingNote ? (
-                        <input
-                          autoFocus
-                          value={editingNoteValue}
-                          onChange={e => setEditingNoteValue(e.target.value)}
-                          onBlur={commitNote}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') { e.preventDefault(); commitNote() }
-                            if (e.key === 'Escape') { e.preventDefault(); setEditingNoteKey(null) }
-                          }}
-                          placeholder="…"
-                          className={styles.rmFeedNoteInput}
-                        />
-                      ) : note ? (
-                        <button type="button" className={styles.rmFeedNoteText} onClick={() => startNoteEdit(w.start)} title={note}>{note}</button>
-                      ) : (
-                        <button type="button" className={styles.rmFeedNoteEmpty} onClick={() => startNoteEdit(w.start)}>+ note</button>
-                      )}
-                    </div>
                   </div>
+
+                  {/* Note coaching — pleine largeur sous la grille */}
+                  <div className={styles.rmFeedNoteSection}>
+                    {isEditingNote ? (
+                      <textarea
+                        autoFocus
+                        value={editingNoteValue}
+                        onChange={e => setEditingNoteValue(e.target.value)}
+                        onBlur={commitNote}
+                        onKeyDown={e => {
+                          if (e.key === 'Escape') { e.preventDefault(); setEditingNoteKey(null) }
+                          if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); commitNote() }
+                        }}
+                        placeholder="Note de coaching pour cette semaine… (Shift+Entrée pour sauvegarder)"
+                        className={styles.rmFeedNoteTextarea}
+                        rows={3}
+                      />
+                    ) : note ? (
+                      <button type="button" className={styles.rmFeedNoteBlock} onClick={() => startNoteEdit(w.start)}>
+                        <i className="fa-solid fa-note-sticky" style={{ color: '#f59e0b', flexShrink: 0 }} />
+                        <span>{note}</span>
+                      </button>
+                    ) : (
+                      <button type="button" className={styles.rmFeedNoteAdd} onClick={() => startNoteEdit(w.start)}>
+                        <i className="fa-solid fa-pen" />
+                        <span>Ajouter une note de coaching</span>
+                      </button>
+                    )}
+                  </div>
+
                   {/* Événements de l'athlète sur cette semaine */}
                   {(() => {
                     const weekEvents = events.filter(ev =>
