@@ -415,14 +415,21 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         daysLogged: nutriVals.length,
       } : null
 
-      // When start_date is null (all entries in practice), use created_at as effective start.
-      // This prevents supplements created after a phase ended from bleeding into past weeks,
-      // and allows historical entries (actif=false) to be anchored to when they were first tracked.
       const overlapping = cycleSupps.filter(s => {
+        if (!s.actif && s.end_date) {
+          // Historical entry: if end_date is before this week it's irrelevant
+          if (s.end_date < weekKey) return false
+          // Anchor to the phase that ends on (or contains) end_date.
+          // Prefer exact end_date match to avoid grabbing the phase that starts on the same day.
+          const entryPhase =
+            phases.find(p => p.end_date === s.end_date!) ??
+            phases.find(p => p.start_date <= s.end_date! && p.end_date >= s.end_date!)
+          const effectiveStart = entryPhase ? entryPhase.start_date : s.end_date
+          return effectiveStart <= weekEndKey
+        }
+        // Active entry: use created_at as effective start to avoid bleeding into past phases
         const effectiveStart = s.start_date ?? (s.created_at ? s.created_at.slice(0, 10) : null)
-        const startOk = !effectiveStart || effectiveStart <= weekEndKey
-        const endOk = !s.end_date || s.end_date >= weekKey
-        return startOk && endOk
+        return !effectiveStart || effectiveStart <= weekEndKey
       })
       // All start_dates are null → can't use start_date for dedup.
       // Use actif + end_date: if actif=false entries cover this week, prefer the one
