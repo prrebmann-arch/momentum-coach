@@ -50,6 +50,7 @@ interface SupplementRow {
   start_date: string | null
   end_date: string | null
   actif: boolean
+  created_at: string | null
   supplements: { id: string; nom: string; marque: string | null; type: string | null } | null
 }
 
@@ -128,7 +129,7 @@ export default function RoadmapPage() {
           : Promise.resolve({ data: [] }),
         supabase
           .from('athlete_supplements')
-          .select('id, dosage, unite, frequence, moment_prise, start_date, end_date, actif, supplements(id, nom, marque, type)')
+          .select('id, dosage, unite, frequence, moment_prise, start_date, end_date, actif, created_at, supplements(id, nom, marque, type)')
           .eq('athlete_id', athleteId)
           .limit(100),
         supabase
