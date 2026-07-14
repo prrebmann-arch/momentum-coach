@@ -415,13 +415,10 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         daysLogged: nutriVals.length,
       } : null
 
-      // Group all entries by supplement name, then pick the most relevant one per week:
-      // - Historical (actif=false + end_date): if end_date >= weekKey, it was still active
-      //   this week. Among multiple historical entries, pick earliest end_date (= the protocol
-      //   in effect at the start of the week). No start constraint needed — they stop
-      //   appearing naturally once end_date < weekKey.
-      // - Active (actif=true): no end constraint, but use created_at as effective start
-      //   to prevent supplements added later from bleeding into older weeks.
+      // Entries represent sequential dosage changes. Reconstruct the timeline:
+      // historical entries sorted by end_date give us the sequence of past protocols;
+      // each one's effective start = previous entry's end + 1 day.
+      // Active entries (actif=true) cover everything after the last historical end_date.
       const byName = new Map<string, SupplementRow[]>()
       for (const s of cycleSupps) {
         const key = (s.supplements?.nom ?? s.id).toLowerCase()
@@ -432,11 +429,26 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       const supps: SupplementRow[] = []
       for (const entries of byName.values()) {
         const historical = entries
-          .filter(e => !e.actif && !!e.end_date && e.end_date >= weekKey)
+          .filter(e => !e.actif && !!e.end_date)
           .sort((a, b) => a.end_date! < b.end_date! ? -1 : 1)
-        if (historical.length > 0) {
-          supps.push(historical[0])
-        } else {
+
+        let found: SupplementRow | null = null
+        for (let i = 0; i < historical.length; i++) {
+          const entry = historical[i]
+          // Start of this protocol = day after previous protocol ended (or beginning of time)
+          const entryStart = i === 0 ? '1970-01-01' : (() => {
+            const d = new Date(historical[i - 1].end_date! + 'T00:00:00')
+            d.setDate(d.getDate() + 1)
+            return toDateStr(d)
+          })()
+          if (entryStart <= weekEndKey && entry.end_date! >= weekKey) {
+            found = entry
+            break
+          }
+        }
+
+        if (!found) {
+          // No historical protocol covers this week → use most recently created active entry
           const active = entries.filter(e => {
             if (!e.actif) return false
             const eff = e.start_date ?? (e.created_at ? e.created_at.slice(0, 10) : null)
@@ -444,9 +456,11 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
           })
           if (active.length > 0) {
             active.sort((a, b) => (b.created_at ?? '') > (a.created_at ?? '') ? 1 : -1)
-            supps.push(active[0])
+            found = active[0]
           }
         }
+
+        if (found) supps.push(found)
       }
 
       const prog = resolveProgram(phase?.programme_id, weekEndKey)
