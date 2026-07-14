@@ -444,7 +444,7 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
           if (active.length <= 1) {
             active.forEach(e => supps.push(e))
           } else {
-            active.sort((a, b) => (b.created_at ?? '') > (a.created_at ?? '') ? 1 : -1)
+            active.sort((a, b) => (b.created_at ?? '') > (a.created_at ?? '') ? -1 : 1)
             supps.push(active[0])
           }
         }
