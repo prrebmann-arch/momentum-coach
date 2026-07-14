@@ -420,14 +420,14 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         const endOk = !s.end_date || s.end_date >= weekKey
         return startOk && endOk
       })
-      // Deduplicate: per supplement keep the entry with the latest start_date (most recent protocol)
+      // Deduplicate by name: multiple athlete_supplements rows can exist for the same product
+      // (different protocols over time). Keep the one with the latest start_date per name.
       const suppMap = new Map<string, SupplementRow>()
       for (const s of overlapping) {
-        const suppId = s.supplements?.id
-        if (!suppId) continue
-        const prev = suppMap.get(suppId)
+        const key = (s.supplements?.nom ?? s.id).toLowerCase()
+        const prev = suppMap.get(key)
         if (!prev || (s.start_date ?? '1970-01-01') > (prev.start_date ?? '1970-01-01')) {
-          suppMap.set(suppId, s)
+          suppMap.set(key, s)
         }
       }
       const supps = Array.from(suppMap.values())
