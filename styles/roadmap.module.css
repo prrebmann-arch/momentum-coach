@@ -267,7 +267,7 @@
 
 .rmFeedRow {
   display: grid;
-  grid-template-columns: 130px 1fr 1.2fr 1.4fr 90px 110px 80px;
+  grid-template-columns: 130px 1fr 1.2fr 1.6fr 90px 110px;
   align-items: start;
   gap: 12px;
 }
@@ -325,24 +325,63 @@
   font-size: 9px;
 }
 
-.rmFeedNoteCol { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.rmFeedNoteText, .rmFeedNoteEmpty, .rmFeedNoteInput {
-  flex: 1; background: transparent; border: none; color: var(--text);
-  cursor: pointer; text-align: left; font-size: 12px;
-  font-family: inherit; padding: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+/* Note section — full width below grid */
+.rmFeedNoteSection {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }
-.rmFeedNoteEmpty { color: var(--text3); font-style: italic; font-size: 11px; }
-.rmFeedNoteEmpty:hover { color: var(--text2); }
-.rmFeedNoteText:hover { color: var(--primary); }
-.rmFeedNoteInput {
-  cursor: text; outline: none;
-  border-bottom: 1px solid var(--primary);
-  white-space: normal;
+.rmFeedNoteTextarea {
+  width: 100%; box-sizing: border-box;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-size: 13px; padding: 8px 12px;
+  font-family: 'Inter', sans-serif; outline: none; resize: vertical;
+  transition: border-color 0.15s; line-height: 1.5;
+}
+.rmFeedNoteTextarea:focus { border-color: var(--primary); }
+.rmFeedNoteTextarea::placeholder { color: var(--text3); }
+.rmFeedNoteBlock {
+  display: flex; align-items: flex-start; gap: 8px; width: 100%;
+  background: transparent; border: none; cursor: pointer;
+  text-align: left; padding: 4px 0; color: var(--text2); font-size: 13px;
+  font-family: inherit; white-space: pre-wrap; line-height: 1.5;
+}
+.rmFeedNoteBlock:hover { color: var(--primary); }
+.rmFeedNoteAdd {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text3); font-size: 12px; font-style: italic;
+  font-family: inherit; padding: 2px 0;
+}
+.rmFeedNoteAdd:hover { color: var(--text2); }
+
+/* Nutrition column ON/OFF planned */
+.rmFeedNutriCol {
+  display: flex; align-items: flex-start; gap: 6px; min-width: 0;
+}
+.rmFeedNutriRow {
+  display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap;
+  font-size: 12px; color: var(--text);
+}
+.rmFeedNutriLabel {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.4px; padding: 1px 5px;
+  border-radius: 4px; background: rgba(34,197,94,0.15); color: #22c55e;
+  flex-shrink: 0;
+}
+.rmFeedNutriLabelOff {
+  background: rgba(148,163,184,0.15); color: var(--text3);
+}
+.rmFeedNutriMacros {
+  font-size: 10px; color: var(--text3);
+}
+.rmFeedNutriReal {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10px; color: var(--text3); margin-top: 3px;
+  padding-top: 3px; border-top: 1px solid var(--border);
 }
 
 @media (max-width: 1100px) {
-  .rmFeedRow { grid-template-columns: 110px 90px 1fr 1fr 80px 1fr 80px; gap: 8px; }
+  .rmFeedRow { grid-template-columns: 110px 90px 1fr 1.2fr 80px 1fr; gap: 8px; }
 }
 @media (max-width: 768px) {
   .rmFeedRow { grid-template-columns: 1fr 1fr; gap: 8px; }
