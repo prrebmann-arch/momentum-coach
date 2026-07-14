@@ -415,27 +415,15 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         daysLogged: nutriVals.length,
       } : null
 
-      const overlapping = cycleSupps.filter(s => {
-        if (!s.actif && s.end_date) {
-          // Historical entry: if end_date is before this week it's irrelevant
-          if (s.end_date < weekKey) return false
-          // Anchor to the phase that ends on (or contains) end_date.
-          // Prefer exact end_date match to avoid grabbing the phase that starts on the same day.
-          const entryPhase =
-            phases.find(p => p.end_date === s.end_date!) ??
-            phases.find(p => p.start_date <= s.end_date! && p.end_date >= s.end_date!)
-          const effectiveStart = entryPhase ? entryPhase.start_date : s.end_date
-          return effectiveStart <= weekEndKey
-        }
-        // Active entry: use created_at as effective start to avoid bleeding into past phases
-        const effectiveStart = s.start_date ?? (s.created_at ? s.created_at.slice(0, 10) : null)
-        return !effectiveStart || effectiveStart <= weekEndKey
-      })
-      // All start_dates are null → can't use start_date for dedup.
-      // Use actif + end_date: if actif=false entries cover this week, prefer the one
-      // with the earliest end_date (historically specific). Otherwise fall back to actif=true.
+      // Group all entries by supplement name, then pick the most relevant one per week:
+      // - Historical (actif=false + end_date): if end_date >= weekKey, it was still active
+      //   this week. Among multiple historical entries, pick earliest end_date (= the protocol
+      //   in effect at the start of the week). No start constraint needed — they stop
+      //   appearing naturally once end_date < weekKey.
+      // - Active (actif=true): no end constraint, but use created_at as effective start
+      //   to prevent supplements added later from bleeding into older weeks.
       const byName = new Map<string, SupplementRow[]>()
-      for (const s of overlapping) {
+      for (const s of cycleSupps) {
         const key = (s.supplements?.nom ?? s.id).toLowerCase()
         const arr = byName.get(key) ?? []
         arr.push(s)
@@ -443,17 +431,18 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       }
       const supps: SupplementRow[] = []
       for (const entries of byName.values()) {
-        const historical = entries.filter(e => !e.actif && e.end_date)
+        const historical = entries
+          .filter(e => !e.actif && !!e.end_date && e.end_date >= weekKey)
+          .sort((a, b) => a.end_date! < b.end_date! ? -1 : 1)
         if (historical.length > 0) {
-          historical.sort((a, b) => (a.end_date! < b.end_date! ? -1 : 1))
           supps.push(historical[0])
         } else {
-          // Multiple actif=true for same supplement (old entry not deactivated):
-          // keep only the most recently created one
-          const active = entries.filter(e => e.actif)
-          if (active.length <= 1) {
-            active.forEach(e => supps.push(e))
-          } else {
+          const active = entries.filter(e => {
+            if (!e.actif) return false
+            const eff = e.start_date ?? (e.created_at ? e.created_at.slice(0, 10) : null)
+            return !eff || eff <= weekEndKey
+          })
+          if (active.length > 0) {
             active.sort((a, b) => (b.created_at ?? '') > (a.created_at ?? '') ? 1 : -1)
             supps.push(active[0])
           }
