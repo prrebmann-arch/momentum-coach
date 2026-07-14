@@ -305,11 +305,11 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       }
     })
 
-    // Only 'supplementation' rows are roadmap-relevant. Whether the row is
-    // currently actif=true doesn't matter — what matters is the time window
-    // (start_date..end_date) of the cycle. A stopped cycle (actif=false,
-    // end_date set) should still show on the weeks where it WAS active.
-    const cycleSupps = supplements.filter(s => s.supplements && s.supplements.type === 'supplementation')
+    const cycleSupps = supplements.filter(s =>
+      s.supplements &&
+      s.supplements.type === 'supplementation' &&
+      s.dosage !== 0
+    )
 
     // Pre-sort by date for efficient fallback lookups
     const sortedNutritions = [...nutritions].sort((a, b) => {
@@ -415,18 +415,14 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         daysLogged: nutriVals.length,
       } : null
 
-      // Supp cycle overlaps this week iff (start <= weekEnd) AND (end IS NULL OR end >= weekStart).
-      // For actif=false entries with null start_date: constrain to the phase that covers their
-      // end_date — prevents old protocols from bleeding into weeks before the cycle started.
+      // When start_date is null (all entries in practice), use created_at as effective start.
+      // This prevents supplements created after a phase ended from bleeding into past weeks,
+      // and allows historical entries (actif=false) to be anchored to when they were first tracked.
       const overlapping = cycleSupps.filter(s => {
-        const startOk = !s.start_date || s.start_date <= weekEndKey
+        const effectiveStart = s.start_date ?? (s.created_at ? s.created_at.slice(0, 10) : null)
+        const startOk = !effectiveStart || effectiveStart <= weekEndKey
         const endOk = !s.end_date || s.end_date >= weekKey
-        if (!startOk || !endOk) return false
-        if (!s.actif && !s.start_date && s.end_date) {
-          const relatedPhase = phases.find(p => p.start_date <= s.end_date! && p.end_date >= s.end_date!)
-          if (relatedPhase && weekEndKey < relatedPhase.start_date) return false
-        }
-        return true
+        return startOk && endOk
       })
       // All start_dates are null → can't use start_date for dedup.
       // Use actif + end_date: if actif=false entries cover this week, prefer the one
@@ -451,7 +447,7 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
           if (active.length <= 1) {
             active.forEach(e => supps.push(e))
           } else {
-            active.sort((a, b) => (b.created_at ?? '') > (a.created_at ?? '') ? -1 : 1)
+            active.sort((a, b) => (b.created_at ?? '') > (a.created_at ?? '') ? 1 : -1)
             supps.push(active[0])
           }
         }
