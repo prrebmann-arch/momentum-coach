@@ -416,10 +416,17 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
       } : null
 
       // Supp cycle overlaps this week iff (start <= weekEnd) AND (end IS NULL OR end >= weekStart).
+      // For actif=false entries with null start_date: constrain to the phase that covers their
+      // end_date — prevents old protocols from bleeding into weeks before the cycle started.
       const overlapping = cycleSupps.filter(s => {
         const startOk = !s.start_date || s.start_date <= weekEndKey
         const endOk = !s.end_date || s.end_date >= weekKey
-        return startOk && endOk
+        if (!startOk || !endOk) return false
+        if (!s.actif && !s.start_date && s.end_date) {
+          const relatedPhase = phases.find(p => p.start_date <= s.end_date! && p.end_date >= s.end_date!)
+          if (relatedPhase && weekEndKey < relatedPhase.start_date) return false
+        }
+        return true
       })
       // All start_dates are null → can't use start_date for dedup.
       // Use actif + end_date: if actif=false entries cover this week, prefer the one
