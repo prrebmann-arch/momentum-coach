@@ -40,6 +40,7 @@ interface SupplementRow {
   start_date: string | null
   end_date: string | null
   actif: boolean
+  created_at: string | null
   supplements: { id: string; nom: string; marque: string | null; type: string | null } | null
 }
 
@@ -437,7 +438,15 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
           historical.sort((a, b) => (a.end_date! < b.end_date! ? -1 : 1))
           supps.push(historical[0])
         } else {
-          entries.filter(e => e.actif).forEach(e => supps.push(e))
+          // Multiple actif=true for same supplement (old entry not deactivated):
+          // keep only the most recently created one
+          const active = entries.filter(e => e.actif)
+          if (active.length <= 1) {
+            active.forEach(e => supps.push(e))
+          } else {
+            active.sort((a, b) => (b.created_at ?? '') > (a.created_at ?? '') ? 1 : -1)
+            supps.push(active[0])
+          }
         }
       }
 
