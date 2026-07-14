@@ -420,19 +420,26 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
         const endOk = !s.end_date || s.end_date >= weekKey
         return startOk && endOk
       })
-      // Deduplicate by name: multiple protocols exist for the same product over time.
-      // For each week, show the protocol with the earliest end_date that still covers the week
-      // (most historically specific). Open-ended entries (null end_date) = far future = current protocol.
-      const suppMap = new Map<string, SupplementRow>()
+      // All start_dates are null → can't use start_date for dedup.
+      // Use actif + end_date: if actif=false entries cover this week, prefer the one
+      // with the earliest end_date (historically specific). Otherwise fall back to actif=true.
+      const byName = new Map<string, SupplementRow[]>()
       for (const s of overlapping) {
         const key = (s.supplements?.nom ?? s.id).toLowerCase()
-        const prev = suppMap.get(key)
-        if (!prev) { suppMap.set(key, s); continue }
-        const prevEnd = prev.end_date ?? '9999-12-31'
-        const sEnd = s.end_date ?? '9999-12-31'
-        if (sEnd < prevEnd) suppMap.set(key, s)
+        const arr = byName.get(key) ?? []
+        arr.push(s)
+        byName.set(key, arr)
       }
-      const supps = Array.from(suppMap.values())
+      const supps: SupplementRow[] = []
+      for (const entries of byName.values()) {
+        const historical = entries.filter(e => !e.actif && e.end_date)
+        if (historical.length > 0) {
+          historical.sort((a, b) => (a.end_date! < b.end_date! ? -1 : 1))
+          supps.push(historical[0])
+        } else {
+          entries.filter(e => e.actif).forEach(e => supps.push(e))
+        }
+      }
 
       const prog = resolveProgram(phase?.programme_id, weekEndKey)
       const nutri = resolveNutritionPair(phase?.nutrition_id, weekEndKey)
