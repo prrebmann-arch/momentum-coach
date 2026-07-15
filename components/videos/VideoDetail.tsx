@@ -10,6 +10,16 @@ import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import NouveauRetourPanel from '@/components/recorder/NouveauRetourPanel'
 import styles from '@/styles/videos.module.css'
 
+function getEmbedUrl(url: string): string | null {
+  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)
+  if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}?rel=0`
+  const vmMatch = url.match(/vimeo\.com\/(\d+)/)
+  if (vmMatch) return `https://player.vimeo.com/video/${vmMatch[1]}`
+  const lmMatch = url.match(/loom\.com\/share\/([A-Za-z0-9]+)/)
+  if (lmMatch) return `https://www.loom.com/embed/${lmMatch[1]}`
+  return null
+}
+
 // Heavy comparison + edit panel: lazy-load so the videos detail chunk
 // stays light when the coach just clicks through the grid.
 const VideoCompare = dynamic(() => import('./VideoCompare'), {
@@ -52,6 +62,12 @@ interface CompVideo {
   serie_number: number
 }
 
+interface ExerciceRef {
+  id: string
+  nom: string
+  youtube_url: string | null
+}
+
 interface VideoDetailProps {
   videoId: string
   allVideoIds: string[]
@@ -69,6 +85,9 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
   const [compVideos, setCompVideos] = useState<CompVideo[]>([])
   const [compIdx, setCompIdx] = useState(-1)
   const [showCompare, setShowCompare] = useState(false)
+  const [showExemple, setShowExemple] = useState(false)
+  const [exempleList, setExempleList] = useState<ExerciceRef[]>([])
+  const [selectedExempleId, setSelectedExempleId] = useState<string | null>(null)
   const [feedbackUrl, setFeedbackUrl] = useState('')
   const [feedbackNotes, setFeedbackNotes] = useState('')
   const [markTreated, setMarkTreated] = useState(false)
@@ -113,7 +132,7 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
       setExistingAudioUrl(vid.coach_audio_url || null)
 
       // Previous videos of same exercise for comparison
-      const [{ data: ath }, { data: prevVids }] = await Promise.all([
+      const [{ data: ath }, { data: prevVids }, { data: exos }] = await Promise.all([
         supabase
           .from('athletes')
           .select('id, prenom, nom, user_id')
@@ -127,8 +146,18 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
           .neq('id', vid.id)
           .order('date', { ascending: true })
           .limit(50),
+        supabase
+          .from('exercices')
+          .select('id, nom, youtube_url')
+          .not('youtube_url', 'is', null)
+          .order('nom')
+          .limit(200),
       ])
       setAthlete(ath || null)
+      const exoList = (exos || []) as ExerciceRef[]
+      setExempleList(exoList)
+      const autoMatch = exoList.find(e => e.nom.toLowerCase() === vid.exercise_name?.toLowerCase())
+      if (autoMatch) setSelectedExempleId(autoMatch.id)
 
       const sorted = (prevVids || []) as CompVideo[]
       setCompVideos(sorted)
@@ -283,7 +312,28 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
 
       <div className={styles.vidDetail}>
         <div>
-          <div className={showCompare && compVideo ? styles.vidPlayersSide : styles.vidPlayersSingle}>
+          <div className={
+            showExemple && showCompare && compVideo ? styles.vidPlayersTriple
+            : (showExemple || (showCompare && compVideo)) ? styles.vidPlayersSide
+            : styles.vidPlayersSingle
+          }>
+            {showExemple && (() => {
+              const exo = exempleList.find(e => e.id === selectedExempleId)
+              const embedUrl = exo?.youtube_url ? getEmbedUrl(exo.youtube_url) : null
+              return (
+                <div className={styles.vidPlayerCol}>
+                  <div className={styles.vidPlayerLabel}>
+                    <i className="fa-solid fa-circle-play" style={{ marginRight: 6 }} />Exemple
+                  </div>
+                  <div className={styles.vidPlayerWrap}>
+                    {embedUrl
+                      ? <iframe src={embedUrl} className={styles.vidExempleFrame} allowFullScreen />
+                      : <div style={{ color: 'var(--text3)', padding: 20, textAlign: 'center', fontSize: 12 }}>Pas de vidéo</div>
+                    }
+                  </div>
+                </div>
+              )
+            })()}
             {showCompare && compVideo && (
               <div className={styles.vidPlayerCol}>
                 <div className={styles.vidPlayerLabel}>
@@ -355,6 +405,35 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
         </div>
 
         <div className={styles.vidFeedbackPanel}>
+          {/* Toggle Vue exemple */}
+          {exempleList.length > 0 && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, padding: '8px 12px', background: 'var(--bg2, #1a1a1a)', border: '1px solid var(--border-subtle, #2a2a2a)', borderRadius: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>
+                  <i className="fa-solid fa-circle-play" style={{ marginRight: 6 }} />Vue exemple
+                </span>
+                <label className="toggle-switch" style={{ margin: 0 }}>
+                  <input type="checkbox" checked={showExemple} onChange={e => setShowExemple(e.target.checked)} />
+                  <span className="switch" />
+                </label>
+              </div>
+              {showExemple && (
+                <select
+                  className={styles.vidExempleSelect}
+                  value={selectedExempleId ?? ''}
+                  onChange={e => setSelectedExempleId(e.target.value || null)}
+                  style={{ marginBottom: 12 }}
+                >
+                  <option value="">— Choisir un exercice —</option>
+                  {exempleList.map(e => (
+                    <option key={e.id} value={e.id}>{e.nom}</option>
+                  ))}
+                </select>
+              )}
+            </>
+          )}
+
+          {/* Toggle Vue comparative */}
           {compVideos.length > 0 ? (
             <div
               style={{
