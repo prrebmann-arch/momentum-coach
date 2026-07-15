@@ -91,6 +91,14 @@ function SidebarImpl() {
 
   return (
     <div className={`${styles.sidebar} ${collapsed ? styles.sidebarCollapsed : ''}`}>
+      <button
+        onClick={toggle}
+        className={styles.sidebarToggleBtn}
+        title={collapsed ? 'Développer' : 'Réduire'}
+      >
+        <i className={`fa-solid fa-chevron-${collapsed ? 'right' : 'left'}`} />
+      </button>
+
       <div className={styles.sidebarHeader}>
         <div className={styles.sidebarBrand}>
           <div className={styles.brandIcon}>M</div>
@@ -101,9 +109,10 @@ function SidebarImpl() {
       <nav className={styles.sidebarNav}>
         {navGroups.map((group, gi) => (
           <div key={gi}>
-            {group.label && !collapsed && (
-              <div className={styles.navLabel}>{group.label}</div>
-            )}
+            {!collapsed
+              ? group.label && <div className={styles.navLabel}>{group.label}</div>
+              : gi > 0 && <div className={styles.navLabelCollapsed} />
+            }
             {group.items.map((item) => (
               <Link
                 key={item.route}
@@ -117,14 +126,6 @@ function SidebarImpl() {
             ))}
           </div>
         ))}
-
-        <button
-          onClick={toggle}
-          className={styles.sidebarToggleBtn}
-          title={collapsed ? 'Développer' : 'Réduire'}
-        >
-          <i className={`fa-solid fa-chevron-${collapsed ? 'right' : 'left'}`} />
-        </button>
       </nav>
 
       <div className={styles.sidebarFooter}>

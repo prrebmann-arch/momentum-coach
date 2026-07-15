@@ -335,24 +335,40 @@
   gap: 4px;
 }
 
-/* Bouton toggle */
+/* Séparateur de groupe en mode icônes-only (gi > 0 seulement) */
+.navLabelCollapsed {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 10px;
+}
+
+/* Bouton toggle — positionné sur le bord droit de la sidebar */
 .sidebarToggleBtn {
+  position: absolute;
+  right: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 101;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: 1px solid var(--border);
   background: var(--bg2);
   color: var(--text3);
   cursor: pointer;
-  margin: 12px auto 4px;
-  font-size: 11px;
-  transition: background 0.15s, color 0.15s;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
   flex-shrink: 0;
 }
+.sidebar:hover .sidebarToggleBtn {
+  opacity: 1;
+}
 .sidebarToggleBtn:hover {
-  background: var(--bg3);
-  color: var(--text);
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
 }
