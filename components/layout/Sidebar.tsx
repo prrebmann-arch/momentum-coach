@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
@@ -52,6 +52,26 @@ function SidebarImpl() {
   const { user, signOut } = useAuth()
   const { theme, setTheme } = useTheme()
 
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('sidebar-collapsed') === 'true'
+  })
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--sidebar-width',
+      collapsed ? '60px' : '220px'
+    )
+  }, [collapsed])
+
+  const toggle = useCallback(() => {
+    setCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem('sidebar-collapsed', String(next))
+      return next
+    })
+  }, [])
+
   const isActive = (route: string) => {
     if (route === '/dashboard') return pathname === '/dashboard'
     return pathname.startsWith(route)
@@ -70,18 +90,18 @@ function SidebarImpl() {
   const userName = user?.email?.split('@')[0] ?? 'Coach'
 
   return (
-    <div className={styles.sidebar}>
+    <div className={`${styles.sidebar} ${collapsed ? styles.sidebarCollapsed : ''}`}>
       <div className={styles.sidebarHeader}>
         <div className={styles.sidebarBrand}>
           <div className={styles.brandIcon}>M</div>
-          <span className={styles.brandText}>Momentum</span>
+          {!collapsed && <span className={styles.brandText}>Momentum</span>}
         </div>
       </div>
 
       <nav className={styles.sidebarNav}>
         {navGroups.map((group, gi) => (
           <div key={gi}>
-            {group.label && (
+            {group.label && !collapsed && (
               <div className={styles.navLabel}>{group.label}</div>
             )}
             {group.items.map((item) => (
@@ -89,13 +109,22 @@ function SidebarImpl() {
                 key={item.route}
                 href={item.route}
                 className={isActive(item.route) ? styles.navItemActive : styles.navItem}
+                title={collapsed ? item.label : undefined}
               >
                 <i className={`fas ${item.icon}`} />
-                <span>{item.label}</span>
+                {!collapsed && <span>{item.label}</span>}
               </Link>
             ))}
           </div>
         ))}
+
+        <button
+          onClick={toggle}
+          className={styles.sidebarToggleBtn}
+          title={collapsed ? 'Développer' : 'Réduire'}
+        >
+          <i className={`fa-solid fa-chevron-${collapsed ? 'right' : 'left'}`} />
+        </button>
       </nav>
 
       <div className={styles.sidebarFooter}>
@@ -103,9 +132,11 @@ function SidebarImpl() {
           <Link href="/profile" className={styles.userAvatar} title="Mon profil">
             {userInitial}
           </Link>
-          <Link href="/profile" className={styles.userInfo} title="Mon profil">
-            <div className={styles.userName}>{userName}</div>
-          </Link>
+          {!collapsed && (
+            <Link href="/profile" className={styles.userInfo} title="Mon profil">
+              <div className={styles.userName}>{userName}</div>
+            </Link>
+          )}
           <button
             className={styles.footerBtn}
             onClick={toggleTheme}
