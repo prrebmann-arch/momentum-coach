@@ -117,6 +117,23 @@
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
   align-items: start;
 }
+.vidPlayersTriple {
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;
+  align-items: start;
+}
+.vidExempleFrame {
+  width: 100%; aspect-ratio: 16/9;
+  border: none; border-radius: 8px; background: #000;
+}
+.vidExempleSelect {
+  width: 100%;
+  background: var(--bg3, #222);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text);
+  font-size: 12px;
+}
 .vidPlayerCol { display: flex; flex-direction: column; }
 .vidPlayerLabel {
   font-size: 12px; font-weight: 600; color: var(--text3);
