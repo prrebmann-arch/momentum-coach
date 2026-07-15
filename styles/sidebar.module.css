@@ -307,3 +307,52 @@
     padding: 16px;
   }
 }
+
+/* ===== SIDEBAR COLLAPSED (icônes-only) ===== */
+.sidebarCollapsed {
+  width: 60px;
+}
+.sidebarCollapsed .sidebarHeader {
+  padding: 20px 0 12px;
+  justify-content: center;
+}
+.sidebarCollapsed .sidebarBrand {
+  justify-content: center;
+}
+.sidebarCollapsed .navItem,
+.sidebarCollapsed .navItemActive {
+  justify-content: center;
+  padding: 10px 0;
+}
+.sidebarCollapsed .navItem i,
+.sidebarCollapsed .navItemActive i {
+  margin-right: 0;
+  font-size: 16px;
+}
+.sidebarCollapsed .sidebarUser {
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Bouton toggle */
+.sidebarToggleBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--text3);
+  cursor: pointer;
+  margin: 12px auto 4px;
+  font-size: 11px;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.sidebarToggleBtn:hover {
+  background: var(--bg3);
+  color: var(--text);
+}
