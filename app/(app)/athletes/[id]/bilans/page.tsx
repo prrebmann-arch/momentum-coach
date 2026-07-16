@@ -220,6 +220,7 @@ export default function BilansPage() {
 
   const [loading, setLoading] = useState(!cached)
   const [bilans, setBilans] = useState<DailyReport[]>((cached?.bilans as DailyReport[]) ?? [])
+  const [templateQuestions, setTemplateQuestions] = useState<import('@/components/bilans/BilanAccordion').TemplateQuestion[]>([])
   const [allWLogs, setAllWLogs] = useState<Array<{ id: string; date: string; session_id?: string | null; session_name?: string | null; titre?: string | null; type?: string | null; started_at?: string | null; finished_at?: string | null; exercices_completes?: string | unknown[] | null }>>([])
   const [progWeeks, setProgWeeks] = useState<Array<{ week_date: string; phase?: string | null; _phaseNum?: number }>>((cached?.progWeeks as any) ?? [])
   const [nutriPlans, setNutriPlans] = useState<Array<{ id: string; valid_from?: string | null; meal_type?: string | null; nom?: string | null; calories_objectif?: number | null; proteines?: number | null; glucides?: number | null; lipides?: number | null; created_at?: string | null }>>((cached?.nutriPlans as any) ?? [])
@@ -282,12 +283,13 @@ export default function BilansPage() {
 
     if (!bilans.length) setLoading(true)
     try {
-      const [bilansRes, progRes, nutriRes, phasesRes, wlogsRes] = await Promise.all([
-        supabase.from('daily_reports').select('id, user_id, date, weight, sessions_executed, session_performance, energy, sleep_quality, steps, adherence, stress, soreness, session_enjoyment, cardio_minutes, bedtime, wakeup, sick_signs, positive_week, negative_week, general_notes, belly_measurement, hip_measurement, thigh_measurement, photo_front, photo_side, photo_back').eq('user_id', userId).order('date', { ascending: false }).limit(365),
+      const [bilansRes, progRes, nutriRes, phasesRes, wlogsRes, athleteTemplateRes] = await Promise.all([
+        supabase.from('daily_reports').select('id, user_id, date, weight, sessions_executed, session_performance, energy, sleep_quality, steps, adherence, stress, soreness, session_enjoyment, cardio_minutes, bedtime, wakeup, sick_signs, positive_week, negative_week, general_notes, belly_measurement, hip_measurement, thigh_measurement, photo_front, photo_side, photo_back, custom_data').eq('user_id', userId).order('date', { ascending: false }).limit(365),
         supabase.from('programming_weeks').select('week_date, phase').eq('athlete_id', athleteId).order('week_date').limit(200),
         supabase.from('nutrition_plans').select('id, valid_from, meal_type, nom, calories_objectif, proteines, glucides, lipides, created_at').eq('athlete_id', athleteId).limit(50),
         supabase.from('roadmap_phases').select('phase, name, start_date, end_date').eq('athlete_id', athleteId).order('start_date').limit(50),
         supabase.from('workout_logs').select('id, date, session_id, session_name, titre, type, started_at, finished_at, exercices_completes').eq('athlete_id', athleteId).order('date', { ascending: false }).limit(50),
+        supabase.from('athlete_bilan_templates').select('template_snapshot').eq('athlete_id', athleteId).order('assigned_at', { ascending: false }).limit(1).maybeSingle(),
       ])
 
       const bilanData = (bilansRes.data || []) as DailyReport[]
@@ -300,6 +302,15 @@ export default function BilansPage() {
       setNutriPlans(np)
       const phases = (phasesRes.data || []).sort((a: { start_date?: string }, b: { start_date?: string }) => (a.start_date || '').localeCompare(b.start_date || ''))
       setRoadmapPhases(phases)
+
+      // Template questions for custom_data display
+      const snapshot = (athleteTemplateRes.data as any)?.template_snapshot
+      if (snapshot) {
+        const allQ = [...(snapshot.quotidien || []), ...(snapshot.complet || [])]
+        setTemplateQuestions(allQ.filter((q: any) => q.type === 'custom'))
+      } else {
+        setTemplateQuestions([])
+      }
 
       // Photos are loaded on demand when user clicks (see loadPhotosForBilans)
       setPhotoHistory({ front: [], side: [], back: [] })
@@ -474,6 +485,7 @@ export default function BilansPage() {
           roadmapPhases={roadmapPhases}
           athlete={(athlete || selectedAthlete) as Athlete}
           photoHistory={photoHistory}
+          templateQuestions={templateQuestions}
           onDeleteBilan={handleDelete}
           onOpenPhoto={handleOpenPhoto}
           onOpenBilanTraite={() => setBilanTraiteOpen(true)}

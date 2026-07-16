@@ -37,8 +37,17 @@ export interface DailyReport {
   photo_back?: string | null
   sessions_executed?: string | null
   session_performance?: number | null
+  custom_data?: Record<string, unknown> | null
   _autoOnly?: boolean
   [key: string]: unknown
+}
+
+export interface TemplateQuestion {
+  type: 'builtin' | 'custom'
+  key?: string
+  field?: string
+  label: string
+  input_type: string
 }
 
 interface WorkoutLog {
@@ -88,6 +97,7 @@ interface BilanAccordionProps {
   roadmapPhases: RoadmapPhase[]
   athlete: Athlete
   photoHistory: Record<PhotoType, PhotoEntry[]>
+  templateQuestions?: TemplateQuestion[]
   onDeleteBilan: (id: string, date: string) => void
   onOpenPhoto: (type: PhotoType, date: string) => void
   onOpenBilanTraite: () => void
@@ -171,6 +181,7 @@ export default function BilanAccordion({
   roadmapPhases,
   athlete,
   photoHistory,
+  templateQuestions,
   onDeleteBilan,
   onOpenPhoto,
   onOpenBilanTraite,
@@ -592,7 +603,9 @@ export default function BilanAccordion({
                   const isBDay = isBilanDate(b.date, cbFreq, cbIntv, cbDay, cbAnchor, cbMonthDay)
                   const hasPhotos = b.photo_front || b.photo_side || b.photo_back
                   const hasMens = b.belly_measurement || b.hip_measurement || b.thigh_measurement
-                  const hasDetails = b.general_notes || b.steps || hasPhotos || hasMens
+                  const customQuestions = (templateQuestions || []).filter(q => q.type === 'custom' && q.key)
+                  const customAnswers = customQuestions.filter(q => b.custom_data?.[q.key!] != null)
+                  const hasDetails = b.general_notes || b.steps || hasPhotos || hasMens || customAnswers.length > 0
 
                   // Session name from workout logs
                   const dayLogs = wlogsByDate[b.date] || []
@@ -712,6 +725,25 @@ export default function BilanAccordion({
                             <div className={styles.detailNote}>
                               <i className="fas fa-pen" style={{ color: 'var(--text3)', marginRight: 6, fontSize: 11 }} />
                               {b.general_notes}
+                            </div>
+                          )}
+                          {customAnswers.length > 0 && (
+                            <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--bg3)', borderRadius: 8 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Réponses personnalisées</div>
+                              <div className={styles.detailGrid}>
+                                {customAnswers.map(q => {
+                                  const raw = b.custom_data![q.key!]
+                                  let display = String(raw)
+                                  if (q.input_type === 'boolean') display = raw ? 'Oui' : 'Non'
+                                  else if (q.input_type === 'multiple_choice' && Array.isArray(raw)) display = raw.join(', ')
+                                  return (
+                                    <div key={q.key} className={styles.detailItem}>
+                                      <span className={styles.detailLabel}>{q.label}</span>
+                                      <span>{display}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
                             </div>
                           )}
                         </div>
