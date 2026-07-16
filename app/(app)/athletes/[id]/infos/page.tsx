@@ -37,6 +37,32 @@ const COMPLETE_FREQ_OPTS = [
   { v: 'custom', l: 'Personnalise' },
 ]
 
+const CUSTOM_INTERVAL_PRESETS = [2, 3, 5, 10]
+
+const BUILTIN_INFO: Record<string, { label: string; input_type: string; unit?: string }> = {
+  weight:            { label: 'Poids',              input_type: 'number',      unit: 'kg'  },
+  energy:            { label: 'Énergie',            input_type: 'slider_1_10'              },
+  stress:            { label: 'Stress',             input_type: 'slider_1_10'              },
+  sleep_quality:     { label: 'Qualité du sommeil', input_type: 'slider_1_10'              },
+  soreness:          { label: 'Courbatures',        input_type: 'slider_1_10'              },
+  session_enjoyment: { label: 'Plaisir séance',     input_type: 'slider_1_10'              },
+  cardio_minutes:    { label: 'Cardio (min)',        input_type: 'number',      unit: 'min' },
+  bedtime:           { label: 'Heure coucher',      input_type: 'time'                     },
+  wakeup:            { label: 'Heure réveil',       input_type: 'time'                     },
+  sleep_efficiency:  { label: 'Efficacité sommeil', input_type: 'number',      unit: '%'   },
+  sick_signs:        { label: 'Signes de maladie',  input_type: 'boolean'                  },
+  adherence:         { label: 'Adhérence',          input_type: 'slider_1_10'              },
+  positive_week:     { label: 'Point positif',      input_type: 'text_long'                },
+  negative_week:     { label: 'Point à améliorer',  input_type: 'text_long'                },
+  general_notes:     { label: 'Notes générales',    input_type: 'text_long'                },
+  belly_measurement: { label: 'Tour de ventre',     input_type: 'number',      unit: 'cm'  },
+  hip_measurement:   { label: 'Tour de hanches',    input_type: 'number',      unit: 'cm'  },
+  thigh_measurement: { label: 'Tour de cuisses',    input_type: 'number',      unit: 'cm'  },
+  photo_front:       { label: 'Photo face',         input_type: 'photo'                    },
+  photo_side:        { label: 'Photo profil',       input_type: 'photo'                    },
+  photo_back:        { label: 'Photo dos',          input_type: 'photo'                    },
+}
+
 function formatFrequency(freq: string, interval?: number) {
   if (freq === 'none') return 'Desactive'
   if (freq === 'daily') return 'Quotidien'
@@ -205,12 +231,26 @@ function BilanConfigEditor({
         )}
 
         {completeFreq === 'custom' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={{ color: 'var(--text2)', fontSize: 13 }}>Tous les</span>
-            <input type="number" className="form-control" style={{ width: 60 }}
-              value={formData.complete_bilan_interval || 14} min={2} max={90}
-              onChange={(e) => updateField('complete_bilan_interval', Number(e.target.value))} />
-            <span style={{ color: 'var(--text2)', fontSize: 13 }}>jours</span>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {CUSTOM_INTERVAL_PRESETS.map(n => (
+                <button key={n} type="button"
+                  className={`btn btn-sm ${(formData.complete_bilan_interval || 14) === n ? 'btn-red' : 'btn-outline'}`}
+                  onClick={() => updateField('complete_bilan_interval', n)}>{n}j</button>
+              ))}
+              <button type="button"
+                className={`btn btn-sm ${!CUSTOM_INTERVAL_PRESETS.includes(formData.complete_bilan_interval || 14) ? 'btn-red' : 'btn-outline'}`}
+                onClick={() => { if (CUSTOM_INTERVAL_PRESETS.includes(formData.complete_bilan_interval || 14)) updateField('complete_bilan_interval', 14) }}>Autre</button>
+            </div>
+            {!CUSTOM_INTERVAL_PRESETS.includes(formData.complete_bilan_interval || 14) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                <span style={{ color: 'var(--text2)', fontSize: 13 }}>Tous les</span>
+                <input type="number" className="form-control" style={{ width: 60 }}
+                  value={formData.complete_bilan_interval || 14} min={2} max={90}
+                  onChange={(e) => updateField('complete_bilan_interval', Number(e.target.value))} />
+                <span style={{ color: 'var(--text2)', fontSize: 13 }}>jours</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -247,6 +287,10 @@ export default function InfosPage() {
   const [paymentHistory, setPaymentHistory] = useState<any[]>(cached?.payments ?? [])
   const [cancelRequests, setCancelRequests] = useState<any[]>(cached?.cancels ?? [])
 
+  // Bilan template state
+  const [bilanTemplates, setBilanTemplates] = useState<{ id: string; name: string; updated_at: string }[]>([])
+  const [athleteTemplate, setAthleteTemplate] = useState<{ id: string; template_id: string | null; assigned_at: string; bilan_templates: { updated_at: string } | null } | null>(null)
+
   // Onboarding state
   const [onboarding, setOnboarding] = useState<any>(null)
   const [workflow, setWorkflow] = useState<any>(null)
@@ -255,13 +299,15 @@ export default function InfosPage() {
     if (!athlete) setLoading(true)
     try {
       // Run athlete + payment + phase queries all in parallel
-      const [athleteRes, planRes, paymentsRes, cancelsRes, phaseRes, obRes1] = await Promise.all([
+      const [athleteRes, planRes, paymentsRes, cancelsRes, phaseRes, obRes1, templatesRes, athleteTemplateRes] = await Promise.all([
         supabase.from('athletes').select('id, user_id, coach_id, prenom, nom, email, avatar_url, date_naissance, genre, telephone, objectif, poids_actuel, poids_objectif, access_mode, pas_journalier, water_goal_ml, blessures, allergies, medicaments, notes_sante, onboarding_workflow_id, bilan_frequency, bilan_interval, bilan_day, bilan_anchor_date, bilan_month_day, bilan_notif_time, complete_bilan_frequency, complete_bilan_interval, complete_bilan_day, complete_bilan_anchor_date, complete_bilan_month_day, complete_bilan_notif_time, created_at').eq('id', params.id).single(),
         supabase.from('athlete_payment_plans').select('id, athlete_id, coach_id, payment_status, amount, frequency, is_free, stripe_subscription_id, stripe_customer_id, created_at').eq('athlete_id', params.id).eq('coach_id', user?.id).maybeSingle(),
         supabase.from('payment_history').select('id, athlete_id, amount, status, stripe_invoice_id, created_at').eq('athlete_id', params.id).eq('is_platform_payment', false).order('created_at', { ascending: false }).limit(10),
         supabase.from('cancellation_requests').select('id, athlete_id, coach_id, coach_note, status, created_at').eq('athlete_id', params.id).eq('coach_id', user?.id).order('created_at', { ascending: false }).limit(5),
         supabase.from('roadmap_phases').select('id, phase, name, status').eq('athlete_id', params.id).eq('status', 'en_cours').order('position').limit(1),
         supabase.from('athlete_onboarding').select('id, athlete_id, workflow_id, completed, steps_completed, started_at').eq('athlete_id', params.id).limit(1),
+        supabase.from('bilan_templates').select('id, name, updated_at').eq('coach_id', user?.id ?? '').order('name'),
+        supabase.from('athlete_bilan_templates').select('id, template_id, assigned_at, bilan_templates(updated_at)').eq('athlete_id', params.id).order('assigned_at', { ascending: false }).limit(1),
       ])
 
       const data = athleteRes.data
@@ -274,6 +320,9 @@ export default function InfosPage() {
       setCancelRequests(cancels)
       const phase = phaseRes.data?.[0] || null
       setActivePhase(phase)
+
+      setBilanTemplates(templatesRes.data || [])
+      setAthleteTemplate((athleteTemplateRes.data?.[0] as any) || null)
 
       // Cache main data
       setPageCache(cacheKey, { athlete: data, phase, plan, payments, cancels })
@@ -331,6 +380,43 @@ export default function InfosPage() {
 
   const a = athlete
 
+  async function saveAthleteTemplate(templateId: string) {
+    // Clear existing assignments for this athlete first
+    await supabase.from('athlete_bilan_templates').delete().eq('athlete_id', a.id)
+    if (!templateId) return
+
+    const { data: questions } = await supabase
+      .from('bilan_template_questions')
+      .select('bilan_type, builtin_field, is_required, sort_order, bilan_questions(id, key, label, type, unit, options)')
+      .eq('template_id', templateId)
+      .order('sort_order')
+
+    const template = bilanTemplates.find(t => t.id === templateId)
+    const mapQ = (q: any) => {
+      if (q.builtin_field) {
+        const info = BUILTIN_INFO[q.builtin_field] || { label: q.builtin_field, input_type: 'text_long' }
+        return { type: 'builtin', field: q.builtin_field, label: info.label, input_type: info.input_type, unit: info.unit, required: q.is_required }
+      }
+      const bq = q.bilan_questions
+      return { type: 'custom', key: bq.key, question_id: bq.id, label: bq.label, input_type: bq.type, unit: bq.unit, options: bq.options, required: q.is_required }
+    }
+    const rows = (questions || []) as any[]
+    const snapshot = {
+      version: 1,
+      template_id: templateId,
+      template_name: template?.name || '',
+      quotidien: rows.filter(q => q.bilan_type === 'quotidien').map(mapQ),
+      complet: rows.filter(q => q.bilan_type === 'complet').map(mapQ),
+    }
+    await supabase.from('athlete_bilan_templates').insert({
+      athlete_id: a.id,
+      template_id: templateId,
+      template_snapshot: snapshot,
+      assigned_by: user?.id,
+    })
+    setAthleteTemplate({ id: '', template_id: templateId, assigned_at: new Date().toISOString(), bilan_templates: template ? { updated_at: template.updated_at } : null })
+  }
+
   function startEdit(card: string) {
     const data: Record<string, any> = {}
     if (card === 'personal') {
@@ -352,6 +438,8 @@ export default function InfosPage() {
       data.complete_bilan_month_day = a.complete_bilan_month_day || 1
       data.complete_bilan_interval = a.complete_bilan_interval || 14
       data.complete_bilan_notif_time = a.complete_bilan_notif_time || DEFAULT_NOTIF_TIME
+      // Bilan template
+      data.selected_template_id = athleteTemplate?.template_id || ''
     } else if (card === 'health') {
       data.blessures = a.blessures || ''
       data.allergies = a.allergies || ''
@@ -384,12 +472,20 @@ export default function InfosPage() {
         updateData.complete_bilan_anchor_date = a.complete_bilan_anchor_date || todayStr
       }
     }
+    const selectedTemplateId = updateData.selected_template_id ?? ''
+    delete updateData.selected_template_id
+
     const { error } = await supabase.from('athletes').update(updateData).eq('id', a.id)
     if (error) {
       console.error('[saveEdit] supabase error:', error, 'payload:', updateData)
       toast(`Erreur: ${error.message}`, 'error')
       return
     }
+
+    if (card === 'personal' && selectedTemplateId !== (athleteTemplate?.template_id || '')) {
+      await saveAthleteTemplate(selectedTemplateId)
+    }
+
     toast('Informations sauvegardees', 'success')
     setEditingCard(null)
     loadAthlete()
@@ -728,6 +824,15 @@ export default function InfosPage() {
               <EditField formData={formData} updateField={updateField} label="Objectif pas/jour" field="pas_journalier" type="number" />
               <EditField formData={formData} updateField={updateField} label="Objectif eau (ml/jour)" field="water_goal_ml" type="number" />
               <EditField formData={formData} updateField={updateField} label="Mode d'acces" field="access_mode" options={[{ value: 'full', label: 'Complet' }, { value: 'training_only', label: 'Training uniquement' }, { value: 'nutrition_only', label: 'Diete uniquement' }]} />
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16, marginBottom: 0 }}>
+                <label style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 8 }}>
+                  <i className="fas fa-clipboard-list" style={{ marginRight: 6, color: 'var(--text3)' }} />Template de bilan
+                </label>
+                <select className="form-control" value={formData.selected_template_id || ''} onChange={(e) => updateField('selected_template_id', e.target.value)}>
+                  <option value=''>Aucun template</option>
+                  {bilanTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
               <BilanConfigEditor formData={formData} updateField={updateField} />
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button className="btn btn-red btn-sm" onClick={() => saveEdit('personal')}><i className="fas fa-save" /> Sauvegarder</button>
@@ -748,6 +853,31 @@ export default function InfosPage() {
               <InfoRow icon="fa-lock" label="Mode d'acces" value={ACCESS_LABELS[a.access_mode] || 'Complet'} />
               <InfoRow icon="fa-calendar-day" label="Bilan quotidien" value={bilanFreqLabel} />
               <InfoRow icon="fa-calendar-check" label="Bilan complet" value={completeFreqLabel} />
+              {(() => {
+                const tpl = athleteTemplate?.template_id ? bilanTemplates.find(t => t.id === athleteTemplate.template_id) : null
+                const isOutdated = tpl && athleteTemplate && tpl.updated_at > athleteTemplate.assigned_at
+                return (
+                  <>
+                    <InfoRow icon="fa-clipboard-list" label="Template bilan" value={tpl ? tpl.name : 'Aucun'} />
+                    {tpl && athleteTemplate && (
+                      <div style={{ marginLeft: 20, marginTop: -4, marginBottom: 8 }}>
+                        <span style={{ fontSize: 11, color: 'var(--text3)' }}>
+                          Assigné le {new Date(athleteTemplate.assigned_at).toLocaleDateString('fr-FR')}
+                        </span>
+                      </div>
+                    )}
+                    {isOutdated && (
+                      <div style={{ margin: '4px 0 8px', padding: '8px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontSize: 12, color: '#d97706' }}>
+                          <i className="fas fa-exclamation-triangle" style={{ marginRight: 6 }} />Template modifié depuis l&apos;assignation
+                        </span>
+                        <button type="button" className="btn btn-outline btn-sm" style={{ fontSize: 11 }}
+                          onClick={() => saveAthleteTemplate(athleteTemplate!.template_id!)}>Propager</button>
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
             </div>
           )}
         </div>
