@@ -25,12 +25,15 @@ import SupplementTemplateEditor from '@/components/templates/SupplementTemplateE
 import OnboardingTemplatesList from '@/components/templates/OnboardingTemplatesList'
 import OnboardingTemplateEditor from '@/components/templates/OnboardingTemplateEditor'
 import { ensurePremiumTemplate, type OnboardingTemplate } from '@/lib/onboarding'
+import BilanTemplatesList, { type BilanTemplate } from '@/components/bilans/BilanTemplatesList'
+import BilanTemplateEditor from '@/components/bilans/BilanTemplateEditor'
 
 const TABS = [
   { id: 'training', label: 'Training' },
   { id: 'nutrition', label: 'Nutrition' },
   { id: 'supplements', label: 'Compléments' },
   { id: 'onboarding', label: 'Onboarding' },
+  { id: 'bilans', label: 'Bilans' },
   { id: 'workflow', label: 'Workflows' },
   { id: 'questionnaires', label: 'Questionnaires' },
 ]
@@ -98,6 +101,11 @@ export default function TemplatesPage() {
   const [editingOnboarding, setEditingOnboarding] = useState<string | null>(null)
   const [creatingOnboarding, setCreatingOnboarding] = useState(false)
 
+  // Bilans
+  const [bilanTemplates, setBilanTemplates] = useState<BilanTemplate[]>([])
+  const [editingBilan, setEditingBilan] = useState<string | null>(null)
+  const [creatingBilan, setCreatingBilan] = useState(false)
+
   const loadData = useCallback(async () => {
     if (!user) return
     // Only show skeleton on first load — background refresh keeps existing data visible
@@ -150,6 +158,27 @@ export default function TemplatesPage() {
           .limit(100)
         if (error) console.error('[templates/supplements] select error:', error)
         setSupplementTemplates((data || []) as SupplementTemplate[])
+      } else if (activeTab === 'bilans') {
+        const { data } = await supabase
+          .from('bilan_templates')
+          .select(`
+            id, name, description, created_at, updated_at,
+            bilan_template_questions(bilan_type),
+            athlete_bilan_templates(athlete_id)
+          `)
+          .eq('coach_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(100)
+        setBilanTemplates((data || []).map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          description: t.description,
+          created_at: t.created_at,
+          updated_at: t.updated_at,
+          quotidien_count: (t.bilan_template_questions || []).filter((q: any) => q.bilan_type === 'quotidien').length,
+          complet_count: (t.bilan_template_questions || []).filter((q: any) => q.bilan_type === 'complet').length,
+          athlete_count: new Set((t.athlete_bilan_templates || []).map((a: any) => a.athlete_id)).size,
+        })))
       } else if (activeTab === 'onboarding') {
         const fetchTemplates = async () =>
           supabase
@@ -194,6 +223,8 @@ export default function TemplatesPage() {
     setCreatingSupplement(false)
     setEditingOnboarding(null)
     setCreatingOnboarding(false)
+    setEditingBilan(null)
+    setCreatingBilan(false)
   }
 
   // ── Onboarding handlers ──
@@ -214,6 +245,40 @@ export default function TemplatesPage() {
     setEditingOnboarding(null)
     setCreatingOnboarding(false)
   }
+
+  // ── Bilan template handlers ──
+  const handleBilanEdit = (id: string) => { setEditingBilan(id); setCreatingBilan(false) }
+  const handleBilanCreate = () => { setEditingBilan(null); setCreatingBilan(true) }
+  const handleBilanSaved = () => { setEditingBilan(null); setCreatingBilan(false); loadData() }
+  const handleBilanCancel = () => { setEditingBilan(null); setCreatingBilan(false) }
+
+  const handleBilanDuplicate = async (id: string) => {
+    if (!user) return
+    const src = bilanTemplates.find((t) => t.id === id)
+    if (!src) return
+    const { data: newTpl } = await supabase
+      .from('bilan_templates')
+      .insert({ coach_id: user.id, name: `${src.name} (copie)`, description: null })
+      .select('id').single()
+    if (!newTpl) return
+    const { data: qs } = await supabase
+      .from('bilan_template_questions')
+      .select('bilan_type, builtin_field, question_id, is_required, sort_order')
+      .eq('template_id', id)
+    if (qs && qs.length > 0) {
+      await supabase.from('bilan_template_questions').insert(
+        qs.map((q: any) => ({ ...q, template_id: newTpl.id }))
+      )
+    }
+    loadData()
+  }
+
+  const handleBilanDelete = async (id: string) => {
+    if (!confirm('Supprimer ce template de bilan ?')) return
+    await supabase.from('bilan_templates').delete().eq('id', id)
+    loadData()
+  }
+
   const editedOnboardingTemplate = editingOnboarding
     ? onboardingTemplates.find((t) => t.id === editingOnboarding) || null
     : null
@@ -490,6 +555,20 @@ export default function TemplatesPage() {
     )
   }
 
+  // ── Bilan template editor ──
+  if (activeTab === 'bilans' && (editingBilan || creatingBilan)) {
+    return (
+      <div>
+        <h1 className="page-title">Templates</h1>
+        <BilanTemplateEditor
+          templateId={editingBilan}
+          onSaved={handleBilanSaved}
+          onCancel={handleBilanCancel}
+        />
+      </div>
+    )
+  }
+
   // ── Supplement template editor ──
   if (activeTab === 'supplements' && (editingSupplement || creatingSupplement)) {
     return (
@@ -564,6 +643,16 @@ export default function TemplatesPage() {
                 onEdit={handleNutritionEdit}
                 onCreate={handleNutritionCreate}
                 onDelete={handleNutritionDelete}
+              />
+            )}
+
+            {activeTab === 'bilans' && (
+              <BilanTemplatesList
+                templates={bilanTemplates}
+                onEdit={handleBilanEdit}
+                onCreate={handleBilanCreate}
+                onDuplicate={handleBilanDuplicate}
+                onDelete={handleBilanDelete}
               />
             )}
 
