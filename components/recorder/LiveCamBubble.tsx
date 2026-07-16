@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRecorder } from '@/contexts/RecorderContext'
 
-const CIRCLE_SIZE = 140
-const PORTRAIT_W = 144
-const PORTRAIT_H = 256
+const CIRCLE_SIZE = 280
+const PORTRAIT_W = 288
+const PORTRAIT_H = 512
 const STORAGE_KEY_CIRCLE = 'recorder.liveBubblePos'
 const STORAGE_KEY_PORTRAIT = 'recorder.liveSelfiePos'
 

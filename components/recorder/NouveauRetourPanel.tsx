@@ -420,7 +420,7 @@ export default function NouveauRetourPanel({ athleteId, broadcastIds, onCreated,
                 </button>
                 {audio.audioUrl && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
-                    <audio controls src={audio.audioUrl} style={{ height: 30, flex: 1 }} />
+                    <audio controls src={audio.audioUrl} style={{ height: 30, flex: 1, minWidth: 0, maxWidth: '100%' }} />
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
@@ -536,7 +536,7 @@ export default function NouveauRetourPanel({ athleteId, broadcastIds, onCreated,
             {recordMode === 'screen' && withWebcam && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
-                  width: 60, height: 60, borderRadius: '50%', overflow: 'hidden',
+                  width: 140, height: 140, borderRadius: '50%', overflow: 'hidden',
                   background: '#000', border: '2px solid var(--primary, #5b8dff)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}>
