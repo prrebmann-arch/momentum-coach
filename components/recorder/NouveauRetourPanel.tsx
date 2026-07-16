@@ -406,7 +406,7 @@ export default function NouveauRetourPanel({ athleteId, broadcastIds, onCreated,
               <label style={{ ...labelStyle, marginBottom: 6 }}>
                 <i className="fas fa-microphone" style={{ marginRight: 4 }} />Message vocal
               </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                 <button
                   type="button"
                   className="btn btn-outline btn-sm"
@@ -419,8 +419,8 @@ export default function NouveauRetourPanel({ athleteId, broadcastIds, onCreated,
                     : <><i className="fas fa-microphone" /> Enregistrer</>}
                 </button>
                 {audio.audioUrl && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
-                    <audio controls src={audio.audioUrl} style={{ height: 30, flex: 1, minWidth: 0, maxWidth: '100%' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                    <audio controls src={audio.audioUrl} style={{ height: 30, flex: 1, minWidth: 0 }} />
                     <button
                       type="button"
                       className="btn btn-outline btn-sm"
