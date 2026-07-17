@@ -307,7 +307,7 @@ export default function InfosPage() {
         supabase.from('cancellation_requests').select('id, athlete_id, coach_id, coach_note, status, created_at').eq('athlete_id', params.id).eq('coach_id', user?.id).order('created_at', { ascending: false }).limit(5),
         supabase.from('roadmap_phases').select('id, phase, name, status').eq('athlete_id', params.id).eq('status', 'en_cours').order('position').limit(1),
         supabase.from('athlete_onboarding').select('id, athlete_id, workflow_id, completed, steps_completed, started_at').eq('athlete_id', params.id).limit(1),
-        supabase.from('bilan_templates').select('id, name, updated_at, template_type').eq('coach_id', user?.id ?? '').order('name'),
+        supabase.from('bilan_templates').select('id, name, updated_at, template_type').or(`coach_id.eq.${user?.id ?? ''},coach_id.is.null`).order('name'),
         supabase.from('athlete_bilan_templates').select('id, template_id, assigned_at, bilan_type, bilan_templates(updated_at)').eq('athlete_id', params.id).order('assigned_at', { ascending: false }),
       ])
 
