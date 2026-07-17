@@ -166,7 +166,7 @@ export default function TemplatesPage() {
             bilan_template_questions(id),
             athlete_bilan_templates(athlete_id)
           `)
-          .eq('coach_id', user.id)
+          .or(`coach_id.eq.${user.id},coach_id.is.null`)
           .order('created_at', { ascending: false })
           .limit(100)
         setBilanTemplates((data || []).map((t: any) => ({
