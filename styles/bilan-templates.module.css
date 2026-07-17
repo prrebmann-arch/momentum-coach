@@ -156,6 +156,20 @@
   cursor: default;
 }
 
+.dragHandle {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  color: var(--text3);
+  cursor: grab;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
 .questionRowSelected {
   border-color: var(--primary);
   background: rgba(179,8,8,0.06);

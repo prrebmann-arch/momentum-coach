@@ -6,6 +6,21 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import BilanQuestionLibraryModal, { type LibraryQuestion } from './BilanQuestionLibraryModal'
 import styles from '@/styles/bilan-templates.module.css'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 export interface TemplateQuestion {
   id?: string
@@ -74,6 +89,42 @@ interface Props {
   onCancel: () => void
 }
 
+function SortableQuestionRow({
+  q,
+  onRemove,
+  onToggleRequired,
+}: {
+  q: TemplateQuestion
+  onRemove: () => void
+  onToggleRequired: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: q.field ?? q.key ?? q.id ?? '',
+  })
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+  return (
+    <div ref={setNodeRef} style={style} className={styles.questionRow}>
+      <button className={styles.dragHandle} {...listeners} {...attributes} title="Réordonner">
+        <i className="fas fa-grip-vertical" />
+      </button>
+      <span className={styles.questionRowLabel}>{q.label}</span>
+      {q.unit && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{q.unit}</span>}
+      <span className={`${styles.typeBadge} ${TYPE_BADGE_CLASS[q.input_type] ?? ''}`}>
+        {formatType(q.input_type)}
+      </span>
+      <label className={styles.requiredToggle}>
+        <input type="checkbox" checked={q.required} onChange={onToggleRequired} />
+        Req.
+      </label>
+      <button className={styles.deleteBtn} onClick={onRemove}>×</button>
+    </div>
+  )
+}
+
 export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: Props) {
   const supabase = createClient()
   const { user } = useAuth()
@@ -88,6 +139,8 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
 
   const [showLibrary, setShowLibrary] = useState(false)
   const [showCustomForm, setShowCustomForm] = useState<CustomFormState | null>(null)
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   useEffect(() => {
     if (!templateId || !user) return
@@ -149,14 +202,13 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
 
   const alreadySelected = currentQuestions.map((q) => q.field ?? q.key ?? '')
 
-  function move(q: TemplateQuestion, dir: -1 | 1) {
-    const col = currentQuestions
-    const idx = col.findIndex((x) => (x.field ?? x.key) === (q.field ?? q.key))
-    const newIdx = idx + dir
-    if (newIdx < 0 || newIdx >= col.length) return
-    const next = [...col]
-    ;[next[idx], next[newIdx]] = [next[newIdx], next[idx]]
-    const reindexed = next.map((item, i) => ({ ...item, sort_order: i }))
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIdx = currentQuestions.findIndex((q) => (q.field ?? q.key ?? q.id) === active.id)
+    const newIdx = currentQuestions.findIndex((q) => (q.field ?? q.key ?? q.id) === over.id)
+    if (oldIdx === -1 || newIdx === -1) return
+    const reindexed = arrayMove(currentQuestions, oldIdx, newIdx).map((item, i) => ({ ...item, sort_order: i }))
     setQuestions((prev) => [
       ...prev.filter((x) => x.bilan_type !== templateType),
       ...reindexed,
@@ -364,24 +416,21 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
           </div>
         )}
 
-        {currentQuestions.map((q, idx, arr) => (
-          <div key={q.field ?? q.key} className={styles.questionRow}>
-            <div className={styles.reorderBtns}>
-              <button className={styles.reorderBtn} onClick={() => move(q, -1)} disabled={idx === 0}>▲</button>
-              <button className={styles.reorderBtn} onClick={() => move(q, 1)} disabled={idx === arr.length - 1}>▼</button>
-            </div>
-            <span className={styles.questionRowLabel}>{q.label}</span>
-            {q.unit && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{q.unit}</span>}
-            <span className={`${styles.typeBadge} ${TYPE_BADGE_CLASS[q.input_type] ?? ''}`}>
-              {formatType(q.input_type)}
-            </span>
-            <label className={styles.requiredToggle}>
-              <input type="checkbox" checked={q.required} onChange={() => toggleRequired(q)} />
-              Req.
-            </label>
-            <button className={styles.deleteBtn} onClick={() => remove(q)}>×</button>
-          </div>
-        ))}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext
+            items={currentQuestions.map((q) => q.field ?? q.key ?? q.id ?? '')}
+            strategy={verticalListSortingStrategy}
+          >
+            {currentQuestions.map((q) => (
+              <SortableQuestionRow
+                key={q.field ?? q.key ?? q.id}
+                q={q}
+                onRemove={() => remove(q)}
+                onToggleRequired={() => toggleRequired(q)}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
 
         <div className={styles.addBtns}>
           <button className={styles.addBtn} onClick={() => setShowLibrary(true)}>
