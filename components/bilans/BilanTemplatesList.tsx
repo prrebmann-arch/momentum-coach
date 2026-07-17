@@ -6,10 +6,10 @@ export interface BilanTemplate {
   id: string
   name: string
   description: string | null
+  template_type: string
+  question_count: number
   created_at: string
   updated_at: string
-  quotidien_count?: number
-  complet_count?: number
   athlete_count?: number
 }
 
@@ -62,12 +62,12 @@ export default function BilanTemplatesList({ templates, onEdit, onCreate, onDupl
 
               <div className={styles.templateMeta}>
                 <span className={styles.metaBadge}>
-                  <i className="fa-solid fa-sun" />
-                  {t.quotidien_count ?? 0} quotidien
+                  <i className={t.template_type === 'quotidien' ? 'fa-solid fa-sun' : 'fa-solid fa-calendar-check'} />
+                  {t.template_type === 'quotidien' ? 'Quotidien' : 'Complet'}
                 </span>
                 <span className={styles.metaBadge}>
-                  <i className="fa-solid fa-calendar-week" />
-                  {t.complet_count ?? 0} complet
+                  <i className="fa-solid fa-list-check" />
+                  {t.question_count} question{t.question_count !== 1 ? 's' : ''}
                 </span>
                 {(t.athlete_count ?? 0) > 0 && (
                   <span className={styles.metaBadgeAthletes}>

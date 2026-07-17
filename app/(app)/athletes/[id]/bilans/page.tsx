@@ -368,7 +368,7 @@ export default function BilansPage() {
             supabase.storage
               .from('athlete-photos')
               .createSignedUrl(path, 3600)
-              .then(({ data }) => {
+              .then(({ data }: { data: { signedUrl: string } | null }) => {
                 if (data?.signedUrl) {
                   history[pos].push({ date: b.date, url: data.signedUrl })
                 } else if (raw.startsWith('http')) {

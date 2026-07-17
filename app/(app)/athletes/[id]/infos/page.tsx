@@ -288,8 +288,9 @@ export default function InfosPage() {
   const [cancelRequests, setCancelRequests] = useState<any[]>(cached?.cancels ?? [])
 
   // Bilan template state
-  const [bilanTemplates, setBilanTemplates] = useState<{ id: string; name: string; updated_at: string }[]>([])
-  const [athleteTemplate, setAthleteTemplate] = useState<{ id: string; template_id: string | null; assigned_at: string; bilan_templates: { updated_at: string } | null } | null>(null)
+  const [bilanTemplates, setBilanTemplates] = useState<{ id: string; name: string; updated_at: string; template_type: string }[]>([])
+  const [athleteTemplateQuotidien, setAthleteTemplateQuotidien] = useState<{ id: string; template_id: string | null; assigned_at: string; bilan_type: string; bilan_templates: { updated_at: string } | null } | null>(null)
+  const [athleteTemplateComplet, setAthleteTemplateComplet] = useState<{ id: string; template_id: string | null; assigned_at: string; bilan_type: string; bilan_templates: { updated_at: string } | null } | null>(null)
 
   // Onboarding state
   const [onboarding, setOnboarding] = useState<any>(null)
@@ -306,8 +307,8 @@ export default function InfosPage() {
         supabase.from('cancellation_requests').select('id, athlete_id, coach_id, coach_note, status, created_at').eq('athlete_id', params.id).eq('coach_id', user?.id).order('created_at', { ascending: false }).limit(5),
         supabase.from('roadmap_phases').select('id, phase, name, status').eq('athlete_id', params.id).eq('status', 'en_cours').order('position').limit(1),
         supabase.from('athlete_onboarding').select('id, athlete_id, workflow_id, completed, steps_completed, started_at').eq('athlete_id', params.id).limit(1),
-        supabase.from('bilan_templates').select('id, name, updated_at').eq('coach_id', user?.id ?? '').order('name'),
-        supabase.from('athlete_bilan_templates').select('id, template_id, assigned_at, bilan_templates(updated_at)').eq('athlete_id', params.id).order('assigned_at', { ascending: false }).limit(1),
+        supabase.from('bilan_templates').select('id, name, updated_at, template_type').eq('coach_id', user?.id ?? '').order('name'),
+        supabase.from('athlete_bilan_templates').select('id, template_id, assigned_at, bilan_type, bilan_templates(updated_at)').eq('athlete_id', params.id).order('assigned_at', { ascending: false }),
       ])
 
       const data = athleteRes.data
@@ -321,8 +322,10 @@ export default function InfosPage() {
       const phase = phaseRes.data?.[0] || null
       setActivePhase(phase)
 
-      setBilanTemplates(templatesRes.data || [])
-      setAthleteTemplate((athleteTemplateRes.data?.[0] as any) || null)
+      setBilanTemplates((templatesRes.data || []) as { id: string; name: string; updated_at: string; template_type: string }[])
+      const atRows = (athleteTemplateRes.data || []) as any[]
+      setAthleteTemplateQuotidien(atRows.find((r: any) => r.bilan_type === 'quotidien') || null)
+      setAthleteTemplateComplet(atRows.find((r: any) => r.bilan_type === 'complet') || null)
 
       // Cache main data
       setPageCache(cacheKey, { athlete: data, phase, plan, payments, cancels })
@@ -380,10 +383,14 @@ export default function InfosPage() {
 
   const a = athlete
 
-  async function saveAthleteTemplate(templateId: string) {
-    // Clear existing assignments for this athlete first
-    await supabase.from('athlete_bilan_templates').delete().eq('athlete_id', a.id)
-    if (!templateId) return
+  async function saveAthleteTemplate(templateId: string, bilanType: 'quotidien' | 'complet') {
+    // Clear existing assignment for this athlete + bilanType
+    await supabase.from('athlete_bilan_templates').delete().eq('athlete_id', a.id).eq('bilan_type', bilanType)
+    if (!templateId) {
+      if (bilanType === 'quotidien') setAthleteTemplateQuotidien(null)
+      else setAthleteTemplateComplet(null)
+      return
+    }
 
     const { data: questions } = await supabase
       .from('bilan_template_questions')
@@ -395,26 +402,29 @@ export default function InfosPage() {
     const mapQ = (q: any) => {
       if (q.builtin_field) {
         const info = BUILTIN_INFO[q.builtin_field] || { label: q.builtin_field, input_type: 'text_long' }
-        return { type: 'builtin', field: q.builtin_field, label: info.label, input_type: info.input_type, unit: info.unit, required: q.is_required }
+        return { type: 'builtin', field: q.builtin_field, label: info.label, input_type: info.input_type, unit: info.unit, required: q.is_required, bilan_type: bilanType }
       }
       const bq = q.bilan_questions
-      return { type: 'custom', key: bq.key, question_id: bq.id, label: bq.label, input_type: bq.type, unit: bq.unit, options: bq.options, required: q.is_required }
+      return { type: 'custom', key: bq.key, question_id: bq.id, label: bq.label, input_type: bq.type, unit: bq.unit, options: bq.options, required: q.is_required, bilan_type: bilanType }
     }
     const rows = (questions || []) as any[]
     const snapshot = {
-      version: 1,
+      version: 2,
       template_id: templateId,
       template_name: template?.name || '',
-      quotidien: rows.filter(q => q.bilan_type === 'quotidien').map(mapQ),
-      complet: rows.filter(q => q.bilan_type === 'complet').map(mapQ),
+      bilan_type: bilanType,
+      questions: rows.map(mapQ),
     }
     await supabase.from('athlete_bilan_templates').insert({
       athlete_id: a.id,
       template_id: templateId,
+      bilan_type: bilanType,
       template_snapshot: snapshot,
       assigned_by: user?.id,
     })
-    setAthleteTemplate({ id: '', template_id: templateId, assigned_at: new Date().toISOString(), bilan_templates: template ? { updated_at: template.updated_at } : null })
+    const newRow = { id: '', template_id: templateId, assigned_at: new Date().toISOString(), bilan_type: bilanType, bilan_templates: template ? { updated_at: template.updated_at } : null }
+    if (bilanType === 'quotidien') setAthleteTemplateQuotidien(newRow)
+    else setAthleteTemplateComplet(newRow)
   }
 
   function startEdit(card: string) {
@@ -438,8 +448,9 @@ export default function InfosPage() {
       data.complete_bilan_month_day = a.complete_bilan_month_day || 1
       data.complete_bilan_interval = a.complete_bilan_interval || 14
       data.complete_bilan_notif_time = a.complete_bilan_notif_time || DEFAULT_NOTIF_TIME
-      // Bilan template
-      data.selected_template_id = athleteTemplate?.template_id || ''
+      // Bilan templates (one per type)
+      data.selected_template_quotidien_id = athleteTemplateQuotidien?.template_id || ''
+      data.selected_template_complet_id = athleteTemplateComplet?.template_id || ''
     } else if (card === 'health') {
       data.blessures = a.blessures || ''
       data.allergies = a.allergies || ''
@@ -472,8 +483,10 @@ export default function InfosPage() {
         updateData.complete_bilan_anchor_date = a.complete_bilan_anchor_date || todayStr
       }
     }
-    const selectedTemplateId = updateData.selected_template_id ?? ''
-    delete updateData.selected_template_id
+    const selectedQuotidienId = updateData.selected_template_quotidien_id ?? ''
+    const selectedCompletId = updateData.selected_template_complet_id ?? ''
+    delete updateData.selected_template_quotidien_id
+    delete updateData.selected_template_complet_id
 
     const { error } = await supabase.from('athletes').update(updateData).eq('id', a.id)
     if (error) {
@@ -482,8 +495,13 @@ export default function InfosPage() {
       return
     }
 
-    if (card === 'personal' && selectedTemplateId !== (athleteTemplate?.template_id || '')) {
-      await saveAthleteTemplate(selectedTemplateId)
+    if (card === 'personal') {
+      if (selectedQuotidienId !== (athleteTemplateQuotidien?.template_id || '')) {
+        await saveAthleteTemplate(selectedQuotidienId, 'quotidien')
+      }
+      if (selectedCompletId !== (athleteTemplateComplet?.template_id || '')) {
+        await saveAthleteTemplate(selectedCompletId, 'complet')
+      }
     }
 
     toast('Informations sauvegardees', 'success')
@@ -826,12 +844,26 @@ export default function InfosPage() {
               <EditField formData={formData} updateField={updateField} label="Mode d'acces" field="access_mode" options={[{ value: 'full', label: 'Complet' }, { value: 'training_only', label: 'Training uniquement' }, { value: 'nutrition_only', label: 'Diete uniquement' }]} />
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16, marginBottom: 0 }}>
                 <label style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 8 }}>
-                  <i className="fas fa-clipboard-list" style={{ marginRight: 6, color: 'var(--text3)' }} />Template de bilan
+                  <i className="fas fa-clipboard-list" style={{ marginRight: 6, color: 'var(--text3)' }} />Templates de bilan
                 </label>
-                <select className="form-control" value={formData.selected_template_id || ''} onChange={(e) => updateField('selected_template_id', e.target.value)}>
-                  <option value=''>Aucun template</option>
-                  {bilanTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>
+                    <i className="fas fa-sun" style={{ marginRight: 4 }} />Quotidien
+                  </label>
+                  <select className="form-control" value={formData.selected_template_quotidien_id || ''} onChange={(e) => updateField('selected_template_quotidien_id', e.target.value)}>
+                    <option value=''>Aucun</option>
+                    {bilanTemplates.filter(t => t.template_type === 'quotidien').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>
+                    <i className="fas fa-calendar-check" style={{ marginRight: 4 }} />Complet
+                  </label>
+                  <select className="form-control" value={formData.selected_template_complet_id || ''} onChange={(e) => updateField('selected_template_complet_id', e.target.value)}>
+                    <option value=''>Aucun</option>
+                    {bilanTemplates.filter(t => t.template_type === 'complet').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
               </div>
               <BilanConfigEditor formData={formData} updateField={updateField} />
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -854,25 +886,30 @@ export default function InfosPage() {
               <InfoRow icon="fa-calendar-day" label="Bilan quotidien" value={bilanFreqLabel} />
               <InfoRow icon="fa-calendar-check" label="Bilan complet" value={completeFreqLabel} />
               {(() => {
-                const tpl = athleteTemplate?.template_id ? bilanTemplates.find(t => t.id === athleteTemplate.template_id) : null
-                const isOutdated = tpl && athleteTemplate && tpl.updated_at > athleteTemplate.assigned_at
+                const tplQ = athleteTemplateQuotidien?.template_id ? bilanTemplates.find(t => t.id === athleteTemplateQuotidien.template_id) : null
+                const isOutdatedQ = tplQ && athleteTemplateQuotidien && tplQ.updated_at > athleteTemplateQuotidien.assigned_at
+                const tplC = athleteTemplateComplet?.template_id ? bilanTemplates.find(t => t.id === athleteTemplateComplet.template_id) : null
+                const isOutdatedC = tplC && athleteTemplateComplet && tplC.updated_at > athleteTemplateComplet.assigned_at
                 return (
                   <>
-                    <InfoRow icon="fa-clipboard-list" label="Template bilan" value={tpl ? tpl.name : 'Aucun'} />
-                    {tpl && athleteTemplate && (
-                      <div style={{ marginLeft: 20, marginTop: -4, marginBottom: 8 }}>
-                        <span style={{ fontSize: 11, color: 'var(--text3)' }}>
-                          Assigné le {new Date(athleteTemplate.assigned_at).toLocaleDateString('fr-FR')}
-                        </span>
-                      </div>
-                    )}
-                    {isOutdated && (
+                    <InfoRow icon="fa-sun" label="Template quotidien" value={tplQ ? tplQ.name : 'Aucun'} />
+                    {isOutdatedQ && (
                       <div style={{ margin: '4px 0 8px', padding: '8px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                         <span style={{ fontSize: 12, color: '#d97706' }}>
-                          <i className="fas fa-exclamation-triangle" style={{ marginRight: 6 }} />Template modifié depuis l&apos;assignation
+                          <i className="fas fa-exclamation-triangle" style={{ marginRight: 6 }} />Template modifié
                         </span>
                         <button type="button" className="btn btn-outline btn-sm" style={{ fontSize: 11 }}
-                          onClick={() => saveAthleteTemplate(athleteTemplate!.template_id!)}>Propager</button>
+                          onClick={() => saveAthleteTemplate(athleteTemplateQuotidien!.template_id!, 'quotidien')}>Propager</button>
+                      </div>
+                    )}
+                    <InfoRow icon="fa-calendar-check" label="Template complet" value={tplC ? tplC.name : 'Aucun'} />
+                    {isOutdatedC && (
+                      <div style={{ margin: '4px 0 8px', padding: '8px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontSize: 12, color: '#d97706' }}>
+                          <i className="fas fa-exclamation-triangle" style={{ marginRight: 6 }} />Template modifié
+                        </span>
+                        <button type="button" className="btn btn-outline btn-sm" style={{ fontSize: 11 }}
+                          onClick={() => saveAthleteTemplate(athleteTemplateComplet!.template_id!, 'complet')}>Propager</button>
                       </div>
                     )}
                   </>

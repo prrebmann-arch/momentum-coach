@@ -23,7 +23,6 @@ export interface TemplateQuestion {
 }
 
 interface CustomFormState {
-  column: 'quotidien' | 'complet'
   label: string
   input_type: string
   unit: string
@@ -82,18 +81,19 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [templateType, setTemplateType] = useState<'quotidien' | 'complet'>('quotidien')
   const [questions, setQuestions] = useState<TemplateQuestion[]>([])
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(!!templateId)
 
-  const [showLibrary, setShowLibrary] = useState<'quotidien' | 'complet' | null>(null)
+  const [showLibrary, setShowLibrary] = useState(false)
   const [showCustomForm, setShowCustomForm] = useState<CustomFormState | null>(null)
 
   useEffect(() => {
     if (!templateId || !user) return
     const load = async () => {
       const [{ data: tpl }, { data: qs }] = await Promise.all([
-        supabase.from('bilan_templates').select('name, description').eq('id', templateId).single(),
+        supabase.from('bilan_templates').select('name, description, template_type').eq('id', templateId).single(),
         supabase
           .from('bilan_template_questions')
           .select('id, bilan_type, builtin_field, question_id, is_required, sort_order, bilan_questions(key, label, type, unit, options)')
@@ -103,6 +103,7 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
       if (tpl) {
         setName(tpl.name)
         setDescription(tpl.description || '')
+        setTemplateType((tpl as any).template_type || 'quotidien')
       }
       if (qs) {
         setQuestions(qs.map((q: any, i: number) => {
@@ -141,14 +142,15 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
     load()
   }, [templateId, user]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const colQuestions = (col: 'quotidien' | 'complet') =>
-    questions.filter((q) => q.bilan_type === col).sort((a, b) => a.sort_order - b.sort_order)
+  // Single column — all questions belong to templateType
+  const currentQuestions = questions
+    .filter((q) => q.bilan_type === templateType)
+    .sort((a, b) => a.sort_order - b.sort_order)
 
-  const alreadySelected = (col: 'quotidien' | 'complet') =>
-    questions.filter((q) => q.bilan_type === col).map((q) => q.field ?? q.key ?? '')
+  const alreadySelected = currentQuestions.map((q) => q.field ?? q.key ?? '')
 
   function move(q: TemplateQuestion, dir: -1 | 1) {
-    const col = colQuestions(q.bilan_type)
+    const col = currentQuestions
     const idx = col.findIndex((x) => (x.field ?? x.key) === (q.field ?? q.key))
     const newIdx = idx + dir
     if (newIdx < 0 || newIdx >= col.length) return
@@ -156,31 +158,31 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
     ;[next[idx], next[newIdx]] = [next[newIdx], next[idx]]
     const reindexed = next.map((item, i) => ({ ...item, sort_order: i }))
     setQuestions((prev) => [
-      ...prev.filter((x) => x.bilan_type !== q.bilan_type),
+      ...prev.filter((x) => x.bilan_type !== templateType),
       ...reindexed,
     ])
   }
 
   function remove(q: TemplateQuestion) {
     setQuestions((prev) =>
-      prev.filter((x) => !(x.bilan_type === q.bilan_type && (x.field ?? x.key) === (q.field ?? q.key)))
+      prev.filter((x) => !(x.bilan_type === templateType && (x.field ?? x.key) === (q.field ?? q.key)))
     )
   }
 
   function toggleRequired(q: TemplateQuestion) {
     setQuestions((prev) =>
       prev.map((x) =>
-        x.bilan_type === q.bilan_type && (x.field ?? x.key) === (q.field ?? q.key)
+        x.bilan_type === templateType && (x.field ?? x.key) === (q.field ?? q.key)
           ? { ...x, required: !x.required }
           : x
       )
     )
   }
 
-  function addFromLibrary(col: 'quotidien' | 'complet', qs: LibraryQuestion[]) {
-    const offset = colQuestions(col).length
+  function addFromLibrary(qs: LibraryQuestion[]) {
+    const offset = currentQuestions.length
     const toAdd: TemplateQuestion[] = qs.map((q, i) => ({
-      bilan_type: col,
+      bilan_type: templateType,
       type: q.type,
       field: q.field,
       key: q.key,
@@ -193,7 +195,7 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
       sort_order: offset + i,
     }))
     setQuestions((prev) => [...prev, ...toAdd])
-    setShowLibrary(null)
+    setShowLibrary(false)
   }
 
   async function addCustomQuestion(form: CustomFormState) {
@@ -219,12 +221,11 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
 
     if (error || !inserted) { toast('Erreur lors de la création', 'error'); return }
 
-    const col = form.column
-    const offset = colQuestions(col).length
+    const offset = currentQuestions.length
     setQuestions((prev) => [
       ...prev,
       {
-        bilan_type: col,
+        bilan_type: templateType,
         type: 'custom',
         key: inserted.key,
         question_id: inserted.id,
@@ -247,12 +248,12 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
       if (tid) {
         await supabase
           .from('bilan_templates')
-          .update({ name: name.trim(), description: description.trim() || null, updated_at: new Date().toISOString() })
+          .update({ name: name.trim(), description: description.trim() || null, template_type: templateType, updated_at: new Date().toISOString() })
           .eq('id', tid)
       } else {
         const { data } = await supabase
           .from('bilan_templates')
-          .insert({ coach_id: user.id, name: name.trim(), description: description.trim() || null })
+          .insert({ coach_id: user.id, name: name.trim(), description: description.trim() || null, template_type: templateType })
           .select('id')
           .single()
         tid = data?.id ?? null
@@ -317,123 +318,147 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
             />
           </div>
         </div>
-      </div>
 
-      <div className={styles.editorCols}>
-        {(['quotidien', 'complet'] as const).map((col) => (
-          <div key={col} className={styles.editorCol}>
-            <div className={styles.colTitle}>
-              <i className={col === 'quotidien' ? 'fas fa-sun' : 'fas fa-calendar-check'} />
-              {col === 'quotidien' ? 'Bilan Quotidien' : 'Bilan Complet'}
-              <span className={styles.colSubtitle}>
-                {col === 'complet' ? '· questions supplémentaires' : '· questions de base'}
-              </span>
-            </div>
-
-            {colQuestions(col).length === 0 && (
-              <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text3)', fontSize: 12 }}>
-                Aucune question — ajoute depuis la bibliothèque
-              </div>
-            )}
-
-            {colQuestions(col).map((q, idx, arr) => (
-              <div key={q.field ?? q.key} className={styles.questionRow}>
-                <div className={styles.reorderBtns}>
-                  <button className={styles.reorderBtn} onClick={() => move(q, -1)} disabled={idx === 0}>▲</button>
-                  <button className={styles.reorderBtn} onClick={() => move(q, 1)} disabled={idx === arr.length - 1}>▼</button>
-                </div>
-                <span className={styles.questionRowLabel}>{q.label}</span>
-                {q.unit && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{q.unit}</span>}
-                <span className={`${styles.typeBadge} ${TYPE_BADGE_CLASS[q.input_type] ?? ''}`}>
-                  {formatType(q.input_type)}
-                </span>
-                <label className={styles.requiredToggle}>
-                  <input type="checkbox" checked={q.required} onChange={() => toggleRequired(q)} />
-                  Req.
-                </label>
-                <button className={styles.deleteBtn} onClick={() => remove(q)}>×</button>
-              </div>
-            ))}
-
-            <div className={styles.addBtns}>
-              <button className={styles.addBtn} onClick={() => setShowLibrary(col)}>
-                <i className="fas fa-plus" /> Depuis la bibliothèque
+        {/* Type selector — editable only for new templates, badge for existing */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Type</span>
+          {templateId ? (
+            <span className={styles.typePillBadge} data-type={templateType}>
+              <i className={templateType === 'quotidien' ? 'fas fa-sun' : 'fas fa-calendar-check'} style={{ marginRight: 5 }} />
+              {templateType === 'quotidien' ? 'Quotidien' : 'Complet'}
+            </span>
+          ) : (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${templateType === 'quotidien' ? 'btn-red' : 'btn-outline'}`}
+                onClick={() => setTemplateType('quotidien')}
+              >
+                <i className="fas fa-sun" style={{ marginRight: 5 }} />Quotidien
               </button>
               <button
-                className={styles.addBtn}
-                onClick={() => setShowCustomForm({ column: col, label: '', input_type: 'slider_1_10', unit: '', options: '' })}
+                type="button"
+                className={`btn btn-sm ${templateType === 'complet' ? 'btn-red' : 'btn-outline'}`}
+                onClick={() => setTemplateType('complet')}
               >
-                <i className="fas fa-pencil-alt" /> Question custom
+                <i className="fas fa-calendar-check" style={{ marginRight: 5 }} />Complet
               </button>
             </div>
+          )}
+        </div>
+      </div>
 
-            {showCustomForm?.column === col && (
-              <div className={styles.customForm}>
-                <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text2)' }}>Nouvelle question</div>
-                <div className={styles.customFormRow}>
-                  <div style={{ flex: 1 }}>
-                    <div className={styles.customFormLabel}>Libellé</div>
-                    <input
-                      className="form-control"
-                      style={{ fontSize: 12 }}
-                      value={showCustomForm.label}
-                      onChange={(e) => setShowCustomForm((f) => f && { ...f, label: e.target.value })}
-                      placeholder="ex: Humeur générale"
-                    />
-                  </div>
-                  <div>
-                    <div className={styles.customFormLabel}>Type</div>
-                    <select
-                      className="form-control"
-                      style={{ fontSize: 12 }}
-                      value={showCustomForm.input_type}
-                      onChange={(e) => setShowCustomForm((f) => f && { ...f, input_type: e.target.value })}
-                    >
-                      {INPUT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    </select>
-                  </div>
-                </div>
-                {showCustomForm.input_type === 'number' && (
-                  <div>
-                    <div className={styles.customFormLabel}>Unité (optionnel)</div>
-                    <input
-                      className="form-control"
-                      style={{ fontSize: 12, width: 100 }}
-                      value={showCustomForm.unit}
-                      onChange={(e) => setShowCustomForm((f) => f && { ...f, unit: e.target.value })}
-                      placeholder="kg, min…"
-                    />
-                  </div>
-                )}
-                {['single_choice', 'multiple_choice'].includes(showCustomForm.input_type) && (
-                  <div>
-                    <div className={styles.customFormLabel}>Options (une par ligne)</div>
-                    <textarea
-                      className="form-control"
-                      style={{ fontSize: 12 }}
-                      rows={3}
-                      value={showCustomForm.options}
-                      onChange={(e) => setShowCustomForm((f) => f && { ...f, options: e.target.value })}
-                      placeholder={'Option 1\nOption 2\nOption 3'}
-                    />
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    className="btn btn-red btn-sm"
-                    disabled={!showCustomForm.label.trim()}
-                    onClick={() => addCustomQuestion(showCustomForm)}
-                  >
-                    Ajouter
-                  </button>
-                  <button className="btn btn-outline btn-sm" onClick={() => setShowCustomForm(null)}>
-                    Annuler
-                  </button>
-                </div>
-              </div>
-            )}
+      {/* Single column of questions for the active templateType */}
+      <div className={styles.editorCol}>
+        <div className={styles.colTitle}>
+          <i className={templateType === 'quotidien' ? 'fas fa-sun' : 'fas fa-calendar-check'} />
+          {templateType === 'quotidien' ? 'Bilan Quotidien' : 'Bilan Complet'}
+          <span className={styles.colSubtitle}>
+            {templateType === 'complet' ? '· questions supplémentaires' : '· questions de base'}
+          </span>
+        </div>
+
+        {currentQuestions.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--text3)', fontSize: 12 }}>
+            Aucune question — ajoute depuis la bibliothèque
+          </div>
+        )}
+
+        {currentQuestions.map((q, idx, arr) => (
+          <div key={q.field ?? q.key} className={styles.questionRow}>
+            <div className={styles.reorderBtns}>
+              <button className={styles.reorderBtn} onClick={() => move(q, -1)} disabled={idx === 0}>▲</button>
+              <button className={styles.reorderBtn} onClick={() => move(q, 1)} disabled={idx === arr.length - 1}>▼</button>
+            </div>
+            <span className={styles.questionRowLabel}>{q.label}</span>
+            {q.unit && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{q.unit}</span>}
+            <span className={`${styles.typeBadge} ${TYPE_BADGE_CLASS[q.input_type] ?? ''}`}>
+              {formatType(q.input_type)}
+            </span>
+            <label className={styles.requiredToggle}>
+              <input type="checkbox" checked={q.required} onChange={() => toggleRequired(q)} />
+              Req.
+            </label>
+            <button className={styles.deleteBtn} onClick={() => remove(q)}>×</button>
           </div>
         ))}
+
+        <div className={styles.addBtns}>
+          <button className={styles.addBtn} onClick={() => setShowLibrary(true)}>
+            <i className="fas fa-plus" /> Depuis la bibliothèque
+          </button>
+          <button
+            className={styles.addBtn}
+            onClick={() => setShowCustomForm({ label: '', input_type: 'slider_1_10', unit: '', options: '' })}
+          >
+            <i className="fas fa-pencil-alt" /> Question custom
+          </button>
+        </div>
+
+        {showCustomForm && (
+          <div className={styles.customForm}>
+            <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text2)' }}>Nouvelle question</div>
+            <div className={styles.customFormRow}>
+              <div style={{ flex: 1 }}>
+                <div className={styles.customFormLabel}>Libellé</div>
+                <input
+                  className="form-control"
+                  style={{ fontSize: 12 }}
+                  value={showCustomForm.label}
+                  onChange={(e) => setShowCustomForm((f) => f && { ...f, label: e.target.value })}
+                  placeholder="ex: Humeur générale"
+                />
+              </div>
+              <div>
+                <div className={styles.customFormLabel}>Type</div>
+                <select
+                  className={styles.customFormSelect}
+                  value={showCustomForm.input_type}
+                  onChange={(e) => setShowCustomForm((f) => f && { ...f, input_type: e.target.value })}
+                >
+                  {INPUT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+            </div>
+            {showCustomForm.input_type === 'number' && (
+              <div>
+                <div className={styles.customFormLabel}>Unité (optionnel)</div>
+                <input
+                  className="form-control"
+                  style={{ fontSize: 12, width: 100 }}
+                  value={showCustomForm.unit}
+                  onChange={(e) => setShowCustomForm((f) => f && { ...f, unit: e.target.value })}
+                  placeholder="kg, min…"
+                />
+              </div>
+            )}
+            {['single_choice', 'multiple_choice'].includes(showCustomForm.input_type) && (
+              <div>
+                <div className={styles.customFormLabel}>Options (une par ligne)</div>
+                <textarea
+                  className="form-control"
+                  style={{ fontSize: 12 }}
+                  rows={3}
+                  value={showCustomForm.options}
+                  onChange={(e) => setShowCustomForm((f) => f && { ...f, options: e.target.value })}
+                  placeholder={'Option 1\nOption 2\nOption 3'}
+                />
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                className="btn btn-red btn-sm"
+                disabled={!showCustomForm.label.trim()}
+                onClick={() => addCustomQuestion(showCustomForm)}
+              >
+                Ajouter
+              </button>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowCustomForm(null)}>
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -446,10 +471,10 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
 
       {showLibrary && (
         <BilanQuestionLibraryModal
-          bilanType={showLibrary}
-          alreadySelected={alreadySelected(showLibrary)}
-          onAdd={(qs) => addFromLibrary(showLibrary, qs)}
-          onClose={() => setShowLibrary(null)}
+          bilanType={templateType}
+          alreadySelected={alreadySelected}
+          onAdd={(qs) => addFromLibrary(qs)}
+          onClose={() => setShowLibrary(false)}
         />
       )}
     </div>
