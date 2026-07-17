@@ -162,8 +162,8 @@ export default function TemplatesPage() {
         const { data } = await supabase
           .from('bilan_templates')
           .select(`
-            id, name, description, created_at, updated_at,
-            bilan_template_questions(bilan_type),
+            id, name, description, template_type, created_at, updated_at,
+            bilan_template_questions(id),
             athlete_bilan_templates(athlete_id)
           `)
           .eq('coach_id', user.id)
@@ -173,10 +173,10 @@ export default function TemplatesPage() {
           id: t.id,
           name: t.name,
           description: t.description,
+          template_type: (t as any).template_type || 'quotidien',
+          question_count: (t.bilan_template_questions || []).length,
           created_at: t.created_at,
           updated_at: t.updated_at,
-          quotidien_count: (t.bilan_template_questions || []).filter((q: any) => q.bilan_type === 'quotidien').length,
-          complet_count: (t.bilan_template_questions || []).filter((q: any) => q.bilan_type === 'complet').length,
           athlete_count: new Set((t.athlete_bilan_templates || []).map((a: any) => a.athlete_id)).size,
         })))
       } else if (activeTab === 'onboarding') {
