@@ -68,7 +68,8 @@ export default function BilanQuestionLibraryModal({ bilanType, alreadySelected, 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [loadingCustom, setLoadingCustom] = useState(true)
 
-  const builtins = bilanType === 'quotidien' ? BUILTIN_QUOTIDIEN : BUILTIN_COMPLET
+  // Show all builtin questions regardless of bilanType — the distinction is now per-template
+  const builtins = [...BUILTIN_QUOTIDIEN, ...BUILTIN_COMPLET]
 
   useEffect(() => {
     if (!user) return
