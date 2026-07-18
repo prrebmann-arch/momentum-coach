@@ -52,10 +52,12 @@ function SidebarImpl() {
   const { user, signOut } = useAuth()
   const { theme, setTheme } = useTheme()
 
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return localStorage.getItem('sidebar-collapsed') === 'true'
-  })
+  // localStorage lu en useEffect post-hydration (jamais pendant le render
+  // initial : divergence SSR/client = React #418 = skeleton infini).
+  const [collapsed, setCollapsed] = useState<boolean>(false)
+  useEffect(() => {
+    if (localStorage.getItem('sidebar-collapsed') === 'true') setCollapsed(true)
+  }, [])
 
   useEffect(() => {
     document.documentElement.style.setProperty(

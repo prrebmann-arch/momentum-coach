@@ -7,9 +7,11 @@ import styles from './RetourVideoPlayer.module.css'
 interface Props {
   retourId: string
   archived?: boolean
+  /** URLs pre-signees par la page (mode batch). undefined = self-fetch (legacy), null = batch en cours. */
+  prefetched?: SignedUrls | null
 }
 
-interface SignedUrls {
+export interface SignedUrls {
   videoUrl: string
   thumbnailUrl: string
   expiresAt: string
@@ -17,10 +19,10 @@ interface SignedUrls {
 
 const SPEEDS = [1, 1.5, 2]
 
-export default function RetourVideoPlayer({ retourId, archived }: Props) {
+export default function RetourVideoPlayer({ retourId, archived, prefetched }: Props) {
   const auth = useAuth() as { accessToken?: string | null }
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [urls, setUrls] = useState<SignedUrls | null>(null)
+  const [urls, setUrls] = useState<SignedUrls | null>(prefetched ?? null)
   const [error, setError] = useState<string | null>(null)
   const [speed, setSpeed] = useState<number>(1)
   // Defer mounting the <video> element (which triggers a metadata fetch)
@@ -30,6 +32,12 @@ export default function RetourVideoPlayer({ retourId, archived }: Props) {
 
   useEffect(() => {
     if (archived) return
+    if (prefetched !== undefined) {
+      // Mode batch : la page fournit les URLs — aucun fetch individuel
+      // (la rafale de N fetchs au mount saturait la route signed-url).
+      if (prefetched) setUrls(prefetched)
+      return
+    }
     if (!auth.accessToken) return  // wait for auth context to provide token
     let cancelled = false
 
@@ -52,7 +60,7 @@ export default function RetourVideoPlayer({ retourId, archived }: Props) {
 
     fetchUrls()
     return () => { cancelled = true }
-  }, [retourId, archived, auth.accessToken])
+  }, [retourId, archived, auth.accessToken, prefetched])
 
   useEffect(() => {
     if (armed && videoRef.current) {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useToast } from '@/contexts/ToastContext'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import Tabs from '@/components/ui/Tabs'
 import Skeleton from '@/components/ui/Skeleton'
@@ -69,6 +70,7 @@ interface NutritionTemplate {
 export default function TemplatesPage() {
   const supabase = createClient()
   const { user, coach } = useAuth()
+  const { toast } = useToast()
 
   const [activeTab, setActiveTab] = useState('training')
   const [loading, setLoading] = useState(true)
@@ -256,19 +258,24 @@ export default function TemplatesPage() {
     if (!user) return
     const src = bilanTemplates.find((t) => t.id === id)
     if (!src) return
-    const { data: newTpl } = await supabase
+    const { data: newTpl, error: dupError } = await supabase
       .from('bilan_templates')
       .insert({ coach_id: user.id, name: `${src.name} (copie)`, description: null })
       .select('id').single()
-    if (!newTpl) return
+    if (dupError || !newTpl) {
+      console.error('[templates] duplicate error:', dupError)
+      toast(`Erreur duplication: ${dupError?.message || 'inconnue'}`, 'error')
+      return
+    }
     const { data: qs } = await supabase
       .from('bilan_template_questions')
       .select('bilan_type, builtin_field, question_id, is_required, sort_order')
       .eq('template_id', id)
     if (qs && qs.length > 0) {
-      await supabase.from('bilan_template_questions').insert(
+      const { error: qErr } = await supabase.from('bilan_template_questions').insert(
         qs.map((q: any) => ({ ...q, template_id: newTpl.id }))
       )
+      if (qErr) { console.error('[templates] duplicate questions error:', qErr); toast(`Erreur duplication questions: ${qErr.message}`, 'error') }
     }
     loadData()
   }
