@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useCallback, useMemo, type ReactNo
 import useSWR from 'swr'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import type { Athlete } from '@/lib/types'
 
 interface AthleteContextType {
@@ -143,6 +144,12 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
 
   // loading = true only when SWR has no data at all (no cache, no fetch result yet)
   const loading = userId ? (isLoading && !athletes) : false
+
+  // Safari gele les fetch des onglets en arriere-plan : sans relance au reveil,
+  // un fetch initial gele = skeleton infini sur /athletes, /dashboard et le
+  // header athlete. Meme pattern que les pages (useRefetchOnResume).
+  const wakeRefetch = useCallback(() => { mutate() }, [mutate])
+  useRefetchOnResume(wakeRefetch, isLoading)
 
   const refreshAthletes = useCallback(async () => {
     await mutate()
