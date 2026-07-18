@@ -161,8 +161,12 @@ export async function GET(req: NextRequest) {
   try {
     switch (action) {
       case 'connect-complete': {
+        // Auth obligatoire : sans elle, n'importe qui pouvait lire le
+        // stripe_account_id d'un coach et declencher un update coach_profiles.
+        const { user } = await verifyAuth(req)
         const coachId = req.nextUrl.searchParams.get('coachId')
         if (!coachId) return errorJson('Missing coachId')
+        if (user.id !== coachId) return errorJson('Forbidden', 403)
         return await handleConnectComplete(coachId)
       }
       default:
@@ -785,6 +789,16 @@ async function handleCancel(body: Record<string, string>) {
   const { subscriptionId, coachId, athleteId } = body
   if (!subscriptionId) return errorJson('Missing subscriptionId')
 
+  // Ownership : la subscription doit etre rattachee a CE coach — sinon un coach
+  // pouvait annuler la subscription d'un autre via le fallback plateforme.
+  const [{ data: ownPlan }, { data: ownCustomer }] = await Promise.all([
+    supabase.from('athlete_payment_plans').select('id')
+      .eq('coach_id', coachId).eq('stripe_subscription_id', subscriptionId).maybeSingle(),
+    supabase.from('stripe_customers').select('id')
+      .eq('coach_id', coachId).eq('stripe_subscription_id', subscriptionId).maybeSingle(),
+  ])
+  if (!ownPlan && !ownCustomer) return errorJson('Forbidden: subscription not linked to this coach', 403)
+
   // Try Connect first, then direct key, then platform
   let sub: Stripe.Subscription | null = null
   const { data: profile } = await supabase.from('coach_profiles')
@@ -799,7 +813,7 @@ async function handleCancel(body: Record<string, string>) {
     sub = await platformStripe.subscriptions.cancel(subscriptionId)
   }
 
-  await supabase.from('stripe_customers').update({ subscription_status: 'canceled' }).eq('stripe_subscription_id', subscriptionId)
+  await supabase.from('stripe_customers').update({ subscription_status: 'canceled' }).eq('stripe_subscription_id', subscriptionId).eq('coach_id', coachId)
   if (athleteId && coachId) {
     await supabase.from('athlete_payment_plans').update({ payment_status: 'canceled' }).eq('athlete_id', athleteId).eq('coach_id', coachId)
     await supabase.from('athlete_activity_log').insert({ coach_id: coachId, athlete_id: athleteId, event: 'removed' })
