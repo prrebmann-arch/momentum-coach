@@ -298,10 +298,11 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
     try {
       let tid = templateId
       if (tid) {
-        await supabase
+        const { error: updError } = await supabase
           .from('bilan_templates')
           .update({ name: name.trim(), description: description.trim() || null, template_type: templateType, updated_at: new Date().toISOString() })
           .eq('id', tid)
+        if (updError) { console.error('[bilan-template] update error:', updError); toast(`Erreur: ${updError.message}`, 'error'); setSaving(false); return }
       } else {
         const { data } = await supabase
           .from('bilan_templates')
@@ -312,7 +313,9 @@ export default function BilanTemplateEditor({ templateId, onSaved, onCancel }: P
       }
       if (!tid) { toast('Erreur lors de la sauvegarde', 'error'); setSaving(false); return }
 
-      await supabase.from('bilan_template_questions').delete().eq('template_id', tid)
+      // Verifier le delete AVANT l'insert : delete OK + insert KO = template vide.
+      const { error: delError } = await supabase.from('bilan_template_questions').delete().eq('template_id', tid)
+      if (delError) { console.error('[bilan-template] delete error:', delError); toast(`Erreur: ${delError.message}`, 'error'); setSaving(false); return }
 
       const rows = questions.map((q, i) => ({
         template_id: tid!,

@@ -399,7 +399,8 @@ export default function InfosPage() {
 
   async function saveAthleteTemplate(templateId: string, bilanType: 'quotidien' | 'complet') {
     // Clear existing assignment for this athlete + bilanType
-    await supabase.from('athlete_bilan_templates').delete().eq('athlete_id', a.id).eq('bilan_type', bilanType)
+    const { error: delError } = await supabase.from('athlete_bilan_templates').delete().eq('athlete_id', a.id).eq('bilan_type', bilanType)
+    if (delError) { console.error('[athlete-template] delete error:', delError); toast(`Erreur: ${delError.message}`, 'error'); return }
     if (!templateId) {
       if (bilanType === 'quotidien') setAthleteTemplateQuotidien(null)
       else setAthleteTemplateComplet(null)
@@ -429,13 +430,21 @@ export default function InfosPage() {
       bilan_type: bilanType,
       questions: rows.map(mapQ),
     }
-    await supabase.from('athlete_bilan_templates').insert({
+    const { error: insError } = await supabase.from('athlete_bilan_templates').insert({
       athlete_id: a.id,
       template_id: templateId,
       bilan_type: bilanType,
       template_snapshot: snapshot,
       assigned_by: user?.id,
     })
+    if (insError) {
+      // Pas d'etat optimiste si l'insert a echoue : l'app athlete garderait l'ancien template
+      console.error('[athlete-template] insert error:', insError)
+      toast(`Erreur: ${insError.message}`, 'error')
+      if (bilanType === 'quotidien') setAthleteTemplateQuotidien(null)
+      else setAthleteTemplateComplet(null)
+      return
+    }
     const newRow = { id: '', template_id: templateId, assigned_at: new Date().toISOString(), bilan_type: bilanType, bilan_templates: template ? { updated_at: template.updated_at } : null }
     if (bilanType === 'quotidien') setAthleteTemplateQuotidien(newRow)
     else setAthleteTemplateComplet(newRow)
