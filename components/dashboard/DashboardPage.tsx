@@ -297,11 +297,14 @@ export default function DashboardPage() {
     ? `dashboard:${user.id}:${athleteIds}`
     : null
 
+  // Lu UNE fois au mount — getDashCache() a chaque render = sessionStorage +
+  // JSON.parse sur le chemin chaud du dashboard.
+  const [dashCacheFallback] = useState(() => getDashCache())
   const { data: dashData, isLoading: swrLoading, mutate: mutateDash } = useSWR(
     swrKey,
     () => fetchDashboardData(user!.id, athletes),
     {
-      fallbackData: getDashCache(),
+      fallbackData: dashCacheFallback,
       revalidateOnFocus: false,
       dedupingInterval: 10000,
     },

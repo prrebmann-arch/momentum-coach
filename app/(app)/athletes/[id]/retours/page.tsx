@@ -10,7 +10,8 @@ import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import styles from '@/styles/athlete-tabs.module.css'
 import NouveauRetourButton from '@/components/recorder/NouveauRetourButton'
-import RetourVideoPlayer from '@/components/videos/RetourVideoPlayer'
+import RetourVideoPlayer, { type SignedUrls } from '@/components/videos/RetourVideoPlayer'
+import { useAuth } from '@/contexts/AuthContext'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -24,6 +25,33 @@ export default function RetoursPage() {
 
   const [loading, setLoading] = useState(!cached)
   const [retours, setRetours] = useState<any[]>(cached ?? [])
+  const auth = useAuth() as { accessToken?: string | null }
+  // 'pending' = batch en cours (players attendent), 'failed' = fallback self-fetch
+  const [batchUrls, setBatchUrls] = useState<'pending' | 'failed' | Record<string, SignedUrls>>('pending')
+
+  // 1 appel batch pour toutes les URLs signees au lieu de N fetchs paralleles
+  // au mount (source des timeouts 10s sur /api/videos/retour-signed-url).
+  useEffect(() => {
+    const videoIds = retours.filter((r) => r.video_path && !r.archived_at).map((r) => r.id as string)
+    if (!videoIds.length) { setBatchUrls({}); return }
+    if (!auth.accessToken) return
+    let cancelled = false
+    setBatchUrls('pending')
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/videos/retour-signed-url?ids=${videoIds.join(',')}`, {
+          headers: { Authorization: `Bearer ${auth.accessToken}` },
+        })
+        if (!res.ok) throw new Error(String(res.status))
+        const json = await res.json() as { results?: Record<string, SignedUrls> }
+        if (!cancelled) setBatchUrls(json.results || {})
+      } catch (err) {
+        console.warn('[retours] batch signed-url failed, fallback per-player:', err)
+        if (!cancelled) setBatchUrls('failed')
+      }
+    })()
+    return () => { cancelled = true }
+  }, [retours, auth.accessToken])
 
   const loadRetours = useCallback(async () => {
     if (!retours.length) setLoading(true)
@@ -92,7 +120,11 @@ export default function RetoursPage() {
 
                   {r.video_path && (
                     <div style={{ marginTop: 10 }}>
-                      <RetourVideoPlayer retourId={r.id} archived={!!r.archived_at} />
+                      <RetourVideoPlayer
+                        retourId={r.id}
+                        archived={!!r.archived_at}
+                        prefetched={batchUrls === 'pending' ? null : batchUrls === 'failed' ? undefined : batchUrls[r.id]}
+                      />
                     </div>
                   )}
                   {r.audio_url && !r.video_path && (

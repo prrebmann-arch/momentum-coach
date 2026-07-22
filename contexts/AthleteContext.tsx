@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useCallback, useMemo, type ReactNo
 import useSWR from 'swr'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
+import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import type { Athlete } from '@/lib/types'
 
 interface AthleteContextType {
@@ -69,21 +70,32 @@ async function fetchAthletesData(userId: string): Promise<Athlete[]> {
     .filter((id): id is string => !!id)
   const latestWeightByUserId = new Map<string, number>()
   if (userIds.length > 0) {
-    const ninetyAgo = new Date(now)
-    ninetyAgo.setDate(ninetyAgo.getDate() - 90)
-    const ninetyIso = `${ninetyAgo.getFullYear()}-${String(ninetyAgo.getMonth() + 1).padStart(2, '0')}-${String(ninetyAgo.getDate()).padStart(2, '0')}`
-    const { data: reports } = await supabase
-      .from('daily_reports')
-      .select('user_id, weight, date')
-      .in('user_id', userIds)
-      .not('weight', 'is', null)
-      .gte('date', ninetyIso)
-      .order('date', { ascending: false })
-      .limit(5000)
-    ;(reports as Array<{ user_id: string; weight: number | null; date: string }> | null || []).forEach(r => {
-      if (r.weight == null) return
-      if (!latestWeightByUserId.has(r.user_id)) latestWeightByUserId.set(r.user_id, r.weight)
-    })
+    // RPC DISTINCT ON = 1 ligne par athlete au lieu de <=5000 lignes de
+    // daily_reports a chaque revalidation (sql/audit_2026_07_fixes.sql).
+    const { data: rpcRows, error: rpcErr } = await supabase
+      .rpc('latest_weight_per_athlete', { p_user_ids: userIds })
+    if (!rpcErr && rpcRows) {
+      ;(rpcRows as Array<{ user_id: string; weight: number | null }>).forEach(r => {
+        if (r.weight != null) latestWeightByUserId.set(r.user_id, r.weight)
+      })
+    } else {
+      // Fallback si la RPC n'est pas encore migree en prod
+      const ninetyAgo = new Date(now)
+      ninetyAgo.setDate(ninetyAgo.getDate() - 90)
+      const ninetyIso = `${ninetyAgo.getFullYear()}-${String(ninetyAgo.getMonth() + 1).padStart(2, '0')}-${String(ninetyAgo.getDate()).padStart(2, '0')}`
+      const { data: reports } = await supabase
+        .from('daily_reports')
+        .select('user_id, weight, date')
+        .in('user_id', userIds)
+        .not('weight', 'is', null)
+        .gte('date', ninetyIso)
+        .order('date', { ascending: false })
+        .limit(5000)
+      ;(reports as Array<{ user_id: string; weight: number | null; date: string }> | null || []).forEach(r => {
+        if (r.weight == null) return
+        if (!latestWeightByUserId.has(r.user_id)) latestWeightByUserId.set(r.user_id, r.weight)
+      })
+    }
   }
 
   if (error) throw error
@@ -143,6 +155,12 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
 
   // loading = true only when SWR has no data at all (no cache, no fetch result yet)
   const loading = userId ? (isLoading && !athletes) : false
+
+  // Safari gele les fetch des onglets en arriere-plan : sans relance au reveil,
+  // un fetch initial gele = skeleton infini sur /athletes, /dashboard et le
+  // header athlete. Meme pattern que les pages (useRefetchOnResume).
+  const wakeRefetch = useCallback(() => { mutate() }, [mutate])
+  useRefetchOnResume(wakeRefetch, isLoading)
 
   const refreshAthletes = useCallback(async () => {
     await mutate()

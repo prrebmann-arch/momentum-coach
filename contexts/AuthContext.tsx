@@ -106,6 +106,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  // Preserve la reference de `user` si id/email inchanges : sinon chaque
+  // TOKEN_REFRESHED (~1x/h) cree un nouvel objet et refire tous les
+  // useEffect/useCallback qui dependent de [user] (~20 sites) — refetch storm.
+  const setUserStable = useCallback((u: User | null) => {
+    setUser((prev) => (prev && u && prev.id === u.id && prev.email === u.email ? prev : u))
+  }, [])
+
   useEffect(() => {
     if (initRef.current) return
     initRef.current = true
@@ -123,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user) {
           const u = { id: session.user.id, email: session.user.email! }
-          setUser(u)
+          setUserStable(u)
           setAccessToken(session.access_token)
           try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
           // Background refresh of coach profile (UI already showing cached data)
@@ -150,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (signingInRef.current) return
         if (session?.user) {
           const u = { id: session.user.id, email: session.user.email! }
-          setUser(u)
+          setUserStable(u)
           setAccessToken(session.access_token)
           setLoading(false)
           try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
@@ -218,7 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const u = { id: data.user.id, email: data.user.email! }
-      setUser(u)
+      setUserStable(u)
       setAccessToken(data.session?.access_token ?? null)
       try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
       const profile = await fetchCoach(data.user.id)
@@ -254,7 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (profileError) throw profileError
 
       const u = { id: data.user.id, email: data.user.email! }
-      setUser(u)
+      setUserStable(u)
       setAccessToken(data.session?.access_token ?? null)
       try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
       const profile = await fetchCoach(data.user.id)

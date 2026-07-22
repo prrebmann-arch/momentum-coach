@@ -112,7 +112,7 @@ function EditField({
     return (
       <div style={{ marginBottom: 10 }}>
         <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>{label}</label>
-        <select className="form-control" value={formData[field] || ''} onChange={(e) => updateField(field, e.target.value)}>
+        <select className={styles.select} value={formData[field] || ''} onChange={(e) => updateField(field, e.target.value)}>
           {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </div>
@@ -136,10 +136,11 @@ function EditField({
 }
 
 function BilanConfigEditor({
-  formData, updateField,
+  formData, updateField, bilanTemplates,
 }: {
   formData: any
   updateField: (key: string, val: any) => void
+  bilanTemplates: { id: string; name: string; template_type: string }[]
 }) {
   const bilanFreq = formData.bilan_frequency || 'daily'
   const completeFreq = formData.complete_bilan_frequency || 'weekly'
@@ -168,16 +169,23 @@ function BilanConfigEditor({
     <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 8 }}>
-          <i className="fas fa-calendar-day" style={{ marginRight: 6, color: 'var(--text3)' }} />Bilan quotidien
+          <i className="fas fa-sun" style={{ marginRight: 6, color: 'var(--text3)' }} />Bilan quotidien
         </label>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button type="button" className={`btn btn-sm ${bilanFreq !== 'none' ? 'btn-red' : 'btn-outline'}`}
-            onClick={() => updateField('bilan_frequency', 'daily')}>Active</button>
-          <button type="button" className={`btn btn-sm ${bilanFreq === 'none' ? 'btn-red' : 'btn-outline'}`}
-            onClick={() => updateField('bilan_frequency', 'none')}>Desactive</button>
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Template</label>
+          <select className={styles.select} value={formData.selected_template_quotidien_id || ''} onChange={(e) => updateField('selected_template_quotidien_id', e.target.value)}>
+            <option value=''>Aucun</option>
+            {bilanTemplates.filter(t => t.template_type === 'quotidien').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <span style={{ color: 'var(--text2)', fontSize: 13 }}><i className="fas fa-bell" style={{ marginRight: 4 }} />Notification a</span>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <button type="button" className={`btn btn-sm ${bilanFreq !== 'none' ? 'btn-red' : 'btn-outline'}`}
+            onClick={() => updateField('bilan_frequency', 'daily')}>Actif</button>
+          <button type="button" className={`btn btn-sm ${bilanFreq === 'none' ? 'btn-red' : 'btn-outline'}`}
+            onClick={() => updateField('bilan_frequency', 'none')}>Désactivé</button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ color: 'var(--text3)', fontSize: 12 }}><i className="fas fa-bell" style={{ marginRight: 4 }} />Notification</span>
           <input type="time" className="form-control" style={{ width: 'auto' }}
             value={formData.bilan_notif_time || DEFAULT_NOTIF_TIME}
             onChange={(e) => updateField('bilan_notif_time', e.target.value)} />
@@ -187,8 +195,14 @@ function BilanConfigEditor({
       <div>
         <label style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 8 }}>
           <i className="fas fa-calendar-check" style={{ marginRight: 6, color: 'var(--primary)' }} />Bilan complet
-          <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: 12, marginLeft: 4 }}>(photos + mensurations)</span>
         </label>
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ fontSize: 11, color: 'var(--text3)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Template</label>
+          <select className={styles.select} value={formData.selected_template_complet_id || ''} onChange={(e) => updateField('selected_template_complet_id', e.target.value)}>
+            <option value=''>Aucun</option>
+            {bilanTemplates.filter(t => t.template_type === 'complet').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
           {COMPLETE_FREQ_OPTS.map(o => (
             <button key={o.v} type="button"
@@ -219,7 +233,7 @@ function BilanConfigEditor({
         {completeFreq === 'monthly' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <span style={{ color: 'var(--text2)', fontSize: 13 }}>Le</span>
-            <select className="form-control" style={{ width: 70 }}
+            <select className={styles.selectSm}
               value={formData.complete_bilan_month_day || 1}
               onChange={(e) => updateField('complete_bilan_month_day', Number(e.target.value))}>
               {Array.from({ length: 28 }).map((_, i) => (
@@ -385,7 +399,8 @@ export default function InfosPage() {
 
   async function saveAthleteTemplate(templateId: string, bilanType: 'quotidien' | 'complet') {
     // Clear existing assignment for this athlete + bilanType
-    await supabase.from('athlete_bilan_templates').delete().eq('athlete_id', a.id).eq('bilan_type', bilanType)
+    const { error: delError } = await supabase.from('athlete_bilan_templates').delete().eq('athlete_id', a.id).eq('bilan_type', bilanType)
+    if (delError) { console.error('[athlete-template] delete error:', delError); toast(`Erreur: ${delError.message}`, 'error'); return }
     if (!templateId) {
       if (bilanType === 'quotidien') setAthleteTemplateQuotidien(null)
       else setAthleteTemplateComplet(null)
@@ -415,13 +430,21 @@ export default function InfosPage() {
       bilan_type: bilanType,
       questions: rows.map(mapQ),
     }
-    await supabase.from('athlete_bilan_templates').insert({
+    const { error: insError } = await supabase.from('athlete_bilan_templates').insert({
       athlete_id: a.id,
       template_id: templateId,
       bilan_type: bilanType,
       template_snapshot: snapshot,
       assigned_by: user?.id,
     })
+    if (insError) {
+      // Pas d'etat optimiste si l'insert a echoue : l'app athlete garderait l'ancien template
+      console.error('[athlete-template] insert error:', insError)
+      toast(`Erreur: ${insError.message}`, 'error')
+      if (bilanType === 'quotidien') setAthleteTemplateQuotidien(null)
+      else setAthleteTemplateComplet(null)
+      return
+    }
     const newRow = { id: '', template_id: templateId, assigned_at: new Date().toISOString(), bilan_type: bilanType, bilan_templates: template ? { updated_at: template.updated_at } : null }
     if (bilanType === 'quotidien') setAthleteTemplateQuotidien(newRow)
     else setAthleteTemplateComplet(newRow)
@@ -842,30 +865,7 @@ export default function InfosPage() {
               <EditField formData={formData} updateField={updateField} label="Objectif pas/jour" field="pas_journalier" type="number" />
               <EditField formData={formData} updateField={updateField} label="Objectif eau (ml/jour)" field="water_goal_ml" type="number" />
               <EditField formData={formData} updateField={updateField} label="Mode d'acces" field="access_mode" options={[{ value: 'full', label: 'Complet' }, { value: 'training_only', label: 'Training uniquement' }, { value: 'nutrition_only', label: 'Diete uniquement' }]} />
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16, marginBottom: 0 }}>
-                <label style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 8 }}>
-                  <i className="fas fa-clipboard-list" style={{ marginRight: 6, color: 'var(--text3)' }} />Templates de bilan
-                </label>
-                <div style={{ marginBottom: 8 }}>
-                  <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>
-                    <i className="fas fa-sun" style={{ marginRight: 4 }} />Quotidien
-                  </label>
-                  <select className="form-control" value={formData.selected_template_quotidien_id || ''} onChange={(e) => updateField('selected_template_quotidien_id', e.target.value)}>
-                    <option value=''>Aucun</option>
-                    {bilanTemplates.filter(t => t.template_type === 'quotidien').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>
-                    <i className="fas fa-calendar-check" style={{ marginRight: 4 }} />Complet
-                  </label>
-                  <select className="form-control" value={formData.selected_template_complet_id || ''} onChange={(e) => updateField('selected_template_complet_id', e.target.value)}>
-                    <option value=''>Aucun</option>
-                    {bilanTemplates.filter(t => t.template_type === 'complet').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <BilanConfigEditor formData={formData} updateField={updateField} />
+              <BilanConfigEditor formData={formData} updateField={updateField} bilanTemplates={bilanTemplates} />
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <button className="btn btn-red btn-sm" onClick={() => saveEdit('personal')}><i className="fas fa-save" /> Sauvegarder</button>
                 <button className="btn btn-outline btn-sm" onClick={() => setEditingCard(null)}>Annuler</button>
@@ -883,35 +883,66 @@ export default function InfosPage() {
               <InfoRow icon="fa-shoe-prints" label="Objectif pas" value={`${(a.pas_journalier || DEFAULT_STEPS_GOAL).toLocaleString('fr-FR')} pas/jour`} />
               <InfoRow icon="fa-tint" label="Objectif eau" value={`${(a.water_goal_ml || DEFAULT_WATER_GOAL).toLocaleString('fr-FR')} ml/jour`} />
               <InfoRow icon="fa-lock" label="Mode d'acces" value={ACCESS_LABELS[a.access_mode] || 'Complet'} />
-              <InfoRow icon="fa-calendar-day" label="Bilan quotidien" value={bilanFreqLabel} />
-              <InfoRow icon="fa-calendar-check" label="Bilan complet" value={completeFreqLabel} />
               {(() => {
                 const tplQ = athleteTemplateQuotidien?.template_id ? bilanTemplates.find(t => t.id === athleteTemplateQuotidien.template_id) : null
-                const isOutdatedQ = tplQ && athleteTemplateQuotidien && tplQ.updated_at > athleteTemplateQuotidien.assigned_at
                 const tplC = athleteTemplateComplet?.template_id ? bilanTemplates.find(t => t.id === athleteTemplateComplet.template_id) : null
+                const isOutdatedQ = tplQ && athleteTemplateQuotidien && tplQ.updated_at > athleteTemplateQuotidien.assigned_at
                 const isOutdatedC = tplC && athleteTemplateComplet && tplC.updated_at > athleteTemplateComplet.assigned_at
+                const isQuotActive = (a.bilan_frequency || 'daily') !== 'none'
                 return (
                   <>
-                    <InfoRow icon="fa-sun" label="Template quotidien" value={tplQ ? tplQ.name : 'Aucun'} />
-                    {isOutdatedQ && (
-                      <div style={{ margin: '4px 0 8px', padding: '8px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 12, color: '#d97706' }}>
-                          <i className="fas fa-exclamation-triangle" style={{ marginRight: 6 }} />Template modifié
+                    <div className={styles.bilanCard}>
+                      <div className={styles.bilanCardHeader}>
+                        <i className="fas fa-sun" style={{ color: 'var(--text3)', fontSize: 12 }} />
+                        <span className={styles.bilanCardTitle}>Bilan quotidien</span>
+                        <span className={isQuotActive ? styles.bilanBadgeOn : styles.bilanBadgeOff}>
+                          {isQuotActive ? 'Actif' : 'Désactivé'}
                         </span>
-                        <button type="button" className="btn btn-outline btn-sm" style={{ fontSize: 11 }}
-                          onClick={() => saveAthleteTemplate(athleteTemplateQuotidien!.template_id!, 'quotidien')}>Propager</button>
                       </div>
-                    )}
-                    <InfoRow icon="fa-calendar-check" label="Template complet" value={tplC ? tplC.name : 'Aucun'} />
-                    {isOutdatedC && (
-                      <div style={{ margin: '4px 0 8px', padding: '8px 12px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span style={{ fontSize: 12, color: '#d97706' }}>
-                          <i className="fas fa-exclamation-triangle" style={{ marginRight: 6 }} />Template modifié
+                      <div className={styles.bilanCardMeta}>
+                        <span className={styles.bilanCardMetaItem}>
+                          <i className="fas fa-clipboard-list" style={{ fontSize: 10 }} />
+                          {tplQ ? tplQ.name : 'Aucun template'}
                         </span>
-                        <button type="button" className="btn btn-outline btn-sm" style={{ fontSize: 11 }}
-                          onClick={() => saveAthleteTemplate(athleteTemplateComplet!.template_id!, 'complet')}>Propager</button>
+                        {isQuotActive && (
+                          <span className={styles.bilanCardMetaItem}>
+                            <i className="fas fa-bell" style={{ fontSize: 10 }} />
+                            {a.bilan_notif_time || DEFAULT_NOTIF_TIME}
+                          </span>
+                        )}
                       </div>
-                    )}
+                      {isOutdatedQ && (
+                        <div className={styles.bilanCardPropagateAlert}>
+                          <span><i className="fas fa-exclamation-triangle" style={{ marginRight: 5 }} />Template modifié</span>
+                          <button type="button" className="btn btn-outline btn-sm" style={{ fontSize: 11 }}
+                            onClick={() => saveAthleteTemplate(athleteTemplateQuotidien!.template_id!, 'quotidien')}>Propager</button>
+                        </div>
+                      )}
+                    </div>
+                    <div className={styles.bilanCard}>
+                      <div className={styles.bilanCardHeader}>
+                        <i className="fas fa-calendar-check" style={{ color: 'var(--primary)', fontSize: 12 }} />
+                        <span className={styles.bilanCardTitle}>Bilan complet</span>
+                        <span className={styles.bilanCardMetaItem} style={{ fontSize: 12, color: 'var(--text3)' }}>{completeFreqLabel}</span>
+                      </div>
+                      <div className={styles.bilanCardMeta}>
+                        <span className={styles.bilanCardMetaItem}>
+                          <i className="fas fa-clipboard-list" style={{ fontSize: 10 }} />
+                          {tplC ? tplC.name : 'Aucun template'}
+                        </span>
+                        <span className={styles.bilanCardMetaItem}>
+                          <i className="fas fa-bell" style={{ fontSize: 10 }} />
+                          {a.complete_bilan_notif_time || DEFAULT_NOTIF_TIME}
+                        </span>
+                      </div>
+                      {isOutdatedC && (
+                        <div className={styles.bilanCardPropagateAlert}>
+                          <span><i className="fas fa-exclamation-triangle" style={{ marginRight: 5 }} />Template modifié</span>
+                          <button type="button" className="btn btn-outline btn-sm" style={{ fontSize: 11 }}
+                            onClick={() => saveAthleteTemplate(athleteTemplateComplet!.template_id!, 'complet')}>Propager</button>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )
               })()}

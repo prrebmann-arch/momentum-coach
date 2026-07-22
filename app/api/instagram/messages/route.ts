@@ -51,6 +51,17 @@ export async function POST(request: Request) {
     // --- READ THREAD FROM SUPABASE (instant) ---
     if (action === 'thread') {
       const { thread_id } = body;
+      // Ownership : le thread doit appartenir au coach authentifie (sinon IDOR
+      // en service role — lecture des DMs d'un autre coach par UUID).
+      const { data: ownConv } = await supabase
+        .from('ig_conversations')
+        .select('id')
+        .eq('id', thread_id)
+        .eq('user_id', user_id)
+        .maybeSingle();
+      if (!ownConv) {
+        return NextResponse.json({ error: 'Thread not found' }, { status: 404, headers: corsHeaders });
+      }
       const { data, error } = await supabase
         .from('ig_messages')
         .select('*')
@@ -67,6 +78,18 @@ export async function POST(request: Request) {
     // --- SEND MESSAGE VIA INSTAGRAM API ---
     if (action === 'send') {
       const { recipient_id, message_text, access_token, ig_user_id, conversation_id } = body;
+      // Ownership : refuser d'ecrire dans une conversation d'un autre coach.
+      if (conversation_id) {
+        const { data: ownConv } = await supabase
+          .from('ig_conversations')
+          .select('id')
+          .eq('id', conversation_id)
+          .eq('user_id', user_id)
+          .maybeSingle();
+        if (!ownConv) {
+          return NextResponse.json({ error: 'Conversation not found' }, { status: 404, headers: corsHeaders });
+        }
+      }
       const sendRes = await fetch(`${BASE}/me/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -228,7 +228,8 @@ export default function RoadmapPage() {
       weekMap[w.week_date] = w.phase
     })
 
-    await supabase.from('programming_weeks').delete().eq('athlete_id', athleteId)
+    const { error: delError } = await supabase.from('programming_weeks').delete().eq('athlete_id', athleteId)
+    if (delError) { console.error('[roadmap] weeks delete error:', delError); toast(`Erreur semaines: ${delError.message}`, 'error'); return }
     const rows = Object.entries(weekMap).map(([week_date, phase]) => ({
       athlete_id: athleteId,
       coach_id: user.id,
@@ -236,7 +237,8 @@ export default function RoadmapPage() {
       phase,
     }))
     if (rows.length) {
-      await supabase.from('programming_weeks').insert(rows)
+      const { error: insError } = await supabase.from('programming_weeks').insert(rows)
+      if (insError) { console.error('[roadmap] weeks insert error:', insError); toast(`Erreur semaines: ${insError.message}`, 'error') }
     }
   }, [athleteId, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 

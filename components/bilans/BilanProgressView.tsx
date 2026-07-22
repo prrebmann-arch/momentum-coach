@@ -379,39 +379,34 @@ function PhotoGrid({
 
 // ── Weight Chart ──
 
+const W = 600, H = 220, PAD = { top: 24, bottom: 32, left: 48, right: 16 }
+
 function WeightChart({ data }: { data: { date: string; value: number }[] }) {
   const wrapRef = useRef<HTMLDivElement>(null)
-  if (data.length < 2) {
-    return (
-      <div className={styles.bpSection}>
-        <div className={styles.bpSectionHeader}>
-          <div className={styles.bpSectionTitle}>
-            <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(179,8,8,0.12)', color: '#B30808' }}><i className="fas fa-weight-scale" /></div>
-            Poids
-          </div>
-        </div>
-        <div className={styles.bpEmpty}>Pas assez de donnees poids</div>
-      </div>
-    )
-  }
-  const W = 600, H = 220, PAD = { top: 24, bottom: 32, left: 48, right: 16 }
-  const values = data.map(d => d.value)
-  const min = Math.min(...values) - 0.5, max = Math.max(...values) + 0.5, range = max - min || 1
-  const plotW = W - PAD.left - PAD.right, plotH = H - PAD.top - PAD.bottom
-  const points = data.map((d, i) => ({
-    x: PAD.left + (i / (data.length - 1)) * plotW,
-    y: PAD.top + plotH - ((d.value - min) / range) * plotH, ...d,
-  }))
-  const lineStr = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-  const fillStr = lineStr + ` ${points[points.length - 1].x.toFixed(1)},${PAD.top + plotH} ${points[0].x.toFixed(1)},${PAD.top + plotH}`
-  const step = range > 6 ? Math.ceil(range / 4) : range > 2 ? 1 : 0.5
-  const yLabels: { y: number; val: string }[] = []
-  for (let v = Math.ceil(min / step) * step; v <= max; v += step) yLabels.push({ y: PAD.top + plotH - ((v - min) / range) * plotH, val: v.toFixed(1) })
-  const xIndices = [...new Set([0, Math.floor(data.length / 2), data.length - 1])]
-  const xLabels = xIndices.map(i => ({ x: points[i].x, label: formatShort(points[i].date) }))
-  const last = points[points.length - 1], first = points[0]
-  const delta = last.value - first.value, deltaStr = (delta > 0 ? '+' : '') + delta.toFixed(1)
-  const minW = Math.min(...values), maxW = Math.max(...values), avgW = values.reduce((a, b) => a + b, 0) / values.length
+  // Tous les hooks AVANT l'early-return (Rules of Hooks) — sinon crash quand
+  // la serie poids passe le seuil des 2 points (refetch au retour d'onglet).
+  const chart = useMemo(() => {
+    if (data.length < 2) return null
+    const values = data.map(d => d.value)
+    const min = Math.min(...values) - 0.5, max = Math.max(...values) + 0.5, range = max - min || 1
+    const plotW = W - PAD.left - PAD.right, plotH = H - PAD.top - PAD.bottom
+    const points = data.map((d, i) => ({
+      x: PAD.left + (i / (data.length - 1)) * plotW,
+      y: PAD.top + plotH - ((d.value - min) / range) * plotH, ...d,
+    }))
+    const lineStr = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+    const fillStr = lineStr + ` ${points[points.length - 1].x.toFixed(1)},${PAD.top + plotH} ${points[0].x.toFixed(1)},${PAD.top + plotH}`
+    const step = range > 6 ? Math.ceil(range / 4) : range > 2 ? 1 : 0.5
+    const yLabels: { y: number; val: string }[] = []
+    for (let v = Math.ceil(min / step) * step; v <= max; v += step) yLabels.push({ y: PAD.top + plotH - ((v - min) / range) * plotH, val: v.toFixed(1) })
+    const xIndices = [...new Set([0, Math.floor(data.length / 2), data.length - 1])]
+    const xLabels = xIndices.map(i => ({ x: points[i].x, label: formatShort(points[i].date) }))
+    const last = points[points.length - 1]
+    const delta = last.value - points[0].value
+    const minW = Math.min(...values), maxW = Math.max(...values), avgW = values.reduce((a, b) => a + b, 0) / values.length
+    return { points, lineStr, fillStr, yLabels, xLabels, last, delta, deltaStr: (delta > 0 ? '+' : '') + delta.toFixed(1), minW, maxW, avgW }
+  }, [data])
+  const points = chart ? chart.points : []
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const wrap = wrapRef.current; if (!wrap) return
@@ -433,6 +428,21 @@ function WeightChart({ data }: { data: { date: string; value: number }[] }) {
     const ch = wrap.querySelector<HTMLDivElement>('[data-crosshair]'); const tt = wrap.querySelector<HTMLDivElement>('[data-tooltip]')
     if (ch) ch.style.display = 'none'; if (tt) tt.style.display = 'none'
   }, [])
+
+  if (!chart) {
+    return (
+      <div className={styles.bpSection}>
+        <div className={styles.bpSectionHeader}>
+          <div className={styles.bpSectionTitle}>
+            <div className={styles.bpSectionTitleIcon} style={{ background: 'rgba(179,8,8,0.12)', color: '#B30808' }}><i className="fas fa-weight-scale" /></div>
+            Poids
+          </div>
+        </div>
+        <div className={styles.bpEmpty}>Pas assez de donnees poids</div>
+      </div>
+    )
+  }
+  const { lineStr, fillStr, yLabels, xLabels, last, delta, deltaStr, minW, maxW, avgW } = chart
 
   return (
     <div className={styles.bpSection}>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -143,6 +144,7 @@ export default function QuestionnairesPage() {
   useEffect(() => {
     if (params.id) loadData()
   }, [params.id, loadData])
+  useRefetchOnResume(loadData, loading)
 
   function toggleDetail(id: string) {
     setExpandedIds((prev) => {

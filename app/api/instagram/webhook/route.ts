@@ -1,4 +1,5 @@
 // Instagram Webhook — Receive messages in real-time and store in Supabase
+import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 
 // Cached Supabase admin client (service role — persists across requests in same lambda)
@@ -24,7 +25,26 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  const rawBody = await request.text();
+
+  // Signature Meta obligatoire (X-Hub-Signature-256 = HMAC-SHA256 du raw body).
+  // Sans elle, n'importe qui peut injecter de faux DMs en base (service role).
+  const appSecret = process.env.META_APP_SECRET || process.env.META_APP_SECRET_FB;
+  if (appSecret) {
+    const signature = request.headers.get('x-hub-signature-256') || '';
+    const expected = 'sha256=' + crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      console.warn('[ig-webhook] Invalid X-Hub-Signature-256 — rejected');
+      return new Response('Invalid signature', { status: 403 });
+    }
+  } else {
+    console.warn('[ig-webhook] META_APP_SECRET absent — signature NON verifiee');
+  }
+
+  let body;
+  try { body = JSON.parse(rawBody); } catch { return new Response('Bad request', { status: 400 }); }
   console.log('[ig-webhook] Event received, entries:', (body.entry || []).length);
 
   try {

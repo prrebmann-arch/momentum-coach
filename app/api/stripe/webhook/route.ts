@@ -23,16 +23,8 @@ export async function POST(request: Request) {
   console.log('[webhook] Received webhook call');
   const supabase = getSupabaseAdmin();
 
-  // Log every hit BEFORE signature verification — helps diagnose delivery issues
-  await supabase.from('stripe_audit_log').insert({
-    action: 'webhook_endpoint_hit', actor_type: 'system',
-    metadata: {
-      ip: request.headers.get('x-forwarded-for') || '',
-      user_agent: request.headers.get('user-agent') || '',
-      timestamp: new Date().toISOString(),
-    },
-  });
-
+  // NB: pas d'ecriture DB avant la verification de signature — un endpoint
+  // public qui insere a chaque hit est un vecteur de spam gratuit.
   const rawBody = await request.text();
   const sig = request.headers.get('stripe-signature')!;
   console.log('[webhook] Signature present:', !!sig, 'Body length:', rawBody.length);
