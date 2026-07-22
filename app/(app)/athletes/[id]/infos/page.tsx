@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAthleteContext } from '@/contexts/AthleteContext'
 import { useToast } from '@/contexts/ToastContext'
-import { getPageCache, setPageCache } from '@/lib/utils'
+import { getPageCache, setPageCache, getNextBilanDate } from '@/lib/utils'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import { DEFAULT_STEPS_GOAL, DEFAULT_WATER_GOAL, DEFAULT_NOTIF_TIME, JOURS_SEMAINE } from '@/lib/constants'
 import Skeleton from '@/components/ui/Skeleton'
@@ -147,6 +147,15 @@ function BilanConfigEditor({
   const completeDay = formData.complete_bilan_day ?? 1
   const isBiweekly = completeFreq === 'biweekly'
 
+  // Prochaine date de bilan complet (affichée sous la config — audit bilan #6)
+  const nextComplete = completeFreq === 'none' ? null : getNextBilanDate(
+    completeFreq,
+    formData.complete_bilan_interval || 14,
+    completeDay,
+    formData.complete_bilan_anchor_date || undefined,
+    formData.complete_bilan_month_day || 1,
+  )
+
   function toggleDayCircle(dayIdx: number) {
     if (isBiweekly) {
       const current = Array.isArray(completeDay) ? [...completeDay] : [completeDay]
@@ -265,6 +274,12 @@ function BilanConfigEditor({
                 <span style={{ color: 'var(--text2)', fontSize: 13 }}>jours</span>
               </div>
             )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <span style={{ color: 'var(--text2)', fontSize: 13 }}>Prochain bilan complet le</span>
+              <input type="date" className="form-control" style={{ width: 'auto' }}
+                value={formData.complete_bilan_anchor_date || ''}
+                onChange={(e) => updateField('complete_bilan_anchor_date', e.target.value || null)} />
+            </div>
           </div>
         )}
 
@@ -274,6 +289,12 @@ function BilanConfigEditor({
             value={formData.complete_bilan_notif_time || DEFAULT_NOTIF_TIME}
             onChange={(e) => updateField('complete_bilan_notif_time', e.target.value)} />
         </div>
+        {nextComplete && (
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: 'var(--primary)' }}>
+            <i className="fas fa-calendar-check" style={{ marginRight: 6 }} />
+            Prochain bilan complet : {new Date(nextComplete + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </div>
+        )}
       </div>
     </div>
   )
