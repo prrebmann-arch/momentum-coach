@@ -160,9 +160,9 @@ export default function ComplementLibrary({ coachId, assignments, onCatalogChang
             <div><strong>Marque :</strong> {info.marque || '—'}</div>
             <div>
               <strong>Lien d&apos;achat :</strong>{' '}
-              {info.lien_achat
+              {info.lien_achat && /^https?:\/\//i.test(info.lien_achat)
                 ? <a href={info.lien_achat} target="_blank" rel="noopener noreferrer">{info.lien_achat}</a>
-                : '—'}
+                : (info.lien_achat || '—')}
             </div>
             <div style={{ color: 'var(--text3)', fontSize: 12 }}>
               Glisse le carré sur un moment de la journée pour l&apos;assigner.
