@@ -11,6 +11,8 @@ import Toggle from '@/components/ui/Toggle'
 import Modal from '@/components/ui/Modal'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
+import ComplementBoard from '@/components/supplements/ComplementBoard'
+import { extractDietMeals, type DietMeal, type ComplementAssignment } from '@/lib/complement'
 import styles from '@/styles/athlete-tabs.module.css'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -313,6 +315,7 @@ export default function SupplementsPage() {
   // Extra moments for multi-dose frequencies (2x/jour, 3x/jour)
   const [formExtraMoments, setFormExtraMoments] = useState<string[]>([])
   const [mealCount, setMealCount] = useState(5) // default 5 meals if no diet found
+  const [dietMeals, setDietMeals] = useState<DietMeal[]>([]) // repas de la diète (board complément)
 
   // How many separate doses per day this freq implies (1, 2, or 3).
   const dosesPerDay = formFreq === '3x/jour' ? 3 : formFreq === '2x/jour' ? 2 : 1
@@ -345,7 +348,7 @@ export default function SupplementsPage() {
       // Step 2 — only fetch meals_data of the ONE relevant training plan, not all 10.
       // meals_data is 10-50 KB per row (full meal/foods JSON); old code fetched all of them
       // just to count meals.length on the training plan. -90% bandwidth on this query.
-      let detectedMealCount = 5
+      let detectedMeals: DietMeal[] = []
       if (nutritionPlanList && nutritionPlanList.length > 0) {
         const trainingPlan = (nutritionPlanList as any[]).find((p) => p.meal_type === 'training' || p.meal_type === 'entrainement') || nutritionPlanList[0]
         const { data: planMeals, error: planErr } = await supabase
@@ -356,14 +359,11 @@ export default function SupplementsPage() {
         if (planErr) {
           console.warn('[supplements] nutrition_plans.single error:', planErr.message)
         } else {
-          try {
-            const raw = (planMeals as any)?.meals_data
-            const meals = typeof raw === 'string' ? JSON.parse(raw) : (raw || [])
-            if (Array.isArray(meals) && meals.length > 0) detectedMealCount = meals.length
-          } catch (e) { console.warn('[supplements] meals_data parse error:', (e as Error).message) }
+          detectedMeals = extractDietMeals((planMeals as any)?.meals_data)
         }
       }
-      setMealCount(detectedMealCount)
+      setDietMeals(detectedMeals)
+      setMealCount(detectedMeals.length || 5)
       if (assignsErr) console.error('[supplements.loadData] assigns query error:', assignsErr)
       const filteredAssigns = (assigns || []).filter((a: any) => a.actif !== false)
       const unlockedVal = ath?.supplementation_unlocked || false
@@ -802,19 +802,33 @@ export default function SupplementsPage() {
 
       {complianceHtml}
 
-      {/* Actions bar */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
-        <button className="btn btn-outline btn-sm" onClick={openImportModal}>
-          <i className="fas fa-file-import" /> Depuis un template
-        </button>
-        <button className="btn btn-red btn-sm" onClick={() => { resetForm(); setShowAddModal(true) }}>
-          <i className="fas fa-plus" /> Ajouter
-        </button>
-      </div>
+      {/* Volet Complément : board DnD (diète + librairie) */}
+      {tab === 'complement' && (
+        <ComplementBoard
+          athleteId={params.id}
+          coachId={user?.id || ''}
+          assignments={assigned as ComplementAssignment[]}
+          dietMeals={dietMeals}
+          onChanged={loadData}
+          onImportClick={openImportModal}
+        />
+      )}
 
-      {/* Cards grouped by moment */}
-      {assigned.length === 0 ? (
-        <EmptyState icon="fas fa-pills" message={`Aucun ${tab === 'complement' ? 'complement' : 'supplement'} assigne`} />
+      {/* Actions bar (supplémentation — le board a son propre bouton template) */}
+      {tab === 'supplementation' && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
+          <button className="btn btn-outline btn-sm" onClick={openImportModal}>
+            <i className="fas fa-file-import" /> Depuis un template
+          </button>
+          <button className="btn btn-red btn-sm" onClick={() => { resetForm(); setShowAddModal(true) }}>
+            <i className="fas fa-plus" /> Ajouter
+          </button>
+        </div>
+      )}
+
+      {/* Cards grouped by moment (supplémentation uniquement) */}
+      {tab === 'supplementation' && (assigned.length === 0 ? (
+        <EmptyState icon="fas fa-pills" message="Aucun supplement assigne" />
       ) : (() => {
         // Group assignments by moment
         const groups: Record<string, any[]> = {}
@@ -964,7 +978,7 @@ export default function SupplementsPage() {
             ))}
           </div>
         )
-      })()}
+      })())}
 
       {/* Import template modal */}
       <Modal isOpen={showImportModal} onClose={() => setShowImportModal(false)} title={`Importer un template ${tab === 'complement' ? 'complément' : 'supplémentation'}`}>
