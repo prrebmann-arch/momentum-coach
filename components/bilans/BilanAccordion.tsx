@@ -329,6 +329,7 @@ export default function BilanAccordion({
       thigh: bwLast(bb, 'thigh_measurement'),
       positiveWeeks: bwAllTexts(bb, 'positive_week'),
       negativeWeeks: bwAllTexts(bb, 'negative_week'),
+      generalNotes: bwAllTexts(bb, 'general_notes'),
     }
   })
 
@@ -536,7 +537,7 @@ export default function BilanAccordion({
               })}
 
               {/* Weekly notes */}
-              {(w.positiveWeeks.length > 0 || w.negativeWeeks.length > 0) && (
+              {(w.positiveWeeks.length > 0 || w.negativeWeeks.length > 0 || w.generalNotes.length > 0) && (
                 <div className={styles.weekNotes}>
                   {w.positiveWeeks.length > 0 && (
                     <div className={styles.weekNote}>
@@ -562,6 +563,22 @@ export default function BilanAccordion({
                       <div>
                         <span className={styles.weekNoteLabel}>A ameliorer</span>
                         {w.negativeWeeks.map((e, i) => (
+                          <span key={i} className={styles.weekNoteText}>
+                            <strong style={{ color: 'var(--text2)', marginRight: 6 }}>{e.date}</strong>
+                            {e.text}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {w.generalNotes.length > 0 && (
+                    <div className={styles.weekNote}>
+                      <span className={styles.weekNoteIcon} style={{ color: 'var(--info, #3b82f6)' }}>
+                        <i className="fas fa-note-sticky" />
+                      </span>
+                      <div>
+                        <span className={styles.weekNoteLabel}>Notes generales</span>
+                        {w.generalNotes.map((e, i) => (
                           <span key={i} className={styles.weekNoteText}>
                             <strong style={{ color: 'var(--text2)', marginRight: 6 }}>{e.date}</strong>
                             {e.text}
