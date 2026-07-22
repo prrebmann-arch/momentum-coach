@@ -137,7 +137,7 @@ All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer 
 
 ### `nutrition/`
 - `MealEditor.tsx` — diet plan editor (supports `templateMode`, `templateType: diete|jour|repas`).
-- `FoodSearch.tsx` — `aliments_db` search w/ favorites.
+- `FoodSearch.tsx` — recherche 3 sources : `aliments_db` (Ma base), Open Food Facts (API `search.openfoodfacts.org`, **jamais de header User-Agent en client**), et Ciqual (ANSES, base locale `lib/ciqual.ts`, toujours affichée dès 2 caractères).
 
 ### `templates/`
 - `TrainingTemplatesList.tsx`, `NutritionTemplatesList.tsx`, `WorkflowsList.tsx`, `QuestionnaireTemplatesList.tsx`.

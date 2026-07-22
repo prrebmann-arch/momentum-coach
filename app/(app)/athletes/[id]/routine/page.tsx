@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
@@ -66,6 +67,7 @@ export default function RoutinePage() {
   }, [params.id, supabase, toast])
 
   useEffect(() => { loadData() }, [loadData])
+  useRefetchOnResume(loadData, loading)
 
   const habits = useMemo(
     () => [...items].sort((a, b) => a.display_order - b.display_order || a.created_at.localeCompare(b.created_at)),

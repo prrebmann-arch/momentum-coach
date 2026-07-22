@@ -69,15 +69,22 @@ function BilanTraitePopupInline({
 
     const finalMsg = msg || 'Bilan verifie'
 
-    await supabase.from('bilan_retours').insert({
+    if (!user?.id) { toast('Session expiree — recharge la page', 'error'); return }
+    const { error: insertError } = await supabase.from('bilan_retours').insert({
       athlete_id: athleteId,
-      coach_id: user?.id,
+      coach_id: user.id,
       loom_url: hasLoom ? loomUrl.trim() : null,
       titre: 'Bilan traite',
       commentaire: finalMsg,
       audio_url: hasAudio ? recorder.audioUrl : null,
       type: hasLoom ? (hasAudio ? 'mixed' : 'loom') : (hasAudio ? 'audio' : 'message'),
     })
+    if (insertError) {
+      // Ne PAS notifier l'athlete si le retour n'a pas ete enregistre
+      console.error('[bilan-retour] insert error:', insertError)
+      toast(`Erreur: ${insertError.message}`, 'error')
+      return
+    }
 
     const meta: Record<string, string> = {}
     if (hasAudio && recorder.audioUrl) meta.audio_url = recorder.audioUrl

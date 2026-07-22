@@ -155,8 +155,6 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
     return 0
   }, [calOffset, minDate, maxDate])
 
-  if (!phases.length) return null
-
   const visibleCount = Math.min(4, totalMonths)
   const offset = Math.max(0, Math.min(effectiveOffset, totalMonths - visibleCount))
   const canPrev = offset > 0
@@ -472,6 +470,10 @@ export default function RoadmapCalendar({ phases, programs, nutritions, reports,
     return weeks
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phases, reports, supplements, nutritionLogs, nutritions, programs])
+
+  // Early return APRES tous les hooks (Rules of Hooks) — sinon crash quand
+  // phases passe de [] a [...] (creation de la 1ere phase).
+  if (!phases.length) return null
 
   return (
     <>

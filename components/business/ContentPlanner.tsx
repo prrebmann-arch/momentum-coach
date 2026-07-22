@@ -103,6 +103,7 @@ export default function ContentPlanner() {
   const [publishDetail, setPublishDetail] = useState('')
   const [publishResult, setPublishResult] = useState<'success' | 'error' | null>(null)
   const [publishErrorMsg, setPublishErrorMsg] = useState('')
+  const [mediaUrlInput, setMediaUrlInput] = useState('')
 
   // Hashtag group modal
   const [showHgModal, setShowHgModal] = useState(false)
@@ -807,8 +808,6 @@ export default function ContentPlanner() {
   // ═══════════════════════════════════════
   // ── MAIN RENDER ──
   // ═══════════════════════════════════════
-  const [mediaUrlInput, setMediaUrlInput] = useState('')
-
   return (
     <div className={styles.cpPage}>
       {/* Nav + New post button */}
