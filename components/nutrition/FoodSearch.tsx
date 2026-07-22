@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
+import { searchCiqual } from '@/lib/ciqual'
 import styles from '@/styles/nutrition.module.css'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -16,7 +17,7 @@ export interface Aliment {
   glucides: number
   lipides: number
   coach_id?: string
-  source?: 'local' | 'openfoodfacts'
+  source?: 'local' | 'openfoodfacts' | 'ciqual'
 }
 
 interface FoodSearchProps {
@@ -38,8 +39,13 @@ export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
   const [localAliments, setLocalAliments] = useState<Aliment[]>([])
   const [offResults, setOffResults] = useState<Aliment[]>([])
   const [offLoading, setOffLoading] = useState(false)
+  const [offError, setOffError] = useState(false)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   const offTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Ciqual (ANSES) — base locale, instantanée, aucune API. Toujours interrogée
+  // dès 2 caractères (indépendante du toggle Ma base / OFF / Les deux).
+  const ciqualResults: Aliment[] = query.length >= 2 ? searchCiqual(query).slice(0, 30) : []
 
   // Load local aliments
   const loadLocal = useCallback(async () => {
@@ -59,10 +65,12 @@ export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
     if ((source === 'off' || source === 'both') && query.length >= 2) {
       if (offTimerRef.current) clearTimeout(offTimerRef.current)
       setOffLoading(true)
+      setOffError(false)
       offTimerRef.current = setTimeout(async () => {
         try {
           const url = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&page_size=20&langs=fr&fields=product_name,nutriments,brands,code`
-          const resp = await fetch(url, { headers: { 'User-Agent': 'MOMENTUM-Coach/1.0 (web)', Accept: 'application/json' } })
+          const resp = await fetch(url, { headers: { Accept: 'application/json' } })
+          if (!resp.ok) throw new Error(`OFF HTTP ${resp.status}`)
           const data = await resp.json()
           const results: Aliment[] = (data.hits || [])
             .filter((p: any) => p.product_name && p.nutriments?.['energy-kcal_100g'] != null)
@@ -78,14 +86,19 @@ export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
               }
             })
           setOffResults(results)
-        } catch {
+        } catch (e) {
+          // Ne plus avaler l'erreur en silence : afficher un message (l'API OFF
+          // tombe régulièrement, et le user croyait "ça ne cherche que ma base").
+          console.warn('[FoodSearch] Open Food Facts fetch échoué:', e)
           setOffResults([])
+          setOffError(true)
         }
         setOffLoading(false)
       }, 300)
     } else {
       setOffResults([])
       setOffLoading(false)
+      setOffError(false)
     }
     return () => { if (offTimerRef.current) clearTimeout(offTimerRef.current) }
   }, [query, source])
@@ -269,9 +282,40 @@ export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
                 Tapez au moins 2 caracteres
               </div>
             )}
-            {!offLoading && q.length >= 2 && offResults.length === 0 && (source === 'off') && (
+            {!offLoading && offError && q.length >= 2 && (
+              <div style={{ padding: 12, textAlign: 'center', color: '#e67e22', fontSize: 11 }}>
+                <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: 4 }} />
+                Open Food Facts indisponible pour le moment
+              </div>
+            )}
+            {!offLoading && !offError && q.length >= 2 && offResults.length === 0 && (source === 'off') && (
               <div style={{ padding: 16, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>Aucun resultat OFF</div>
             )}
+          </>
+        )}
+
+        {/* Ciqual (ANSES) — base locale, toujours affichée dès 2 caractères */}
+        {ciqualResults.length > 0 && (
+          <>
+            <div style={{ margin: '12px 0', textAlign: 'center', fontSize: 11, color: 'var(--text3)', fontWeight: 600 }}>
+              -- Ciqual (ANSES) --
+            </div>
+            {ciqualResults.map((a, i) => (
+              <div key={`ciqual-${i}`} className={styles.libItem} onClick={() => onSelect(a)}>
+                <div className={styles.libIcon} style={{ background: 'rgba(155,89,182,0.12)', color: '#9b59b6' }}>
+                  <i className="fa-solid fa-leaf" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className={styles.libName}>
+                    {a.nom}
+                    <span style={{ marginLeft: 4, fontSize: 9, padding: '1px 5px', borderRadius: 4, fontWeight: 700, background: 'rgba(155,89,182,0.15)', color: '#9b59b6' }}>Ciqual</span>
+                  </div>
+                  <div className={styles.libMacros}>
+                    {a.calories} kcal / P{a.proteines}g G{a.glucides}g L{a.lipides}g
+                  </div>
+                </div>
+              </div>
+            ))}
           </>
         )}
       </div>
