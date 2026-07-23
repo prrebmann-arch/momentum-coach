@@ -2,7 +2,6 @@
 .vidFilters {
   display: flex;
   gap: 8px;
-  margin-bottom: 20px;
 }
 .vidFilterBtn {
   background: var(--bg2);
@@ -13,15 +12,34 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  line-height: 1.2;
   transition: all 0.2s;
 }
 .vidFilterBtn:hover { border-color: var(--text3); }
 .vidFilterBtn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+/* "A traiter" reste rouge (bordure + count) tant qu'il y a du pending, même
+   quand il n'est pas l'onglet actif — pour le repérer depuis "Toutes". */
+.vidFilterPending { border-color: var(--primary); color: var(--primary); }
+.vidFilterPending .vidFilterCount { color: #fff; background: var(--primary); opacity: 1; border-radius: 10px; padding: 1px 7px; font-weight: 700; }
 .vidFilterPending.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.vidFilterPending.active .vidFilterCount { background: rgba(255,255,255,0.25); color: #fff; }
 .vidFilterCount { font-size: 11px; opacity: 0.7; }
+.vidToolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
+.vidSearch {
+  background: var(--bg2);
+  border: var(--card-border);
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--text);
+  outline: none;
+  width: 200px;
+  height: 100%;
+}
 .vidGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
