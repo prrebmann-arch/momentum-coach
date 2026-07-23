@@ -11,7 +11,7 @@ import type { PhotoType, PhotoEntry } from './PhotoCompare'
 
 // Réponse custom de type photo/vidéo : signe l'URL depuis athlete-photos et
 // affiche une miniature (photo) ou un lecteur (vidéo). value = path storage.
-function CustomMediaAnswer({ value, kind }: { value: string; kind: 'photo' | 'video' }) {
+function CustomMediaAnswer({ value, kind, full }: { value: string; kind: 'photo' | 'video'; full?: boolean }) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
@@ -24,12 +24,12 @@ function CustomMediaAnswer({ value, kind }: { value: string; kind: 'photo' | 'vi
   }, [value])
   if (!url) return <span style={{ color: 'var(--text3)', fontSize: 12 }}>chargement…</span>
   if (kind === 'video') {
-    return <video src={url} controls style={{ maxWidth: 220, maxHeight: 300, borderRadius: 8, marginTop: 4 }} />
+    return <video src={url} controls style={{ width: full ? '100%' : undefined, maxWidth: full ? '100%' : 220, maxHeight: 320, borderRadius: 8, marginTop: 4 }} />
   }
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer">
+    <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt="réponse" style={{ maxWidth: 120, maxHeight: 160, borderRadius: 8, marginTop: 4, objectFit: 'cover' }} />
+      <img src={url} alt="réponse" style={{ width: full ? '100%' : undefined, maxWidth: full ? '100%' : 120, maxHeight: full ? 360 : 160, aspectRatio: full ? '3 / 4' : undefined, borderRadius: 8, marginTop: 4, objectFit: 'cover' }} />
     </a>
   )
 }
@@ -770,33 +770,43 @@ export default function BilanAccordion({
                               {b.general_notes}
                             </div>
                           )}
-                          {customAnswers.length > 0 && (
-                            <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--bg3)', borderRadius: 8 }}>
-                              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Réponses personnalisées</div>
-                              <div className={styles.detailGrid}>
-                                {customAnswers.map(q => {
-                                  const raw = b.custom_data![q.key!]
-                                  if ((q.input_type === 'photo' || q.input_type === 'video') && typeof raw === 'string' && raw) {
-                                    return (
-                                      <div key={q.key} className={styles.detailItem}>
+                          {customAnswers.length > 0 && (() => {
+                            const mediaAnswers = customAnswers.filter(q => (q.input_type === 'photo' || q.input_type === 'video') && typeof b.custom_data![q.key!] === 'string' && b.custom_data![q.key!])
+                            const textAnswers = customAnswers.filter(q => !mediaAnswers.includes(q))
+                            // Grille photos adaptative : 1→1col, 2→2, 3→3, 4→2, 5/6→3 (audit #5)
+                            const cols = mediaAnswers.length <= 1 ? 1 : mediaAnswers.length === 2 ? 2 : mediaAnswers.length === 4 ? 2 : 3
+                            return (
+                              <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--bg3)', borderRadius: 8 }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Réponses personnalisées</div>
+                                {textAnswers.length > 0 && (
+                                  <div className={styles.detailGrid}>
+                                    {textAnswers.map(q => {
+                                      const raw = b.custom_data![q.key!]
+                                      let display = String(raw)
+                                      if (q.input_type === 'boolean') display = raw ? 'Oui' : 'Non'
+                                      else if (q.input_type === 'multiple_choice' && Array.isArray(raw)) display = raw.join(', ')
+                                      return (
+                                        <div key={q.key} className={styles.detailItem}>
+                                          <span className={styles.detailLabel}>{q.label}</span>
+                                          <span>{display}</span>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                                {mediaAnswers.length > 0 && (
+                                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8, marginTop: textAnswers.length > 0 ? 8 : 0 }}>
+                                    {mediaAnswers.map(q => (
+                                      <div key={q.key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                                         <span className={styles.detailLabel}>{q.label}</span>
-                                        <CustomMediaAnswer value={raw} kind={q.input_type as 'photo' | 'video'} />
+                                        <CustomMediaAnswer value={b.custom_data![q.key!] as string} kind={q.input_type as 'photo' | 'video'} full />
                                       </div>
-                                    )
-                                  }
-                                  let display = String(raw)
-                                  if (q.input_type === 'boolean') display = raw ? 'Oui' : 'Non'
-                                  else if (q.input_type === 'multiple_choice' && Array.isArray(raw)) display = raw.join(', ')
-                                  return (
-                                    <div key={q.key} className={styles.detailItem}>
-                                      <span className={styles.detailLabel}>{q.label}</span>
-                                      <span>{display}</span>
-                                    </div>
-                                  )
-                                })}
+                                    ))}
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          )}
+                            )
+                          })()}
                         </div>
                       )}
                     </div>
