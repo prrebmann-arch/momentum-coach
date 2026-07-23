@@ -54,6 +54,7 @@ const INPUT_TYPES = [
   { value: 'single_choice',  label: 'Choix unique'   },
   { value: 'multiple_choice',label: 'Choix multiple' },
   { value: 'photo',          label: 'Photo'          },
+  { value: 'video',          label: 'Vidéo'          },
 ]
 
 const TYPE_BADGE_CLASS: Record<string, string> = {
@@ -66,6 +67,7 @@ const TYPE_BADGE_CLASS: Record<string, string> = {
   single_choice:  styles.typeBadgeChoice,
   multiple_choice:styles.typeBadgeChoice,
   photo:          styles.typeBadgePhoto,
+  video:          styles.typeBadgePhoto,
 }
 
 function formatType(t: string): string {
@@ -79,6 +81,7 @@ function formatType(t: string): string {
     case 'single_choice':  return 'Choix'
     case 'multiple_choice':return 'Multi'
     case 'photo':          return 'Photo'
+    case 'video':          return 'Vidéo'
     default:               return t
   }
 }

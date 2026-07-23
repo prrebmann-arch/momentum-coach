@@ -3,10 +3,36 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { PROG_PHASES } from '@/lib/constants'
 import { toDateStr, getWeekNumber, isBilanDate } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import MensurationCharts from './MensurationCharts'
 import styles from '@/styles/bilans.module.css'
 import type { Athlete } from '@/lib/types'
 import type { PhotoType, PhotoEntry } from './PhotoCompare'
+
+// Réponse custom de type photo/vidéo : signe l'URL depuis athlete-photos et
+// affiche une miniature (photo) ou un lecteur (vidéo). value = path storage.
+function CustomMediaAnswer({ value, kind }: { value: string; kind: 'photo' | 'video' }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    if (/^https?:\/\//.test(value)) { setUrl(value); return }
+    const supabase = createClient()
+    supabase.storage.from('athlete-photos').createSignedUrl(value, 3600).then(({ data }) => {
+      if (!cancelled) setUrl(data?.signedUrl ?? null)
+    })
+    return () => { cancelled = true }
+  }, [value])
+  if (!url) return <span style={{ color: 'var(--text3)', fontSize: 12 }}>chargement…</span>
+  if (kind === 'video') {
+    return <video src={url} controls style={{ maxWidth: 220, maxHeight: 300, borderRadius: 8, marginTop: 4 }} />
+  }
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="réponse" style={{ maxWidth: 120, maxHeight: 160, borderRadius: 8, marginTop: 4, objectFit: 'cover' }} />
+    </a>
+  )
+}
 
 // ── Types ──
 
@@ -750,6 +776,14 @@ export default function BilanAccordion({
                               <div className={styles.detailGrid}>
                                 {customAnswers.map(q => {
                                   const raw = b.custom_data![q.key!]
+                                  if ((q.input_type === 'photo' || q.input_type === 'video') && typeof raw === 'string' && raw) {
+                                    return (
+                                      <div key={q.key} className={styles.detailItem}>
+                                        <span className={styles.detailLabel}>{q.label}</span>
+                                        <CustomMediaAnswer value={raw} kind={q.input_type as 'photo' | 'video'} />
+                                      </div>
+                                    )
+                                  }
                                   let display = String(raw)
                                   if (q.input_type === 'boolean') display = raw ? 'Oui' : 'Non'
                                   else if (q.input_type === 'multiple_choice' && Array.isArray(raw)) display = raw.join(', ')
