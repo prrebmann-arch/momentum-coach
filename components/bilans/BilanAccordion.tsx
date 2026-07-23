@@ -462,7 +462,7 @@ export default function BilanAccordion({
             const hasPhotos = b.photo_front || b.photo_side || b.photo_back
             const hasMens = b.belly_measurement || b.hip_measurement || b.thigh_measurement
             const hasCustom = weekQuestions.some(q => b.custom_data?.[q.key!] != null)
-            return b.general_notes || b.steps || hasPhotos || hasMens || hasCustom
+            return b.steps || hasPhotos || hasMens || hasCustom
           })
           .map(b => 'bn-' + (b.id || b.date))
         const weekAllOpen = weekDetailIds.length > 0 && weekDetailIds.every(id => openNotes.has(id))
@@ -701,7 +701,7 @@ export default function BilanAccordion({
                   const hasMens = b.belly_measurement || b.hip_measurement || b.thigh_measurement
                   const customQuestions = (templateQuestions || []).filter(q => q.type === 'custom' && q.key)
                   const customAnswers = customQuestions.filter(q => b.custom_data?.[q.key!] != null)
-                  const hasDetails = b.general_notes || b.steps || hasPhotos || hasMens || customAnswers.length > 0
+                  const hasDetails = b.steps || hasPhotos || hasMens || customAnswers.length > 0
 
                   // Session name from workout logs
                   const dayLogs = wlogsByDate[b.date] || []
@@ -828,12 +828,8 @@ export default function BilanAccordion({
                               </div>
                             </div>
                           )}
-                          {b.general_notes && (
-                            <div className={styles.detailNote}>
-                              <i className="fas fa-pen" style={{ color: 'var(--text3)', marginRight: 6, fontSize: 11 }} />
-                              {b.general_notes}
-                            </div>
-                          )}
+                          {/* Notes générales retirées du détail : déjà affichées
+                              dans le bloc-semaine (Positif/Négatif/Notes). */}
                           {customAnswers.length > 0 && (() => {
                             const mediaAnswers = customAnswers.filter(q => (q.input_type === 'photo' || q.input_type === 'video') && typeof b.custom_data![q.key!] === 'string' && b.custom_data![q.key!])
                             const textAnswers = customAnswers.filter(q => !mediaAnswers.includes(q))
