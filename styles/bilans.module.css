@@ -120,6 +120,8 @@
   text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 2px;
 }
 .weekNoteText { display: block; color: var(--text2); line-height: 1.4; }
+.weekNoteClickable { cursor: pointer; border-radius: 6px; padding: 2px 6px; margin: 0 -6px; transition: background 0.15s; }
+.weekNoteClickable:hover { background: var(--bg3, rgba(255,255,255,0.05)); }
 
 /* Daily detail table */
 .daysTable { padding: 0 18px 12px; overflow-x: auto; }

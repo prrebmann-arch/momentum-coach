@@ -5,6 +5,7 @@ import { PROG_PHASES } from '@/lib/constants'
 import { toDateStr, getWeekNumber, isBilanDate } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import MensurationCharts from './MensurationCharts'
+import BubbleExportModal from './BubbleExportModal'
 import styles from '@/styles/bilans.module.css'
 import type { Athlete } from '@/lib/types'
 import type { PhotoType, PhotoEntry } from './PhotoCompare'
@@ -214,6 +215,7 @@ export default function BilanAccordion({
 }: BilanAccordionProps) {
   const [openWeeks, setOpenWeeks] = useState<Set<string>>(new Set())
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set())
+  const [bubbleText, setBubbleText] = useState<string | null>(null)
 
   // Bilan scheduling config
   const cbFreq = athlete.complete_bilan_frequency || 'weekly'
@@ -597,7 +599,12 @@ export default function BilanAccordion({
                       <div>
                         <span className={styles.weekNoteLabel}>Points positifs</span>
                         {w.positiveWeeks.map((e, i) => (
-                          <span key={i} className={styles.weekNoteText}>
+                          <span
+                            key={i}
+                            className={`${styles.weekNoteText} ${styles.weekNoteClickable}`}
+                            onClick={() => setBubbleText(e.text)}
+                            title="Cliquer pour exporter en image"
+                          >
                             <strong style={{ color: 'var(--text2)', marginRight: 6 }}>{e.date}</strong>
                             {e.text}
                           </span>
@@ -613,7 +620,12 @@ export default function BilanAccordion({
                       <div>
                         <span className={styles.weekNoteLabel}>A ameliorer</span>
                         {w.negativeWeeks.map((e, i) => (
-                          <span key={i} className={styles.weekNoteText}>
+                          <span
+                            key={i}
+                            className={`${styles.weekNoteText} ${styles.weekNoteClickable}`}
+                            onClick={() => setBubbleText(e.text)}
+                            title="Cliquer pour exporter en image"
+                          >
                             <strong style={{ color: 'var(--text2)', marginRight: 6 }}>{e.date}</strong>
                             {e.text}
                           </span>
@@ -629,7 +641,12 @@ export default function BilanAccordion({
                       <div>
                         <span className={styles.weekNoteLabel}>Notes generales</span>
                         {w.generalNotes.map((e, i) => (
-                          <span key={i} className={styles.weekNoteText}>
+                          <span
+                            key={i}
+                            className={`${styles.weekNoteText} ${styles.weekNoteClickable}`}
+                            onClick={() => setBubbleText(e.text)}
+                            title="Cliquer pour exporter en image"
+                          >
                             <strong style={{ color: 'var(--text2)', marginRight: 6 }}>{e.date}</strong>
                             {e.text}
                           </span>
@@ -864,6 +881,9 @@ export default function BilanAccordion({
           </div>
         )
       })}
+      {bubbleText != null && (
+        <BubbleExportModal text={bubbleText} onClose={() => setBubbleText(null)} />
+      )}
     </div>
   )
 }
