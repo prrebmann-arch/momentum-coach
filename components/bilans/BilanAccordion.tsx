@@ -402,6 +402,18 @@ export default function BilanAccordion({
     })
   }, [])
 
+  // Déplie/replie d'un coup TOUS les détails cachés d'une semaine (audit #2).
+  // Si au moins un est fermé -> tout ouvrir ; sinon tout refermer.
+  const toggleWeekDetails = useCallback((noteIds: string[]) => {
+    setOpenNotes(prev => {
+      const next = new Set(prev)
+      const allOpen = noteIds.every(id => next.has(id))
+      if (allOpen) noteIds.forEach(id => next.delete(id))
+      else noteIds.forEach(id => next.add(id))
+      return next
+    })
+  }, [])
+
   return (
     <div className={styles.container}>
       {weekData.map((w) => {
@@ -440,6 +452,18 @@ export default function BilanAccordion({
         // Nutrition periods
         const nutriPeriods = getNutriPeriodsForWeek(w.monday)
         const sorted = [...w.bilans].sort((a, b) => a.date.localeCompare(b.date))
+
+        // noteIds des jours de LA semaine ayant des détails (pour le bouton "Voir tout")
+        const weekQuestions = (templateQuestions || []).filter(q => q.type === 'custom' && q.key)
+        const weekDetailIds = sorted
+          .filter(b => {
+            const hasPhotos = b.photo_front || b.photo_side || b.photo_back
+            const hasMens = b.belly_measurement || b.hip_measurement || b.thigh_measurement
+            const hasCustom = weekQuestions.some(q => b.custom_data?.[q.key!] != null)
+            return b.general_notes || b.steps || hasPhotos || hasMens || hasCustom
+          })
+          .map(b => 'bn-' + (b.id || b.date))
+        const weekAllOpen = weekDetailIds.length > 0 && weekDetailIds.every(id => openNotes.has(id))
 
         // Performance display
         const perfDisplay = (() => {
@@ -634,7 +658,19 @@ export default function BilanAccordion({
                   <span>MALAD.</span>
                   <span>SOMM.</span>
                   <span>NUIT</span>
-                  <span className={styles.dhEnd} />
+                  <span className={styles.dhEnd}>
+                    {weekDetailIds.length > 0 && (
+                      <button
+                        className={styles.noteBtn}
+                        onClick={(e) => { e.stopPropagation(); toggleWeekDetails(weekDetailIds) }}
+                        title={weekAllOpen ? 'Tout replier' : 'Voir toutes les données de la semaine'}
+                        style={{ fontSize: 10, whiteSpace: 'nowrap' }}
+                      >
+                        <i className={weekAllOpen ? 'fas fa-eye-slash' : 'fas fa-eye'} style={{ marginRight: 4 }} />
+                        {weekAllOpen ? 'Replier' : 'Voir tout'}
+                      </button>
+                    )}
+                  </span>
                 </div>
 
                 {sorted.map(b => {
@@ -725,12 +761,23 @@ export default function BilanAccordion({
                               <i className="fas fa-camera" style={{ color: 'var(--primary)', fontSize: 11 }} />
                             </button>
                           )}
+                          {customAnswers.length > 0 && (
+                            <button
+                              className={styles.noteBtn}
+                              onClick={(e) => { e.stopPropagation(); if (!openNotes.has(noteId)) toggleNote(noteId) }}
+                              title={`${customAnswers.length} réponse${customAnswers.length > 1 ? 's' : ''} en plus`}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: 'var(--primary)', fontWeight: 700, fontSize: 10 }}
+                            >
+                              <i className="fas fa-paperclip" style={{ fontSize: 10 }} />
+                              {customAnswers.length}
+                            </button>
+                          )}
                           {hasDetails && (
                             <button
                               className={styles.noteBtn}
                               onClick={(e) => { e.stopPropagation(); toggleNote(noteId) }}
                             >
-                              <i className="fas fa-chevron-down" />
+                              <i className={`fas fa-chevron-${openNotes.has(noteId) ? 'up' : 'down'}`} />
                             </button>
                           )}
                           {b.id && (
