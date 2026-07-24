@@ -316,6 +316,23 @@ export default function MealEditor({
   const [clipboardMeal, setClipboardMeal] = useState<MealData | null>(null)
   const [foodRefreshKey, setFoodRefreshKey] = useState(0)
 
+  // Objectifs journaliers sel + eau (diète athlète uniquement, pas les templates)
+  const showDietGoals = !templateMode && !!athleteId
+  const [dietGoals, setDietGoals] = useState<{ sel_g: string; water_goal_ml: string }>({ sel_g: '', water_goal_ml: '' })
+  useEffect(() => {
+    if (!showDietGoals) return
+    let cancelled = false
+    supabase.from('athletes').select('sel_g, water_goal_ml').eq('id', athleteId).maybeSingle()
+      .then(({ data }: { data: { sel_g?: number | null; water_goal_ml?: number | null } | null }) => {
+        if (cancelled || !data) return
+        setDietGoals({
+          sel_g: data.sel_g != null ? String(data.sel_g) : '',
+          water_goal_ml: data.water_goal_ml != null ? String(data.water_goal_ml) : '',
+        })
+      })
+    return () => { cancelled = true }
+  }, [showDietGoals, athleteId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Template-mode category state
   const [tplCategory, setTplCategory] = useState(initCategory)
   const [tplNewCategory, setTplNewCategory] = useState('')
@@ -626,6 +643,16 @@ export default function MealEditor({
     // still hits the finally and re-enables the button.
     try {
       setSaving(true)
+
+      // Objectifs sel + eau (diète athlète) — sauvés sur la table athletes.
+      if (showDietGoals && athleteId) {
+        const goalsPayload: Record<string, number | null> = {
+          sel_g: dietGoals.sel_g.trim() ? Number(dietGoals.sel_g) : null,
+          water_goal_ml: dietGoals.water_goal_ml.trim() ? Number(dietGoals.water_goal_ml) : null,
+        }
+        const { error: goalsErr } = await supabase.from('athletes').update(goalsPayload).eq('id', athleteId)
+        if (goalsErr) console.error('[MealEditor] save diet goals', goalsErr)
+      }
 
       // Recompute macros on each food before serialization, so DB always reflects
       // the latest aliments_db values (qty changes, food edits, etc.).
@@ -991,6 +1018,22 @@ export default function MealEditor({
           </button>
         </div>
       </div>
+
+      {/* Objectifs sel + eau (diète athlète) */}
+      {showDietGoals && (
+        <div className={styles.editorMacros} style={{ marginBottom: 8 }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label><i className="fa-solid fa-shaker" style={{ marginRight: 4 }} />Sel (g/jour)</label>
+            <input type="number" step="0.5" value={dietGoals.sel_g} placeholder="—"
+              onChange={(e) => setDietGoals((p) => ({ ...p, sel_g: e.target.value }))} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label><i className="fa-solid fa-tint" style={{ marginRight: 4 }} />Eau (ml/jour)</label>
+            <input type="number" step="100" value={dietGoals.water_goal_ml} placeholder="—"
+              onChange={(e) => setDietGoals((p) => ({ ...p, water_goal_ml: e.target.value }))} />
+          </div>
+        </div>
+      )}
 
       {/* Macro header */}
       <div className={styles.editorMacros}>
