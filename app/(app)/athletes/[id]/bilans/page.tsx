@@ -296,7 +296,7 @@ export default function BilansPage() {
         supabase.from('nutrition_plans').select('id, valid_from, meal_type, nom, calories_objectif, proteines, glucides, lipides, created_at').eq('athlete_id', athleteId).limit(50),
         supabase.from('roadmap_phases').select('phase, name, start_date, end_date').eq('athlete_id', athleteId).order('start_date').limit(50),
         supabase.from('workout_logs').select('id, date, session_id, session_name, titre, type, started_at, finished_at, exercices_completes').eq('athlete_id', athleteId).order('date', { ascending: false }).limit(50),
-        supabase.from('athlete_bilan_templates').select('template_snapshot').eq('athlete_id', athleteId).order('assigned_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('athlete_bilan_templates').select('template_snapshot, bilan_type').eq('athlete_id', athleteId).order('assigned_at', { ascending: false }).limit(10),
       ])
 
       const bilanData = (bilansRes.data || []) as DailyReport[]
@@ -310,14 +310,27 @@ export default function BilansPage() {
       const phases = (phasesRes.data || []).sort((a: { start_date?: string }, b: { start_date?: string }) => (a.start_date || '').localeCompare(b.start_date || ''))
       setRoadmapPhases(phases)
 
-      // Template questions for custom_data display
-      const snapshot = (athleteTemplateRes.data as any)?.template_snapshot
-      if (snapshot) {
-        const allQ = [...(snapshot.quotidien || []), ...(snapshot.complet || [])]
-        setTemplateQuestions(allQ.filter((q: any) => q.type === 'custom'))
-      } else {
-        setTemplateQuestions([])
+      // Template questions for custom_data display.
+      // Un snapshot v2 = { questions: [{type, key, input_type, bilan_type, ...}] }.
+      // On agrège les questions custom de TOUS les snapshots (quotidien + complet),
+      // dédupliquées par key. (Ancien format { quotidien:[], complet:[] } aussi géré.)
+      const rows = (athleteTemplateRes.data as any[]) || []
+      const seen = new Set<string>()
+      const customQ: any[] = []
+      for (const row of rows) {
+        const snap = row?.template_snapshot
+        if (!snap) continue
+        const qs = Array.isArray(snap.questions)
+          ? snap.questions
+          : [...(snap.quotidien || []), ...(snap.complet || [])]
+        for (const q of qs) {
+          if (q?.type === 'custom' && q.key && !seen.has(q.key)) {
+            seen.add(q.key)
+            customQ.push(q)
+          }
+        }
       }
+      setTemplateQuestions(customQ)
 
       // Photos are loaded on demand when user clicks (see loadPhotosForBilans)
       setPhotoHistory({ front: [], side: [], back: [] })
