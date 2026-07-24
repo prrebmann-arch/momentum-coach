@@ -28,13 +28,17 @@ export interface MealVariant {
   foods: FoodItem[]
 }
 
+export type WorkoutTiming = 'pre' | 'intra' | 'post'
+
 export interface MealData {
   /** Label du repas (ex: "Repas 1"). */
   label?: string
   /** Heure (HH:MM). */
   time?: string
-  /** Pré-workout flag. */
+  /** Pré-workout flag (rétrocompat — synchronisé avec workout_timing === 'pre'). */
   pre_workout?: boolean
+  /** Timing training du repas : pré / intra / post-training, ou absent. */
+  workout_timing?: WorkoutTiming | null
   /** Foods d'un repas SANS variantes. Mutuellement exclusif avec `variants`. */
   foods?: FoodItem[]
   /** Variantes d'un repas (max 3). Mutuellement exclusif avec `foods`. */
@@ -132,7 +136,7 @@ function serializeMealsForSave(meals: MealData[]): MealData[] {
       return {
         label: m.label,
         time: m.time,
-        pre_workout: m.pre_workout,
+        pre_workout: m.pre_workout, workout_timing: m.workout_timing ?? (m.pre_workout ? 'pre' : null),
         variants: m.variants!.map((v) => ({
           id: v.id,
           label: v.label,
@@ -143,7 +147,7 @@ function serializeMealsForSave(meals: MealData[]): MealData[] {
     return {
       label: m.label,
       time: m.time,
-      pre_workout: m.pre_workout,
+      pre_workout: m.pre_workout, workout_timing: m.workout_timing ?? (m.pre_workout ? 'pre' : null),
       foods: (m.foods ?? []).map(serializeFood),
     }
   })
@@ -181,7 +185,7 @@ function addVariantToMeal(meal: MealData, label: string): MealData {
     return {
       label: meal.label,
       time: meal.time,
-      pre_workout: meal.pre_workout,
+      pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null),
       variants: [first, { ...newVariant, label }],
     }
   }
@@ -221,7 +225,7 @@ function convertToSimpleMeal(meal: MealData, keepVariantId: string): MealData {
   return {
     label: meal.label,
     time: meal.time,
-    pre_workout: meal.pre_workout,
+    pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null),
     foods: keep.foods,
   }
 }
@@ -504,7 +508,7 @@ export default function MealEditor({
         return {
           label: item.label,
           time: item.time,
-          pre_workout: item.pre_workout,
+          pre_workout: item.pre_workout, workout_timing: item.workout_timing ?? (item.pre_workout ? 'pre' : null),
           variants: item.variants.map((v: any, vi: number) => ({
             id: (typeof v?.id === 'string' && v.id.trim()) ? v.id : newVariantId(),
             label: v?.label || `Variante ${vi + 1}`,
@@ -512,7 +516,7 @@ export default function MealEditor({
           })),
         }
       }
-      if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, time: item.time }
+      if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, workout_timing: item.workout_timing ?? (item.pre_workout ? 'pre' : null), time: item.time }
       if (Array.isArray(item)) return { foods: item }
       return { foods: [] }
     }
@@ -589,9 +593,16 @@ export default function MealEditor({
     if (activeMealIdx >= meals.length - 1) setActiveMealIdx(Math.max(0, meals.length - 2))
   }
 
-  // Toggle pre-workout
+  // Cycle le timing training du repas : aucun → pré → intra → post → aucun.
+  // pre_workout reste synchronisé (rétrocompat avec le code athlète existant).
   function togglePreWorkout(idx: number) {
-    setMeals((prev) => prev.map((m, i) => i === idx ? { ...m, pre_workout: !m.pre_workout } : m))
+    const CYCLE: (WorkoutTiming | null)[] = [null, 'pre', 'intra', 'post']
+    setMeals((prev) => prev.map((m, i) => {
+      if (i !== idx) return m
+      const cur = m.workout_timing ?? (m.pre_workout ? 'pre' : null)
+      const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length]
+      return { ...m, workout_timing: next, pre_workout: next === 'pre' }
+    }))
   }
 
   // Template-mode category helpers
@@ -1118,7 +1129,12 @@ export default function MealEditor({
                         <i className="fa-solid fa-grip-vertical" />
                       </span>
                       <span className={styles.mealTitle}>R{mealIdx + 1}</span>
-                      {meal.pre_workout && <span className={styles.pwBadge}>Pre training</span>}
+                      {(() => {
+                        const t = meal.workout_timing ?? (meal.pre_workout ? 'pre' : null)
+                        if (!t) return null
+                        const lbl = t === 'pre' ? 'Pré training' : t === 'intra' ? 'Intra training' : 'Post training'
+                        return <span className={styles.pwBadge}>{lbl}</span>
+                      })()}
                       {mealFoods.length > 0 && (
                         <span className={styles.mealHeadMacros}>
                           {mealTotals.kcal} kcal | P:{mealTotals.p.toFixed(1)}g G:{mealTotals.g.toFixed(1)}g L:{mealTotals.l.toFixed(1)}g
@@ -1129,7 +1145,7 @@ export default function MealEditor({
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
-                        onClick={(e) => { e.stopPropagation(); setClipboardMeal({ foods: mealFoods.map(f => ({ ...f })), pre_workout: meal.pre_workout, time: meal.time }); toast('Repas copie', 'success') }}
+                        onClick={(e) => { e.stopPropagation(); setClipboardMeal({ foods: mealFoods.map(f => ({ ...f })), pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null), time: meal.time }); toast('Repas copie', 'success') }}
                         title="Copier ce repas"
                       >
                         <i className="fa-solid fa-copy" />
@@ -1144,15 +1160,26 @@ export default function MealEditor({
                           <i className="fa-solid fa-paste" />
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className={`btn btn-outline btn-sm ${meal.pre_workout ? 'active' : ''}`}
-                        onClick={(e) => { e.stopPropagation(); togglePreWorkout(mealIdx) }}
-                        title="Pre training"
-                        style={meal.pre_workout ? { borderColor: 'var(--primary)', color: 'var(--primary)', background: 'rgba(179,8,8,0.1)' } : {}}
-                      >
-                        <i className="fa-solid fa-person-running" />
-                      </button>
+                      {(() => {
+                        const t = meal.workout_timing ?? (meal.pre_workout ? 'pre' : null)
+                        const active = !!t
+                        const title = t === 'pre' ? 'Pré training (cliquer : intra)'
+                          : t === 'intra' ? 'Intra training (cliquer : post)'
+                          : t === 'post' ? 'Post training (cliquer : aucun)'
+                          : 'Marquer training (pré/intra/post)'
+                        return (
+                          <button
+                            type="button"
+                            className={`btn btn-outline btn-sm ${active ? 'active' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); togglePreWorkout(mealIdx) }}
+                            title={title}
+                            style={active ? { borderColor: 'var(--primary)', color: 'var(--primary)', background: 'rgba(179,8,8,0.1)' } : {}}
+                          >
+                            <i className="fa-solid fa-person-running" />
+                            {t && <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700 }}>{t === 'pre' ? 'PRÉ' : t === 'intra' ? 'INTRA' : 'POST'}</span>}
+                          </button>
+                        )
+                      })()}
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"

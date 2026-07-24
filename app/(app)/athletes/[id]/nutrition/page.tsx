@@ -605,7 +605,7 @@ export default function NutritionPage() {
         return {
           label: item.label,
           time: item.time,
-          pre_workout: item.pre_workout,
+          pre_workout: item.pre_workout, workout_timing: item.workout_timing ?? (item.pre_workout ? 'pre' : null),
           // Heal: assigner un id stable si absent pour éviter les collisions côté UI.
           variants: item.variants.map((v: any, vi: number) => ({
             id: (typeof v?.id === 'string' && v.id.trim()) ? v.id : newVariantId(),
@@ -614,7 +614,7 @@ export default function NutritionPage() {
           })),
         }
       }
-      if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, time: item.time }
+      if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, workout_timing: item.workout_timing ?? (item.pre_workout ? 'pre' : null), time: item.time }
       if (Array.isArray(item)) return { foods: item }
       return { foods: [] }
     }
@@ -657,7 +657,7 @@ export default function NutritionPage() {
         return {
           label: item.label,
           time: item.time,
-          pre_workout: item.pre_workout,
+          pre_workout: item.pre_workout, workout_timing: item.workout_timing ?? (item.pre_workout ? 'pre' : null),
           variants: item.variants.map((v: any, vi: number) => ({
             id: (typeof v?.id === 'string' && v.id.trim()) ? v.id : newVariantId(),
             label: v?.label || `Variante ${vi + 1}`,
@@ -665,7 +665,7 @@ export default function NutritionPage() {
           })),
         }
       }
-      if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, time: item.time }
+      if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, workout_timing: item.workout_timing ?? (item.pre_workout ? 'pre' : null), time: item.time }
       if (Array.isArray(item)) return { foods: item }
       return { foods: [] }
     }
@@ -768,7 +768,7 @@ export default function NutritionPage() {
             return {
               label: meal.label,
               time: meal.time,
-              pre_workout: meal.pre_workout,
+              pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null),
               variants: meal.variants.map((v: any, vi: number) => ({
                 id: (typeof v?.id === 'string' && v.id.trim()) ? v.id : newVariantId(),
                 label: v?.label || `Variante ${vi + 1}`,
@@ -777,7 +777,7 @@ export default function NutritionPage() {
             } as MealData
           }
           if (meal && !Array.isArray(meal) && meal.foods) {
-            return { foods: meal.foods, pre_workout: meal.pre_workout, time: meal.time }
+            return { foods: meal.foods, pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null), time: meal.time }
           }
           return { foods: Array.isArray(meal) ? meal : [] }
         })
@@ -1110,7 +1110,11 @@ export default function NutritionPage() {
                     <div key={idx} className={styles.mealRow}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                         <div className={styles.mealHeader} style={{ marginBottom: 0 }}>R{idx + 1}</div>
-                        {meal?.pre_workout && <span className={styles.pwBadge}>Pre training</span>}
+                        {(() => {
+                          const t = (meal?.workout_timing as string | null | undefined) ?? (meal?.pre_workout ? 'pre' : null)
+                          if (!t) return null
+                          return <span className={styles.pwBadge}>{t === 'pre' ? 'Pré training' : t === 'intra' ? 'Intra training' : 'Post training'}</span>
+                        })()}
                       </div>
                       {items.length === 0 ? (
                         <div style={{ color: 'var(--text3)', fontStyle: 'italic', fontSize: 13 }}>Aucun aliment</div>
