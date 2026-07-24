@@ -26,6 +26,7 @@ interface ExerciseRowProps {
   onRemoveSet: (exIdx: number, setIdx: number) => void
   onAddDropSet: (exIdx: number) => void
   onAddRestPause: (exIdx: number) => void
+  onAddBackoff?: (exIdx: number) => void
   onToggleSuperset: (exIdx: number) => void
   onToggleMaxRep: (exIdx: number, setIdx: number, isMax: boolean) => void
   onNotesChange?: (exIdx: number, notes: string) => void
@@ -72,6 +73,7 @@ export default function ExerciseRow({
   onRemoveSet,
   onAddDropSet,
   onAddRestPause,
+  onAddBackoff,
   onToggleSuperset,
   onToggleMaxRep,
   onNotesChange,
@@ -200,6 +202,11 @@ export default function ExerciseRow({
               <button onClick={() => { onAddRestPause(index); setMenuOpen(false) }}>
                 <i className="fa-solid fa-pause" /> Rest-pause
               </button>
+              {onAddBackoff && (
+                <button onClick={() => { onAddBackoff(index); setMenuOpen(false) }}>
+                  <i className="fa-solid fa-arrow-down-short-wide" /> Back-off set
+                </button>
+              )}
               <hr className={styles.tpExMenuDivider} />
               <button onClick={() => { onRemove(index); setMenuOpen(false) }} style={{ color: 'var(--danger)' }}>
                 <i className="fa-solid fa-trash" /> Supprimer

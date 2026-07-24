@@ -260,6 +260,17 @@ export default function ProgramEditor({
     }))
   }, [activeSession])
 
+  const addBackoff = useCallback((exIdx: number) => {
+    setSessions((prev) => prev.map((s, i) => {
+      if (i !== activeSession) return s
+      const exercises = s.exercises.map((ex, ei) => {
+        if (ei !== exIdx) return ex
+        return { ...ex, sets: [...ex.sets, { reps: '8-12', tempo: '30X1', repos: '1m30', backoff_pct: '20', type: 'backoff' as const }] }
+      })
+      return { ...s, exercises }
+    }))
+  }, [activeSession])
+
   const toggleSuperset = useCallback((exIdx: number) => {
     setSessions((prev) => prev.map((s, i) => {
       if (i !== activeSession) return s
@@ -673,6 +684,7 @@ export default function ProgramEditor({
             onRemoveSet={removeSet}
             onAddDropSet={addDropSet}
             onAddRestPause={addRestPause}
+            onAddBackoff={addBackoff}
             onToggleSuperset={toggleSuperset}
             onToggleMaxRep={toggleMaxRep}
             onNotesChange={onNotesChange}
