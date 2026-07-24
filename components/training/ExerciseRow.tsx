@@ -11,6 +11,8 @@ export interface ExerciseData {
   muscle_principal: string
   sets: SetData[]
   superset_id?: string | null
+  /** Consigne libre du coach sur cet exercice, visible par l'athlète. */
+  coach_notes?: string | null
 }
 
 interface ExerciseRowProps {
@@ -26,6 +28,7 @@ interface ExerciseRowProps {
   onAddRestPause: (exIdx: number) => void
   onToggleSuperset: (exIdx: number) => void
   onToggleMaxRep: (exIdx: number, setIdx: number, isMax: boolean) => void
+  onNotesChange?: (exIdx: number, notes: string) => void
 }
 
 interface ExerciseDB {
@@ -71,6 +74,7 @@ export default function ExerciseRow({
   onAddRestPause,
   onToggleSuperset,
   onToggleMaxRep,
+  onNotesChange,
 }: ExerciseRowProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [swapOpen, setSwapOpen] = useState(false)
@@ -231,6 +235,20 @@ export default function ExerciseRow({
       <button className={styles.tpAddSetBtn} onClick={() => onAddSet(index)}>
         <i className="fa-solid fa-plus" /> Serie
       </button>
+      {onNotesChange && (
+        <div style={{ marginTop: 8 }}>
+          <input
+            type="text"
+            value={exercise.coach_notes || ''}
+            onChange={(e) => onNotesChange(index, e.target.value)}
+            placeholder="Consigne pour l'athlète (ex: contracte bien les pecs)…"
+            style={{
+              width: '100%', fontSize: 12, padding: '6px 10px', borderRadius: 8,
+              border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)',
+            }}
+          />
+        </div>
+      )}
     </div>
   )
 }

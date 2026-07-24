@@ -202,6 +202,13 @@ export default function ProgramEditor({
     }))
   }, [activeSession])
 
+  const onNotesChange = useCallback((exIdx: number, notes: string) => {
+    setSessions((prev) => prev.map((s, i) => {
+      if (i !== activeSession) return s
+      return { ...s, exercises: s.exercises.map((ex, ei) => ei === exIdx ? { ...ex, coach_notes: notes } : ex) }
+    }))
+  }, [activeSession])
+
   const addSet = useCallback((exIdx: number) => {
     setSessions((prev) => prev.map((s, i) => {
       if (i !== activeSession) return s
@@ -364,6 +371,7 @@ export default function ProgramEditor({
               base.sets = e.sets
             }
             if (e.superset_id) base.superset_id = e.superset_id
+            if (e.coach_notes && e.coach_notes.trim()) base.coach_notes = e.coach_notes.trim()
             return base
           }),
         }))
@@ -437,6 +445,7 @@ export default function ProgramEditor({
               base.sets = e.sets
             }
             if (e.superset_id) base.superset_id = e.superset_id
+            if (e.coach_notes && e.coach_notes.trim()) base.coach_notes = e.coach_notes.trim()
             return base
           })
           const { error } = await supabase
@@ -666,6 +675,7 @@ export default function ProgramEditor({
             onAddRestPause={addRestPause}
             onToggleSuperset={toggleSuperset}
             onToggleMaxRep={toggleMaxRep}
+            onNotesChange={onNotesChange}
           />
         )}
       </div>
