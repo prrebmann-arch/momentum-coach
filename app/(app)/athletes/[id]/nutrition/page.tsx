@@ -160,6 +160,35 @@ export default function NutritionPage() {
   const [diets, setDiets] = useState<DietGroup[]>(cached?.diets ?? [])
   const [view, setView] = useState<View>('list')
 
+  // Objectifs journaliers (sel + eau) affichés en haut de la diète.
+  const [dietGoals, setDietGoals] = useState<{ sel_g: string; water_goal_ml: string }>({ sel_g: '', water_goal_ml: '' })
+  const [goalsSaving, setGoalsSaving] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    supabase.from('athletes').select('sel_g, water_goal_ml').eq('id', athleteId).maybeSingle()
+      .then(({ data }: { data: { sel_g?: number | null; water_goal_ml?: number | null } | null }) => {
+        if (cancelled || !data) return
+        setDietGoals({
+          sel_g: data.sel_g != null ? String(data.sel_g) : '',
+          water_goal_ml: data.water_goal_ml != null ? String(data.water_goal_ml) : '',
+        })
+      })
+    return () => { cancelled = true }
+  }, [athleteId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function saveDietGoals() {
+    setGoalsSaving(true)
+    try {
+      const payload: Record<string, number | null> = {
+        sel_g: dietGoals.sel_g.trim() ? Number(dietGoals.sel_g) : null,
+        water_goal_ml: dietGoals.water_goal_ml.trim() ? Number(dietGoals.water_goal_ml) : null,
+      }
+      const { error } = await supabase.from('athletes').update(payload).eq('id', athleteId)
+      if (error) { console.error('[nutrition] saveDietGoals', error); toast(`Erreur: ${error.message}`, 'error') }
+      else toast('Objectifs enregistrés', 'success')
+    } finally { setGoalsSaving(false) }
+  }
+
   // Editor state
   const [editPlanId, setEditPlanId] = useState<string | null>(null)
   const [editPlanName, setEditPlanName] = useState('')
@@ -1034,6 +1063,23 @@ export default function NutritionPage() {
             onClick={() => { setDetailType('rest'); setDetailPlan(currentR) }}
           >
             <i className="fa-solid fa-bed" /> Jour OFF
+          </button>
+        </div>
+
+        {/* Objectifs journaliers : sel + eau */}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', padding: '12px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <label style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600 }}><i className="fa-solid fa-shaker" style={{ marginRight: 4 }} />Sel (g/jour)</label>
+            <input type="number" step="0.5" style={{ width: 90, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: 13 }}
+              value={dietGoals.sel_g} placeholder="—" onChange={(e) => setDietGoals((p) => ({ ...p, sel_g: e.target.value }))} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <label style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600 }}><i className="fa-solid fa-tint" style={{ marginRight: 4 }} />Eau (ml/jour)</label>
+            <input type="number" step="100" style={{ width: 110, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)', fontSize: 13 }}
+              value={dietGoals.water_goal_ml} placeholder="—" onChange={(e) => setDietGoals((p) => ({ ...p, water_goal_ml: e.target.value }))} />
+          </div>
+          <button className="btn btn-red btn-sm" disabled={goalsSaving} onClick={saveDietGoals}>
+            {goalsSaving ? '…' : 'Enregistrer'}
           </button>
         </div>
 
