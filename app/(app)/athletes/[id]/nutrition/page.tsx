@@ -144,6 +144,28 @@ function DayVariantTabs({
   )
 }
 
+// Vignette d'une photo de repas prise par l'athlète : signe le path athlete-photos
+// (URL valable 1h) et affiche une miniature cliquable qui ouvre le plein écran.
+function MealPhotoThumb({ path, onOpen }: { path: string; onOpen: (url: string) => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    if (/^https?:\/\//.test(path)) { setUrl(path); return }
+    const supabase = createClient()
+    supabase.storage.from('athlete-photos').createSignedUrl(path, 3600).then(({ data }: { data: { signedUrl: string } | null }) => {
+      if (!cancelled) setUrl(data?.signedUrl ?? null)
+    })
+    return () => { cancelled = true }
+  }, [path])
+  if (!url) return <div style={{ width: 64, height: 64, borderRadius: 6, background: 'var(--bg3)' }} />
+  return (
+    <button type="button" onClick={() => onOpen(url)} style={{ padding: 0, border: 'none', background: 'none', cursor: 'zoom-in', lineHeight: 0 }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="Repas" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border-subtle)' }} />
+    </button>
+  )
+}
+
 export default function NutritionPage() {
   const params = useParams<{ id: string }>()
   const athleteId = params.id
@@ -172,6 +194,9 @@ export default function NutritionPage() {
   // don't accidentally drop the variant_label and re-deactivate sibling Push/Pull/etc.
   const [editVariantLabel, setEditVariantLabel] = useState<string | null>(null)
   const [editVariantOrder, setEditVariantOrder] = useState<number>(0)
+
+  // Photo repas plein écran (URL signée)
+  const [photoLightbox, setPhotoLightbox] = useState<string | null>(null)
 
   // Detail view
   const [detailPlan, setDetailPlan] = useState<NutritionPlan | null>(null)
@@ -1443,9 +1468,25 @@ export default function NutritionPage() {
                       ))}
                     </div>
                   )}
+                  {Array.isArray(meal?.photos) && meal.photos.length > 0 && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border-subtle)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {meal.photos.map((p: string) => (
+                        <MealPhotoThumb key={p} path={p} onOpen={setPhotoLightbox} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })}
+          </div>
+        )}
+        {photoLightbox && (
+          <div
+            onClick={() => setPhotoLightbox(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, cursor: 'zoom-out' }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photoLightbox} alt="Repas" style={{ maxWidth: '92vw', maxHeight: '92vh', borderRadius: 8 }} />
           </div>
         )}
       </div>
