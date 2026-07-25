@@ -274,12 +274,20 @@ function BilanConfigEditor({
                 <span style={{ color: 'var(--text2)', fontSize: 13 }}>jours</span>
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-              <span style={{ color: 'var(--text2)', fontSize: 13 }}>Prochain bilan complet le</span>
-              <input type="date" className="form-control" style={{ width: 'auto' }}
-                value={formData.complete_bilan_anchor_date || ''}
-                onChange={(e) => updateField('complete_bilan_anchor_date', e.target.value || null)} />
-            </div>
+          </div>
+        )}
+
+        {completeFreq !== 'none' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--text2)', fontSize: 13 }}>
+              {completeFreq === 'custom' ? 'Prochain bilan complet le' : 'Forcer un bilan complet le'}
+            </span>
+            <input type="date" className="form-control" style={{ width: 'auto' }}
+              value={formData.complete_bilan_anchor_date || ''}
+              onChange={(e) => updateField('complete_bilan_anchor_date', e.target.value || null)} />
+            {completeFreq !== 'custom' && formData.complete_bilan_anchor_date && (
+              <span style={{ color: 'var(--text3)', fontSize: 11 }}>(en plus de la récurrence)</span>
+            )}
           </div>
         )}
 

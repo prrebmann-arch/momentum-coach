@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS bilan_questions (
   label TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN (
     'slider_1_10', 'number', 'text_short', 'text_long',
-    'boolean', 'time', 'single_choice', 'multiple_choice', 'photo'
+    'boolean', 'time', 'single_choice', 'multiple_choice', 'photo', 'video'
   )),
   options JSONB,
   unit TEXT,
