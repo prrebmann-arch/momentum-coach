@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { PROG_PHASES } from '@/lib/constants'
 import { toDateStr, getWeekNumber, isBilanDate } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -198,6 +198,43 @@ function StatValue({ val, inverted }: { val: number | null; inverted?: boolean }
   return <span style={{ color }}>{v}</span>
 }
 
+// ── Pages de colonnes (infos custom + builtin orphelines) ──
+
+interface ColumnDef {
+  key: string          // clé de lecture : custom_data[key] ou b[field]
+  label: string
+  input_type: string
+  unit?: string
+  source: 'custom' | 'builtin'
+}
+
+// Champs déjà affichés en page 1 (colonnes fixes) ou gérés par une UI dédiée
+// (notes bloc-semaine, mensurations, photos builtin) → exclus des pages 2+.
+const PAGE1_FIELDS = new Set([
+  'weight', 'adherence', 'session_enjoyment', 'cardio_minutes', 'soreness',
+  'stress', 'energy', 'sick_signs', 'sleep_quality', 'bedtime', 'wakeup',
+  'positive_week', 'negative_week', 'general_notes',
+  'belly_measurement', 'hip_measurement', 'thigh_measurement',
+  'photo_front', 'photo_side', 'photo_back',
+])
+
+const COLS_PER_PAGE = 6
+
+/** Construit les pages de colonnes 2+ à partir des questions du template. */
+function buildExtraColumnPages(templateQuestions?: TemplateQuestion[]): ColumnDef[][] {
+  const cols: ColumnDef[] = []
+  const seen = new Set<string>()
+  for (const q of templateQuestions || []) {
+    const key = q.type === 'custom' ? (q.key || '') : (q.field || '')
+    if (!key || seen.has(key) || PAGE1_FIELDS.has(key)) continue
+    seen.add(key)
+    cols.push({ key, label: q.label || key, input_type: q.input_type || 'text_short', source: q.type === 'custom' ? 'custom' : 'builtin' })
+  }
+  const pages: ColumnDef[][] = []
+  for (let i = 0; i < cols.length; i += COLS_PER_PAGE) pages.push(cols.slice(i, i + COLS_PER_PAGE))
+  return pages
+}
+
 // ── Main Component ──
 
 export default function BilanAccordion({
@@ -216,6 +253,11 @@ export default function BilanAccordion({
   const [openWeeks, setOpenWeeks] = useState<Set<string>>(new Set())
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set())
   const [bubbleText, setBubbleText] = useState<string | null>(null)
+  // Pagination des colonnes du tableau : 0 = colonnes de base, 1+ = pages custom.
+  const [columnPage, setColumnPage] = useState(0)
+  const extraColumnPages = useMemo(() => buildExtraColumnPages(templateQuestions), [templateQuestions])
+  const totalColumnPages = 1 + extraColumnPages.length
+  const currentExtraCols: ColumnDef[] | null = columnPage > 0 ? (extraColumnPages[columnPage - 1] || []) : null
 
   // Bilan scheduling config
   const cbFreq = athlete.complete_bilan_frequency || 'weekly'
@@ -416,8 +458,46 @@ export default function BilanAccordion({
     })
   }, [])
 
+  // Rendu d'une cellule pour une colonne custom/builtin-orpheline (pages 2+).
+  function renderCustomCell(b: DailyReport, c: ColumnDef): React.ReactNode {
+    const raw = c.source === 'custom' ? b.custom_data?.[c.key] : (b as Record<string, unknown>)[c.key]
+    if (raw == null || raw === '') return <span style={{ color: 'var(--text3)' }}>—</span>
+    if (c.input_type === 'photo' || c.input_type === 'video') {
+      if (typeof raw !== 'string') return <span style={{ color: 'var(--text3)' }}>—</span>
+      return <CustomMediaAnswer value={raw} kind={c.input_type === 'video' ? 'video' : 'photo'} />
+    }
+    if (c.input_type === 'boolean') return <span>{raw ? 'Oui' : 'Non'}</span>
+    if (c.input_type === 'multiple_choice' && Array.isArray(raw)) return <span title={raw.join(', ')}>{raw.join(', ')}</span>
+    const txt = String(raw) + (c.unit ? ` ${c.unit}` : '')
+    return <span title={txt} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{txt}</span>
+  }
+
   return (
     <div className={styles.container}>
+      {/* Navigation des pages de colonnes (base ↔ suivi perso) */}
+      {totalColumnPages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginBottom: 4 }}>
+          <button
+            className={styles.noteBtn}
+            disabled={columnPage === 0}
+            onClick={() => setColumnPage((p) => Math.max(0, p - 1))}
+            title="Colonnes précédentes"
+          >
+            <i className="fas fa-chevron-left" />
+          </button>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', minWidth: 90, textAlign: 'center' }}>
+            {columnPage === 0 ? 'Mesures' : `Suivi perso ${columnPage}/${extraColumnPages.length}`}
+          </span>
+          <button
+            className={styles.noteBtn}
+            disabled={columnPage >= totalColumnPages - 1}
+            onClick={() => setColumnPage((p) => Math.min(totalColumnPages - 1, p + 1))}
+            title="Colonnes suivantes"
+          >
+            <i className="fas fa-chevron-right" />
+          </button>
+        </div>
+      )}
       {weekData.map((w) => {
         const isCurrent = w.key === todayMonday
         const isFuture = w.key > todayMonday
@@ -661,6 +741,15 @@ export default function BilanAccordion({
 
               {/* Daily detail table */}
               <div className={styles.daysTable}>
+                {currentExtraCols ? (
+                  <div className={styles.dayHdr} style={{ gridTemplateColumns: `94px repeat(${currentExtraCols.length}, minmax(70px, 1fr)) 36px` }}>
+                    <span className={styles.dhDate}>DATE</span>
+                    {currentExtraCols.map((c) => (
+                      <span key={c.key} title={c.label}>{c.label.toUpperCase()}</span>
+                    ))}
+                    <span className={styles.dhEnd} />
+                  </div>
+                ) : (
                 <div className={styles.dayHdr}>
                   <span className={styles.dhDate}>DATE</span>
                   <span>POIDS</span>
@@ -689,6 +778,7 @@ export default function BilanAccordion({
                     )}
                   </span>
                 </div>
+                )}
 
                 {sorted.map(b => {
                   const d = new Date(b.date + 'T00:00:00')
@@ -697,6 +787,22 @@ export default function BilanAccordion({
                   const dayStr = DAY_NAMES[di] + ' ' + d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
                   const noteId = 'bn-' + (b.id || b.date)
                   const isBDay = isBilanDate(b.date, cbFreq, cbIntv, cbDay, cbAnchor, cbMonthDay)
+
+                  // Page custom : ligne avec les colonnes du template (pas les mesures de base)
+                  if (currentExtraCols) {
+                    return (
+                      <div key={b.date} className={`${styles.dayRow} ${isBDay ? styles.bilanDay : ''}`} style={{ gridTemplateColumns: `94px repeat(${currentExtraCols.length}, minmax(70px, 1fr)) 36px` }}>
+                        <span className={styles.drDate}>
+                          {dayStr}
+                          {isBDay && <> <i className="fas fa-star" style={{ color: 'var(--warning)', fontSize: 9 }} /></>}
+                        </span>
+                        {currentExtraCols.map((c) => (
+                          <span key={c.key} className={styles.dr}>{renderCustomCell(b, c)}</span>
+                        ))}
+                        <span className={styles.drEnd} />
+                      </div>
+                    )
+                  }
                   const hasPhotos = b.photo_front || b.photo_side || b.photo_back
                   const hasMens = b.belly_measurement || b.hip_measurement || b.thigh_measurement
                   const customQuestions = (templateQuestions || []).filter(q => q.type === 'custom' && q.key)
@@ -778,17 +884,8 @@ export default function BilanAccordion({
                               <i className="fas fa-camera" style={{ color: 'var(--primary)', fontSize: 11 }} />
                             </button>
                           )}
-                          {customAnswers.length > 0 && (
-                            <button
-                              className={styles.noteBtn}
-                              onClick={(e) => { e.stopPropagation(); if (!openNotes.has(noteId)) toggleNote(noteId) }}
-                              title={`${customAnswers.length} réponse${customAnswers.length > 1 ? 's' : ''} en plus`}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 2, color: 'var(--primary)', fontWeight: 700, fontSize: 10 }}
-                            >
-                              <i className="fas fa-paperclip" style={{ fontSize: 10 }} />
-                              {customAnswers.length}
-                            </button>
-                          )}
+                          {/* Réponses custom : désormais consultables via les pages
+                              de colonnes (flèches en haut), plus de pastille ici. */}
                           {hasDetails && (
                             <button
                               className={styles.noteBtn}
@@ -828,45 +925,7 @@ export default function BilanAccordion({
                               </div>
                             </div>
                           )}
-                          {/* Notes générales retirées du détail : déjà affichées
-                              dans le bloc-semaine (Positif/Négatif/Notes). */}
-                          {customAnswers.length > 0 && (() => {
-                            const mediaAnswers = customAnswers.filter(q => (q.input_type === 'photo' || q.input_type === 'video') && typeof b.custom_data![q.key!] === 'string' && b.custom_data![q.key!])
-                            const textAnswers = customAnswers.filter(q => !mediaAnswers.includes(q))
-                            // Grille photos adaptative : 1→1col, 2→2, 3→3, 4→2, 5/6→3 (audit #5)
-                            const cols = mediaAnswers.length <= 1 ? 1 : mediaAnswers.length === 2 ? 2 : mediaAnswers.length === 4 ? 2 : 3
-                            return (
-                              <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--bg3)', borderRadius: 8 }}>
-                                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Réponses personnalisées</div>
-                                {textAnswers.length > 0 && (
-                                  <div className={styles.detailGrid}>
-                                    {textAnswers.map(q => {
-                                      const raw = b.custom_data![q.key!]
-                                      let display = String(raw)
-                                      if (q.input_type === 'boolean') display = raw ? 'Oui' : 'Non'
-                                      else if (q.input_type === 'multiple_choice' && Array.isArray(raw)) display = raw.join(', ')
-                                      return (
-                                        <div key={q.key} className={styles.detailItem}>
-                                          <span className={styles.detailLabel}>{q.label}</span>
-                                          <span>{display}</span>
-                                        </div>
-                                      )
-                                    })}
-                                  </div>
-                                )}
-                                {mediaAnswers.length > 0 && (
-                                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8, marginTop: textAnswers.length > 0 ? 8 : 0 }}>
-                                    {mediaAnswers.map(q => (
-                                      <div key={q.key} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                        <span className={styles.detailLabel}>{q.label}</span>
-                                        <CustomMediaAnswer value={b.custom_data![q.key!] as string} kind={q.input_type as 'photo' | 'video'} full />
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })()}
+                          {/* Réponses custom : consultables via les pages de colonnes (flèches en haut). */}
                         </div>
                       )}
                     </div>
