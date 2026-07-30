@@ -28,6 +28,15 @@ export interface MealVariant {
   foods: FoodItem[]
 }
 
+export function editorDayLabel(mealType: string): string {
+  const m = (mealType || '').toLowerCase()
+  if (m === 'training' || m === 'entrainement') return 'Entraînement'
+  if (m === 'rest' || m === 'repos') return 'Repos'
+  return mealType || 'Jour'
+}
+type DayTab = { mealType: string; label: string }
+const MAX_DAYS = 6
+
 export type WorkoutTiming = 'pre' | 'intra' | 'post'
 
 export interface MealData {
@@ -52,7 +61,7 @@ interface MealEditorProps {
   /** Initial plan name */
   planName: string
   /** Initial meal type: 'training' | 'rest' */
-  mealType: 'training' | 'rest'
+  mealType: string
   /** Initial meals data */
   initialMeals: MealData[]
   /** Macro-only mode */
@@ -60,7 +69,11 @@ interface MealEditorProps {
   /** Initial macro targets (for macro-only mode) */
   initialMacros?: { calories: number; proteines: number; glucides: number; lipides: number }
   /** Pre-loaded other tab data (ON if editing OFF, or vice versa) */
-  initialOtherTab?: { type: 'training' | 'rest'; id: string; meals: MealData[]; macros: { calories: number; proteines: number; glucides: number; lipides: number }; variantLabel?: string | null; variantOrder?: number } | null
+  initialOtherTab?: { type: string; id: string; meals: MealData[]; macros: { calories: number; proteines: number; glucides: number; lipides: number }; variantLabel?: string | null; variantOrder?: number } | null
+  /** Onglets de jour initiaux (défaut : Entraînement + Repos). */
+  initialTabs?: DayTab[]
+  /** Contenu préchargé des onglets non-actifs, keyé par meal_type. */
+  initialTempMeals?: Record<string, { meals: MealData[]; macros?: { calories: number; proteines: number; glucides: number; lipides: number } }>
   /** Day-variant label of the plan being edited (Push, Pull, Standard...). null/undefined = singleton plan. */
   variantLabel?: string | null
   /** Day-variant ordering position. */
@@ -293,7 +306,7 @@ function VariantCompareCards({ meal }: { meal: MealData }) {
 
 export default function MealEditor({
   athleteId, planId, planName: initName, mealType: initMealType,
-  initialMeals, macroOnly: initMacroOnly, initialMacros, initialOtherTab, onSaved, onBack,
+  initialMeals, macroOnly: initMacroOnly, initialMacros, initialOtherTab, initialTabs, initialTempMeals, onSaved, onBack,
   templateMode = false, templateId = null, templateCategory: initCategory = '', existingCategories: initExistingCategories = [],
   templateType,
   variantLabel = null, variantOrder = 0,
@@ -309,7 +322,12 @@ export default function MealEditor({
   // Inline-edit state for variant labels: { mealIdx, variantId } | null.
   const [editingVariantOf, setEditingVariantOf] = useState<{ mealIdx: number; variantId: string } | null>(null)
   const [planName, setPlanName] = useState(initName)
-  const [mealType, setMealType] = useState<'training' | 'rest'>(initMealType)
+  const [tabs, setTabs] = useState<DayTab[]>(() =>
+    initialTabs && initialTabs.length
+      ? initialTabs
+      : [{ mealType: 'training', label: 'Entraînement' }, { mealType: 'rest', label: 'Repos' }]
+  )
+  const [mealType, setMealType] = useState<string>(initMealType)
   const [isMacroOnly, setIsMacroOnly] = useState(initMacroOnly || false)
   const [manualMacros, setManualMacros] = useState(initialMacros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 })
   const [saving, setSaving] = useState(false)
@@ -342,14 +360,13 @@ export default function MealEditor({
   // Paired plan: store meals for the other tab so we can save both on submit
   // Pre-load from initialOtherTab if provided
   const [tempMeals, setTempMeals] = useState<Record<string, { meals: MealData[]; macros?: { calories: number; proteines: number; glucides: number; lipides: number } }>>(() => {
-    if (initialOtherTab) {
-      return { [initialOtherTab.type]: { meals: initialOtherTab.meals, macros: initialOtherTab.macros } }
-    }
+    if (initialTempMeals) return initialTempMeals
+    if (initialOtherTab) return { [initialOtherTab.type]: { meals: initialOtherTab.meals, macros: initialOtherTab.macros } }
     return {}
   })
 
   // When switching meal type, store current meals and load other tab's meals
-  function switchMealType(newType: 'training' | 'rest') {
+  function switchMealType(newType: string) {
     if (newType === mealType) return
     // Always persist current tab's meals AND macros so we can reload them later
     setTempMeals((prev) => ({ ...prev, [mealType]: { meals: [...meals], macros: { ...manualMacros } } }))
@@ -939,18 +956,16 @@ export default function MealEditor({
           {/* ON/OFF tabs: show for athlete mode OR diete template */}
           {(!templateMode || templateType === 'diete') && (
             <div style={{ display: 'flex', gap: 4, marginLeft: 12 }}>
-              <button
-                className={`athlete-tab-btn ${mealType === 'training' ? 'active' : ''}`}
-                onClick={() => switchMealType('training')}
-              >
-                <i className="fa-solid fa-dumbbell" /> Jour ON
-              </button>
-              <button
-                className={`athlete-tab-btn ${mealType === 'rest' ? 'active' : ''}`}
-                onClick={() => switchMealType('rest')}
-              >
-                <i className="fa-solid fa-bed" /> Jour OFF
-              </button>
+              {tabs.map((t) => (
+                <button
+                  key={t.mealType}
+                  type="button"
+                  className={`athlete-tab-btn ${mealType === t.mealType ? 'active' : ''}`}
+                  onClick={() => switchMealType(t.mealType)}
+                >
+                  {t.label}
+                </button>
+              ))}
             </div>
           )}
           {/* Single day label for jour template */}
