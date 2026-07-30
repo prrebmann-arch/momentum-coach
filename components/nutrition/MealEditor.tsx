@@ -694,6 +694,12 @@ export default function MealEditor({
         calories: totals.kcal, proteines: Math.round(totals.p), glucides: Math.round(totals.g), lipides: Math.round(totals.l),
       }
 
+      // Snapshot de tous les onglets (tempMeals + onglet courant) avant sauvegarde.
+      const allTabsData: Record<string, { meals: MealData[]; macros: { calories: number; proteines: number; glucides: number; lipides: number } }> = {
+        ...Object.fromEntries(Object.entries(tempMeals).map(([k, v]) => [k, { meals: v.meals, macros: v.macros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 } }])),
+        [mealType]: { meals, macros: manualMacros },
+      }
+
       if (templateMode) {
         // ── TEMPLATE MODE: save to nutrition_templates ──
         let tplMealsPayload: any
@@ -703,30 +709,35 @@ export default function MealEditor({
         let tplLipides = finalTotals.lipides
 
         if (templateType === 'diete') {
-          // Full diet: store both ON and OFF in meals_data as { training: {...}, rest: {...} }
-          const currentTab = {
-            meals: mealsData,
-            macros: finalTotals,
-            macro_only: isMacroOnly || false,
-          }
-          const otherType = mealType === 'training' ? 'rest' : 'training'
-          const otherTemp = tempMeals[otherType]
+          // Full diet: store one day per tab in meals_data as { [meal_type]: {...}, ... }
+          tplMealsPayload = {}
+          type TabPayload = { meals: any; macros: { calories: number; proteines: number; glucides: number; lipides: number }; macro_only: boolean }
+          let firstTabData: TabPayload | null = null
+          let trainingData: TabPayload | null = null
 
-          let otherTab: any = { meals: [], macros: { calories: 0, proteines: 0, glucides: 0, lipides: 0 }, macro_only: false }
-          if (otherTemp) {
-            // hasFood doit prendre en compte variants ET foods.
-            const hasFood = otherTemp.meals.some((m) => getMealFoods(m).length > 0)
-            const otherMacros = otherTemp.macros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 }
-            const hasMacros = !!(otherMacros.calories || otherMacros.proteines || otherMacros.glucides || otherMacros.lipides)
+          for (const [mt, data] of Object.entries(allTabsData)) {
+            const isCurrent = mt === mealType
+            const tabMeals = data.meals
+            const tabMacros = data.macros
+            const hasFood = tabMeals.some((m) => getMealFoods(m).length > 0)
+            const hasMacros = !!(tabMacros.calories || tabMacros.proteines || tabMacros.glucides || tabMacros.lipides)
 
-            if (isMacroOnly && hasMacros) {
-              otherTab = {
+            let tabPayload: TabPayload
+
+            if (isCurrent) {
+              tabPayload = {
+                meals: mealsData,
+                macros: finalTotals,
+                macro_only: isMacroOnly || false,
+              }
+            } else if (isMacroOnly && hasMacros) {
+              tabPayload = {
                 meals: [],
-                macros: otherMacros,
+                macros: tabMacros,
                 macro_only: true,
               }
             } else if (hasFood) {
-              const otherWithFreshMacros: MealData[] = otherTemp.meals.map((m) => {
+              const tabWithFreshMacros: MealData[] = tabMeals.map((m) => {
                 if (hasVariants(m)) {
                   return {
                     ...m,
@@ -741,33 +752,35 @@ export default function MealEditor({
                   foods: (m.foods ?? []).map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
                 }
               })
-              const otherMealsData = serializeMealsForSave(otherWithFreshMacros)
+              const tabMealsData = serializeMealsForSave(tabWithFreshMacros)
               // Totals: pour les repas multi-variantes, on prend la 1re variante comme canonique.
-              const otherTotals = otherWithFreshMacros.reduce(
+              const tabTotals = tabWithFreshMacros.reduce(
                 (acc, m) => {
                   const t = calcMealTotals(getMealFoods(m))
                   return { kcal: acc.kcal + t.kcal, p: acc.p + t.p, g: acc.g + t.g, l: acc.l + t.l }
                 },
                 { kcal: 0, p: 0, g: 0, l: 0 },
               )
-              otherTab = {
-                meals: otherMealsData,
-                macros: { calories: Math.round(otherTotals.kcal), proteines: Math.round(otherTotals.p), glucides: Math.round(otherTotals.g), lipides: Math.round(otherTotals.l) },
+              tabPayload = {
+                meals: tabMealsData,
+                macros: { calories: Math.round(tabTotals.kcal), proteines: Math.round(tabTotals.p), glucides: Math.round(tabTotals.g), lipides: Math.round(tabTotals.l) },
                 macro_only: false,
               }
+            } else {
+              tabPayload = { meals: [], macros: { calories: 0, proteines: 0, glucides: 0, lipides: 0 }, macro_only: false }
             }
+
+            tplMealsPayload[mt] = tabPayload
+            if (!firstTabData) firstTabData = tabPayload
+            if (mt === 'training') trainingData = tabPayload
           }
 
-          tplMealsPayload = {
-            [mealType]: currentTab,
-            [otherType]: otherTab,
-          }
-          // Use training day macros for the summary columns
-          const trainingData = mealType === 'training' ? currentTab : otherTab
-          tplCalories = trainingData.macros.calories
-          tplProteines = trainingData.macros.proteines
-          tplGlucides = trainingData.macros.glucides
-          tplLipides = trainingData.macros.lipides
+          // Use training day macros for the summary columns, else the first tab.
+          const summaryData = trainingData || firstTabData || { macros: { calories: 0, proteines: 0, glucides: 0, lipides: 0 } }
+          tplCalories = summaryData.macros.calories
+          tplProteines = summaryData.macros.proteines
+          tplGlucides = summaryData.macros.glucides
+          tplLipides = summaryData.macros.lipides
         } else {
           // jour or repas: flat array of meals
           tplMealsPayload = mealsData
@@ -798,129 +811,45 @@ export default function MealEditor({
         return
       } else {
         // ── ATHLETE MODE: save to nutrition_plans ──
-        const today = new Date().toISOString().split('T')[0]
+        const today2 = new Date().toISOString().split('T')[0]
 
         // Day variants : si on édite une variante de jour (variant_label set), on ne désactive
         // QUE les versions précédentes de cette variante (même nom + même variant_label).
         // Sinon (plan singleton legacy), on désactive comme avant tous les plans du même meal_type.
-        if (variantLabel) {
-          await supabase
-            .from('nutrition_plans')
-            .update({ actif: false })
-            .eq('athlete_id', athleteId)
-            .eq('meal_type', mealType)
-            .eq('nom', planName.trim())
-            .eq('variant_label', variantLabel)
-        } else {
-          await supabase
-            .from('nutrition_plans')
-            .update({ actif: false })
-            .eq('athlete_id', athleteId)
-            .eq('meal_type', mealType)
-            .is('variant_label', null)
-        }
+        // Boucle sur TOUS les onglets (tempMeals + onglet courant) : une ligne nutrition_plans par jour.
+        for (const [mt, data] of Object.entries(allTabsData)) {
+          const isCurrent = mt === mealType
+          const tabMeals = data.meals
+          const tabMacros = data.macros
+          const hasFood = tabMeals.some((m) => getMealFoods(m).length > 0)
+          const hasMacros = !!(tabMacros.calories || tabMacros.proteines || tabMacros.glucides || tabMacros.lipides)
+          if (!isCurrent && !hasFood && !(isMacroOnly && hasMacros)) continue
 
-        const payload: Record<string, any> = {
-          nom: planName.trim(),
-          meal_type: mealType,
-          meals_data: JSON.stringify(mealsData),
-          calories_objectif: finalTotals.calories,
-          proteines: finalTotals.proteines,
-          glucides: finalTotals.glucides,
-          lipides: finalTotals.lipides,
-          valid_from: today,
-          actif: true,
-          athlete_id: athleteId,
-          coach_id: user.id,
-          macro_only: isMacroOnly || false,
-          // Préserver day-variant label/order pour ne pas écraser une variante en "Standard".
-          variant_label: variantLabel ?? null,
-          variant_order: variantOrder ?? 0,
-        }
-
-        const { error } = await supabase.from('nutrition_plans').insert(payload)
-        if (error) { toast('Erreur: ' + error.message, 'error'); setSaving(false); return }
-
-        // Save paired plan (other tab) if coach edited it during this session
-        const otherType = mealType === 'training' ? 'rest' : 'training'
-        const otherTemp = tempMeals[otherType]
-        if (otherTemp) {
-          const hasFood = otherTemp.meals.some((m) => getMealFoods(m).length > 0)
-          const otherMacros = otherTemp.macros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 }
-          const hasMacros = !!(otherMacros.calories || otherMacros.proteines || otherMacros.glucides || otherMacros.lipides)
-          // Save if user filled foods OR (macro-only) entered any macro values
-          if (hasFood || (isMacroOnly && hasMacros)) {
-            // Comme pour la tab principale : si la complémentaire a un variant_label, scoper la deactivation.
-            if (variantLabel) {
-              await supabase
-                .from('nutrition_plans')
-                .update({ actif: false })
-                .eq('athlete_id', athleteId)
-                .eq('meal_type', otherType)
-                .eq('nom', planName.trim())
-                .eq('variant_label', variantLabel)
-            } else {
-              await supabase
-                .from('nutrition_plans')
-                .update({ actif: false })
-                .eq('athlete_id', athleteId)
-                .eq('meal_type', otherType)
-                .is('variant_label', null)
-            }
-
-            const otherWithFreshMacros: MealData[] = otherTemp.meals.map((m) => {
-              if (hasVariants(m)) {
-                return {
-                  ...m,
-                  variants: m.variants!.map((v) => ({
-                    ...v,
-                    foods: v.foods.map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
-                  })),
-                }
-              }
-              return {
-                ...m,
-                foods: (m.foods ?? []).map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
-              }
-            })
-            const otherMealsData = isMacroOnly ? [] : serializeMealsForSave(otherWithFreshMacros)
-
-            let otherCal = 0, otherP = 0, otherG = 0, otherL = 0
-            if (isMacroOnly) {
-              otherCal = otherMacros.calories
-              otherP = otherMacros.proteines
-              otherG = otherMacros.glucides
-              otherL = otherMacros.lipides
-            } else {
-              // Totals: 1re variante = canonique pour les repas multi-variantes.
-              const totals = otherWithFreshMacros.reduce(
-                (acc, m) => {
-                  const t = calcMealTotals(getMealFoods(m))
-                  return { kcal: acc.kcal + t.kcal, p: acc.p + t.p, g: acc.g + t.g, l: acc.l + t.l }
-                },
-                { kcal: 0, p: 0, g: 0, l: 0 },
-              )
-              otherCal = Math.round(totals.kcal); otherP = Math.round(totals.p); otherG = Math.round(totals.g); otherL = Math.round(totals.l)
-            }
-
-            await supabase.from('nutrition_plans').insert({
-              nom: planName.trim(),
-              meal_type: otherType,
-              meals_data: JSON.stringify(otherMealsData),
-              calories_objectif: otherCal,
-              proteines: otherP,
-              glucides: otherG,
-              lipides: otherL,
-              valid_from: today,
-              actif: true,
-              athlete_id: athleteId,
-              coach_id: user.id,
-              macro_only: isMacroOnly || false,
-              // Apparier la variante de jour côté complémentaire (Push ↔ Push, etc.).
-              variant_label: variantLabel ?? null,
-              variant_order: variantOrder ?? 0,
-            })
+          // Désactiver l'ancienne version de ce jour (même scoping variant_label qu'avant).
+          if (variantLabel) {
+            await supabase.from('nutrition_plans').update({ actif: false })
+              .eq('athlete_id', athleteId).eq('meal_type', mt).eq('nom', planName.trim()).eq('variant_label', variantLabel)
+          } else {
+            await supabase.from('nutrition_plans').update({ actif: false })
+              .eq('athlete_id', athleteId).eq('meal_type', mt).is('variant_label', null)
           }
+
+          const withFresh: MealData[] = tabMeals.map((m) => hasVariants(m)
+            ? { ...m, variants: m.variants!.map((v) => ({ ...v, foods: v.foods.map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })) })) }
+            : { ...m, foods: (m.foods ?? []).map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })) })
+          const mealsPayload = isMacroOnly ? [] : serializeMealsForSave(withFresh)
+          let cal = 0, p = 0, g = 0, l = 0
+          if (isMacroOnly) { cal = tabMacros.calories; p = tabMacros.proteines; g = tabMacros.glucides; l = tabMacros.lipides }
+          else {
+            const t = withFresh.reduce((acc, m) => { const x = calcMealTotals(getMealFoods(m)); return { kcal: acc.kcal + x.kcal, p: acc.p + x.p, g: acc.g + x.g, l: acc.l + x.l } }, { kcal: 0, p: 0, g: 0, l: 0 })
+            cal = Math.round(t.kcal); p = Math.round(t.p); g = Math.round(t.g); l = Math.round(t.l)
+          }
+          await supabase.from('nutrition_plans').insert({
+            nom: planName.trim(), meal_type: mt, meals_data: JSON.stringify(mealsPayload),
+            calories_objectif: cal, proteines: p, glucides: g, lipides: l,
+            valid_from: today2, actif: true, athlete_id: athleteId, coach_id: user.id,
+            macro_only: isMacroOnly || false, variant_label: variantLabel ?? null, variant_order: variantOrder ?? 0,
+          })
         }
 
         // Notify athlete (DB + push)
