@@ -384,6 +384,44 @@ export default function MealEditor({
     setMealType(newType)
   }
 
+  function addTab() {
+    if (tabs.length >= MAX_DAYS) { toast('Maximum 6 jours', 'error'); return }
+    const name = prompt('Nom du jour', `Jour ${tabs.length + 1}`)?.trim()
+    if (!name) return
+    if (tabs.some((t) => t.mealType.toLowerCase() === name.toLowerCase())) { toast('Ce nom existe déjà', 'error'); return }
+    // Snapshot onglet courant, crée l'onglet vide, bascule dessus.
+    setTempMeals((prev) => ({ ...prev, [mealType]: { meals: [...meals], macros: { ...manualMacros } } }))
+    setTabs((prev) => [...prev, { mealType: name, label: name }])
+    setMeals([{ foods: [] }])
+    setManualMacros({ calories: 0, proteines: 0, glucides: 0, lipides: 0 })
+    setActiveMealIdx(0)
+    setMealType(name)
+  }
+
+  function renameTab(oldType: string) {
+    const next = prompt('Nom du jour', oldType)?.trim()
+    if (!next || next === oldType) return
+    if (tabs.some((t) => t.mealType.toLowerCase() === next.toLowerCase())) { toast('Ce nom existe déjà', 'error'); return }
+    setTabs((prev) => prev.map((t) => t.mealType === oldType ? { mealType: next, label: next } : t))
+    setTempMeals((prev) => {
+      if (!(oldType in prev)) return prev
+      const { [oldType]: moved, ...rest } = prev
+      return { ...rest, [next]: moved }
+    })
+    if (mealType === oldType) setMealType(next)
+  }
+
+  function removeTab(mt: string) {
+    if (tabs.length <= 1) return
+    if (!confirm(`Retirer le jour "${editorDayLabel(mt)}" ?`)) return
+    setTabs((prev) => prev.filter((t) => t.mealType !== mt))
+    setTempMeals((prev) => { const { [mt]: _drop, ...rest } = prev; return rest })
+    if (mealType === mt) {
+      const fallback = tabs.find((t) => t.mealType !== mt)!
+      switchMealType(fallback.mealType)
+    }
+  }
+
   // Load aliments cache — skip when cache exists unless caller bumped foodRefreshKey
   useEffect(() => {
     if (alimentsCache && foodRefreshKey === 0) return
@@ -852,6 +890,15 @@ export default function MealEditor({
           })
         }
 
+        // Nettoyage des jours renommés/retirés : désactive les lignes orphelines
+        // (meal_type qui ne sont plus dans `tabs`) pour cette diète/variante.
+        const keepTypes = tabs.map((t) => t.mealType)
+        if (keepTypes.length) {
+          const q = supabase.from('nutrition_plans').update({ actif: false })
+            .eq('athlete_id', athleteId).eq('nom', planName.trim()).not('meal_type', 'in', `(${keepTypes.map((t) => `"${t.replace(/"/g, '')}"`).join(',')})`)
+          if (variantLabel) { await q.eq('variant_label', variantLabel) } else { await q.is('variant_label', null) }
+        }
+
         // Notify athlete (DB + push)
         const { data: athlete } = await supabase.from('athletes').select('user_id').eq('id', athleteId!).single()
         if (athlete?.user_id) {
@@ -884,17 +931,23 @@ export default function MealEditor({
           </div>
           {/* ON/OFF tabs: show for athlete mode OR diete template */}
           {(!templateMode || templateType === 'diete') && (
-            <div style={{ display: 'flex', gap: 4, marginLeft: 12 }}>
-              {tabs.map((t) => (
-                <button
-                  key={t.mealType}
-                  type="button"
-                  className={`athlete-tab-btn ${mealType === t.mealType ? 'active' : ''}`}
-                  onClick={() => switchMealType(t.mealType)}
-                >
-                  {t.label}
-                </button>
+            <div style={{ display: 'flex', gap: 4, marginLeft: 12, alignItems: 'center' }}>
+              {tabs.map((t, i) => (
+                <span key={t.mealType} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                  <button
+                    type="button"
+                    className={`athlete-tab-btn ${mealType === t.mealType ? 'active' : ''}`}
+                    onClick={() => switchMealType(t.mealType)}
+                  >
+                    {t.label}
+                  </button>
+                  <button type="button" title="Renommer" onClick={() => renameTab(t.mealType)}>&#9998;</button>
+                  {i >= 2 && <button type="button" title="Retirer" onClick={() => removeTab(t.mealType)}>&#10005;</button>}
+                </span>
               ))}
+              {tabs.length < MAX_DAYS && (
+                <button type="button" title="Ajouter un jour" onClick={addTab}>+ Jour</button>
+              )}
             </div>
           )}
           {/* Single day label for jour template */}
