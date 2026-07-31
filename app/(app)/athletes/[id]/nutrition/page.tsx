@@ -11,7 +11,7 @@ import { getPageCache, setPageCache } from '@/lib/utils'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import Toggle from '@/components/ui/Toggle'
 import Skeleton from '@/components/ui/Skeleton'
-import { type MealData } from '@/components/nutrition/MealEditor'
+import { type MealData, editorDayLabel } from '@/components/nutrition/MealEditor'
 import { getMealFoods, newVariantId } from '@/lib/nutrition'
 import styles from '@/styles/nutrition.module.css'
 
@@ -185,7 +185,7 @@ export default function NutritionPage() {
   // Editor state
   const [editPlanId, setEditPlanId] = useState<string | null>(null)
   const [editPlanName, setEditPlanName] = useState('')
-  const [editMealType, setEditMealType] = useState<'training' | 'rest'>('training')
+  const [editMealType, setEditMealType] = useState<string>('training')
   const [editMeals, setEditMeals] = useState<MealData[]>([{ foods: [] }])
   const [editMacroOnly, setEditMacroOnly] = useState(false)
   const [editMacros, setEditMacros] = useState({ calories: 0, proteines: 0, glucides: 0, lipides: 0 })
@@ -194,6 +194,8 @@ export default function NutritionPage() {
   // don't accidentally drop the variant_label and re-deactivate sibling Push/Pull/etc.
   const [editVariantLabel, setEditVariantLabel] = useState<string | null>(null)
   const [editVariantOrder, setEditVariantOrder] = useState<number>(0)
+  const [editTabs, setEditTabs] = useState<{ mealType: string; label: string }[] | undefined>(undefined)
+  const [editTempMeals, setEditTempMeals] = useState<Record<string, { meals: MealData[]; macros?: { calories: number; proteines: number; glucides: number; lipides: number } }> | undefined>(undefined)
 
   // Photo repas plein écran (URL signée)
   const [photoLightbox, setPhotoLightbox] = useState<string | null>(null)
@@ -771,80 +773,66 @@ export default function NutritionPage() {
   }, [])
 
   // Open editor for existing diet
-  const editDiet = useCallback(async (tId: string | null, rId: string | null) => {
-    // Load both ON and OFF plans
-    const idsToLoad = [tId, rId].filter(Boolean) as string[]
-    if (!idsToLoad.length) return
-    const { data: loadedPlans } = await supabase.from('nutrition_plans').select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, created_at, macro_only, meal_times, variant_label, variant_order').in('id', idsToLoad)
+  function parseMealsData(plan: any): MealData[] {
+    try {
+      const parsed = typeof plan.meals_data === 'string' ? JSON.parse(plan.meals_data) : (plan.meals_data || [])
+      const m = (parsed as any[]).map((meal: any) => {
+        if (meal && !Array.isArray(meal) && Array.isArray(meal.variants) && meal.variants.length > 0) {
+          // Preserve multi-variant meal — heal des id manquants pour MealEditor.
+          return {
+            label: meal.label,
+            time: meal.time,
+            pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null),
+            variants: meal.variants.map((v: any, vi: number) => ({
+              id: (typeof v?.id === 'string' && v.id.trim()) ? v.id : newVariantId(),
+              label: v?.label || `Variante ${vi + 1}`,
+              foods: Array.isArray(v?.foods) ? v.foods : [],
+            })),
+          } as MealData
+        }
+        if (meal && !Array.isArray(meal) && meal.foods) {
+          return { foods: meal.foods, pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null), time: meal.time }
+        }
+        return { foods: Array.isArray(meal) ? meal : [] }
+      })
+      return m.length ? m : [{ foods: [] }]
+    } catch { return [{ foods: [] }] }
+  }
+
+  const editDiet = useCallback(async (dietName: string) => {
+    if (!dietName) return
+    const { data: loadedPlans } = await supabase
+      .from('nutrition_plans')
+      .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, created_at, macro_only, meal_times, variant_label, variant_order')
+      .eq('nom', dietName)
+      .eq('athlete_id', athleteId)
+      .eq('actif', true)
     if (!loadedPlans?.length) { toast('Plan introuvable', 'error'); return }
 
-    // Find ON and OFF
-    const tPlan = (loadedPlans as NutritionPlan[]).find((p) => p.meal_type === 'training' || p.meal_type === 'entrainement') || null
-    const rPlan = (loadedPlans as NutritionPlan[]).find((p) => p.meal_type === 'rest' || p.meal_type === 'repos') || null
-    const primary = tPlan || rPlan
+    // 1 onglet par meal_type distinct (garder la 1ere variante rencontree par type)
+    const byType = new Map<string, NutritionPlan>()
+    for (const p of loadedPlans as NutritionPlan[]) if (!byType.has(p.meal_type)) byType.set(p.meal_type, p)
+    const rankT = (mt: string) => { const m = mt.toLowerCase(); return m === 'training' || m === 'entrainement' ? 0 : (m === 'rest' || m === 'repos' ? 1 : 2) }
+    const ordered = Array.from(byType.values()).sort((a, b) => rankT(a.meal_type) - rankT(b.meal_type))
+    const tabs = ordered.map((p) => ({ mealType: p.meal_type, label: editorDayLabel(p.meal_type) }))
+    const primary = ordered[0]
     if (!primary) { toast('Plan introuvable', 'error'); return }
+    const temp: Record<string, { meals: MealData[]; macros: { calories: number; proteines: number; glucides: number; lipides: number } }> = {}
+    for (const p of ordered.slice(1)) temp[p.meal_type] = { meals: parseMealsData(p), macros: { calories: p.calories_objectif || 0, proteines: p.proteines || 0, glucides: p.glucides || 0, lipides: p.lipides || 0 } }
 
-    function parseMealsData(plan: any): MealData[] {
-      try {
-        const parsed = typeof plan.meals_data === 'string' ? JSON.parse(plan.meals_data) : (plan.meals_data || [])
-        const m = (parsed as any[]).map((meal: any) => {
-          if (meal && !Array.isArray(meal) && Array.isArray(meal.variants) && meal.variants.length > 0) {
-            // Preserve multi-variant meal — heal des id manquants pour MealEditor.
-            return {
-              label: meal.label,
-              time: meal.time,
-              pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null),
-              variants: meal.variants.map((v: any, vi: number) => ({
-                id: (typeof v?.id === 'string' && v.id.trim()) ? v.id : newVariantId(),
-                label: v?.label || `Variante ${vi + 1}`,
-                foods: Array.isArray(v?.foods) ? v.foods : [],
-              })),
-            } as MealData
-          }
-          if (meal && !Array.isArray(meal) && meal.foods) {
-            return { foods: meal.foods, pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null), time: meal.time }
-          }
-          return { foods: Array.isArray(meal) ? meal : [] }
-        })
-        return m.length ? m : [{ foods: [] }]
-      } catch { return [{ foods: [] }] }
-    }
-
-    const primaryMeals = parseMealsData(primary)
-
+    setEditTabs(tabs)
+    setEditTempMeals(temp)
     setEditPlanId(primary.id)
     setEditPlanName(primary.nom || '')
-    setEditMealType((primary.meal_type === 'rest' || primary.meal_type === 'repos') ? 'rest' : 'training')
-    setEditMeals(primaryMeals)
-    setEditMacroOnly(primary.macro_only || false)
-    setEditMacros({
-      calories: primary.calories_objectif || 0,
-      proteines: primary.proteines || 0,
-      glucides: primary.glucides || 0,
-      lipides: primary.lipides || 0,
-    })
+    setEditMealType(primary.meal_type)
+    setEditMeals(parseMealsData(primary))
+    setEditMacroOnly(primary.macro_only === true)
+    setEditMacros({ calories: primary.calories_objectif || 0, proteines: primary.proteines || 0, glucides: primary.glucides || 0, lipides: primary.lipides || 0 })
     setEditVariantLabel((primary as any).variant_label ?? null)
     setEditVariantOrder((primary as any).variant_order ?? 0)
-
-    // Pre-load the other tab's data into MealEditor's tempMeals
-    const otherPlan = primary === tPlan ? rPlan : tPlan
-    if (otherPlan) {
-      const otherMeals = parseMealsData(otherPlan)
-      const otherType = (otherPlan.meal_type === 'rest' || otherPlan.meal_type === 'repos') ? 'rest' : 'training'
-      setEditOtherTab({
-        type: otherType,
-        id: otherPlan.id,
-        meals: otherMeals,
-        macros: { calories: otherPlan.calories_objectif || 0, proteines: otherPlan.proteines || 0, glucides: otherPlan.glucides || 0, lipides: otherPlan.lipides || 0 },
-        variantLabel: (otherPlan as any).variant_label ?? null,
-        variantOrder: (otherPlan as any).variant_order ?? 0,
-      })
-    } else {
-      setEditOtherTab(null)
-    }
-
+    setEditOtherTab(null)
     setView('editor')
-  }, [supabase, toast])
+  }, [supabase, toast, athleteId])
 
   // Open detail view — fetch full plan data (meals_data) on demand
   const viewDiet = useCallback(async (tPlan: NutritionPlan | null, rPlan: NutritionPlan | null, diet?: DietGroup) => {
@@ -989,6 +977,8 @@ export default function NutritionPage() {
         macroOnly={editMacroOnly}
         initialMacros={editMacros}
         initialOtherTab={editOtherTab}
+        initialTabs={editTabs}
+        initialTempMeals={editTempMeals}
         variantLabel={editVariantLabel}
         variantOrder={editVariantOrder}
         onSaved={() => { setView('list'); loadPlans() }}
@@ -1040,7 +1030,7 @@ export default function NutritionPage() {
           </div>
           <button
             className="btn btn-red btn-sm"
-            onClick={() => editDiet(currentT?.id || null, currentR?.id || null)}
+            onClick={() => editDiet(detailDiet?.name || plan?.nom || '')}
           >
             <i className="fa-solid fa-pen" /> Modifier
           </button>
@@ -1306,7 +1296,7 @@ export default function NutritionPage() {
                 <span style={{ fontWeight: 700 }}>{plan?.nom || 'Plan supprime'}</span>
                 {plan?.meal_type && (
                   <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 8, background: 'var(--bg3)', color: 'var(--text3)', marginLeft: 8 }}>
-                    {plan.meal_type === 'training' ? 'Entrainement' : 'Repos'}
+                    {editorDayLabel(plan.meal_type || '')}
                   </span>
                 )}
               </div>
@@ -1610,7 +1600,7 @@ export default function NutritionPage() {
                       <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button
                           className={styles.dietBtn}
-                          onClick={() => editDiet(d.tPlan?.id || null, d.rPlan?.id || null)}
+                          onClick={() => editDiet(d.name)}
                           title="Modifier"
                         >
                           <i className="fa-solid fa-pen" />
