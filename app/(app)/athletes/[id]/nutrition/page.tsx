@@ -938,19 +938,14 @@ export default function NutritionPage() {
   }, [supabase, toast, loadPlans])
 
   // Toggle active
-  const toggleActive = useCallback(async (isActive: boolean, tId: string | null, rId: string | null) => {
+  const toggleActive = useCallback(async (isActive: boolean, ids: string[]) => {
+    const planIds = (ids || []).filter(Boolean)
     if (isActive) {
       await supabase.from('nutrition_plans').update({ actif: false }).eq('athlete_id', athleteId)
-      const activations: Promise<any>[] = []
-      if (tId) activations.push(Promise.resolve(supabase.from('nutrition_plans').update({ actif: true }).eq('id', tId)))
-      if (rId) activations.push(Promise.resolve(supabase.from('nutrition_plans').update({ actif: true }).eq('id', rId)))
-      await Promise.all(activations)
+      if (planIds.length) await supabase.from('nutrition_plans').update({ actif: true }).in('id', planIds)
       toast('Diete activee !', 'success')
     } else {
-      const deactivations: Promise<any>[] = []
-      if (tId) deactivations.push(Promise.resolve(supabase.from('nutrition_plans').update({ actif: false }).eq('id', tId)))
-      if (rId) deactivations.push(Promise.resolve(supabase.from('nutrition_plans').update({ actif: false }).eq('id', rId)))
-      await Promise.all(deactivations)
+      if (planIds.length) await supabase.from('nutrition_plans').update({ actif: false }).in('id', planIds)
       toast('Diete desactivee', 'success')
     }
     loadPlans()
@@ -1539,14 +1534,18 @@ export default function NutritionPage() {
             </thead>
             <tbody>
               {diets.map((d, idx) => {
-                const tK = d.tPlan?.calories_objectif ?? null
-                const rK = d.rPlan?.calories_objectif ?? null
-                const tMacro = d.tPlan ? `P:${d.tPlan.proteines || 0} G:${d.tPlan.glucides || 0} L:${d.tPlan.lipides || 0}` : ''
-                const rMacro = d.rPlan ? `P:${d.rPlan.proteines || 0} G:${d.rPlan.glucides || 0} L:${d.rPlan.lipides || 0}` : ''
-
                 // Get all versions for this diet sorted by date (newest first)
                 const allVersions = plans.filter((p) => (p.nom || 'Diete') === d.name).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
                 const isExpanded = expandedVersions === d.name
+
+                // Fallback for diets whose days are all renamed away from training/rest
+                // (tPlan/rPlan null): show the first two plans of the group instead.
+                const fallbackT = d.tPlan ?? allVersions[0] ?? null
+                const fallbackR = d.rPlan ?? allVersions.find((p) => p.id !== fallbackT?.id) ?? null
+                const tK = fallbackT?.calories_objectif ?? null
+                const rK = fallbackR?.calories_objectif ?? null
+                const tMacro = fallbackT ? `P:${fallbackT.proteines || 0} G:${fallbackT.glucides || 0} L:${fallbackT.lipides || 0}` : ''
+                const rMacro = fallbackR ? `P:${fallbackR.proteines || 0} G:${fallbackR.glucides || 0} L:${fallbackR.lipides || 0}` : ''
 
                 return (
                   <React.Fragment key={idx}>
@@ -1594,7 +1593,7 @@ export default function NutritionPage() {
                       <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
                         <Toggle
                           checked={d.isActive}
-                          onChange={(checked) => toggleActive(checked, d.tPlan?.id || null, d.rPlan?.id || null)}
+                          onChange={(checked) => toggleActive(checked, d.ids)}
                         />
                       </td>
                       <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
