@@ -820,3 +820,27 @@
   color: var(--text);
   font-family: inherit;
 }
+
+/* ── CycleCalculator ── */
+.cycleCalc { margin-top: 16px; padding: 16px; background: var(--bg2); border: 1px solid var(--border-subtle); border-radius: 10px; }
+.cycleCalcTitle { font-size: 13px; font-weight: 700; color: var(--text2); margin-bottom: 10px; }
+.cycleCalcRows { display: flex; flex-direction: column; gap: 6px; }
+.cycleCalcRow { display: flex; align-items: center; gap: 8px; }
+.cycleCalcLabel { flex: 1; font-size: 13px; color: var(--text); }
+.cycleCalcInput { width: 56px; padding: 4px 8px; background: var(--bg3); border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text); text-align: center; }
+.cycleCalcUnit { font-size: 12px; color: var(--text3); width: 64px; }
+.cycleCalcCycleLen { margin-top: 8px; font-size: 12px; color: var(--text3); }
+.cycleCalcEmpty { margin-top: 10px; font-size: 12px; color: var(--text3); font-style: italic; }
+.cycleCalcResults { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-top: 12px; }
+.cycleCalcResult { text-align: center; padding: 10px; background: var(--bg3); border-radius: 8px; }
+.cycleCalcResult b { display: block; font-size: 18px; color: var(--primary); }
+.cycleCalcResult span { font-size: 11px; color: var(--text3); }
+
+.dayTabsBar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: 12px; }
+.dayTab { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px; background: var(--bg3); border: 1px solid var(--border-subtle); cursor: pointer; }
+.dayTabActive { background: var(--primary); border-color: var(--primary); }
+.dayTabActive .dayTabLabel { color: #fff; }
+.dayTabLabel { font-size: 13px; font-weight: 600; color: var(--text); border: none; background: none; cursor: pointer; padding: 0; }
+.dayTabIcon { border: none; background: none; cursor: pointer; font-size: 12px; opacity: .7; padding: 0 2px; }
+.dayTabActive .dayTabIcon { color: #fff; }
+.dayTabAdd { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px; background: transparent; border: 1px dashed var(--primary); color: var(--primary); font-size: 13px; font-weight: 600; cursor: pointer; }
