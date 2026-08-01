@@ -332,6 +332,19 @@ export default function PhotoCompare({ isOpen, onClose, initialType, initialDate
               <i className="fas fa-chevron-left" />
             </button>
             <div className={styles.pcCellWrap}>
+              <div className={styles.pcCaption}>
+                <span className={styles.pcCaptionText}>
+                  <b className={styles.pcCaptionTag}>AVANT</b>
+                  {leftPhoto && <span className={styles.pcCaptionDate}>{formatPhotoDate(leftPhoto.date)}</span>}
+                </span>
+                <button
+                  className={styles.pcResetLink}
+                  onClick={() => leftWrapRef.current?.resetTransform()}
+                  title="Réinitialiser le zoom"
+                >
+                  <i className="fas fa-arrows-rotate" /> Réinitialiser
+                </button>
+              </div>
               <div ref={leftCellRef} className={`${styles.pcCell} ${fading ? styles.pcImgFade : ''}`}>
                 <TransformWrapper
                   ref={leftWrapRef}
@@ -354,15 +367,7 @@ export default function PhotoCompare({ isOpen, onClose, initialType, initialDate
                     )}
                   </TransformComponent>
                 </TransformWrapper>
-                <button
-                  className={styles.pcResetBtn}
-                  onClick={() => leftWrapRef.current?.resetTransform()}
-                  title="Réinitialiser le zoom"
-                >
-                  <i className="fas fa-arrows-rotate" />
-                </button>
               </div>
-              {leftPhoto && <div className={styles.pcDate}>{formatPhotoDate(leftPhoto.date)}</div>}
             </div>
             <button
               className={`${styles.pcNav} ${styles.pcNavNext}`}
@@ -378,6 +383,19 @@ export default function PhotoCompare({ isOpen, onClose, initialType, initialDate
           {/* Right side (current) */}
           <div className={styles.pcSide}>
             <div className={styles.pcCellWrap}>
+              <div className={styles.pcCaption}>
+                <span className={styles.pcCaptionText}>
+                  <b className={`${styles.pcCaptionTag} ${styles.pcCaptionTagAfter}`}>APRÈS</b>
+                  {rightPhoto && <span className={`${styles.pcCaptionDate} ${styles.pcCaptionDateAfter}`}>{formatPhotoDate(rightPhoto.date)}</span>}
+                </span>
+                <button
+                  className={styles.pcResetLink}
+                  onClick={() => rightWrapRef.current?.resetTransform()}
+                  title="Réinitialiser le zoom"
+                >
+                  <i className="fas fa-arrows-rotate" /> Réinitialiser
+                </button>
+              </div>
               <div ref={rightCellRef} className={styles.pcCell}>
                 <TransformWrapper
                   ref={rightWrapRef}
@@ -400,16 +418,7 @@ export default function PhotoCompare({ isOpen, onClose, initialType, initialDate
                     )}
                   </TransformComponent>
                 </TransformWrapper>
-                <button
-                  className={styles.pcResetBtn}
-                  onClick={() => rightWrapRef.current?.resetTransform()}
-                  title="Réinitialiser le zoom"
-                >
-                  <i className="fas fa-arrows-rotate" />
-                </button>
-                <div className={styles.pcBadgeCurrent}>ACTUEL</div>
               </div>
-              {rightPhoto && <div className={styles.pcDate}>{formatPhotoDate(rightPhoto.date)}</div>}
             </div>
           </div>
         </div>
