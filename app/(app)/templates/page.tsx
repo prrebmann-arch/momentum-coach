@@ -462,14 +462,14 @@ export default function TemplatesPage() {
           return {
             label: m.label as string | undefined,
             time: m.time as string | undefined,
-            pre_workout: m.pre_workout as boolean | undefined,
+            pre_workout: m.pre_workout as boolean | undefined, workout_timing: (m.workout_timing ?? (m.pre_workout ? 'pre' : null)) as ('pre'|'intra'|'post'|null),
             variants,
           }
         }
         // Simple meal
         return {
           foods: ((m.foods as Array<Record<string, unknown>>) || []).map((f) => normalizeFood(f)),
-          pre_workout: m.pre_workout as boolean | undefined,
+          pre_workout: m.pre_workout as boolean | undefined, workout_timing: (m.workout_timing ?? (m.pre_workout ? 'pre' : null)) as ('pre'|'intra'|'post'|null),
           time: m.time as string | undefined,
         }
       })

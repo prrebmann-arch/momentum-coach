@@ -145,6 +145,12 @@ All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer 
 - `OnboardingTemplatesList.tsx`, `OnboardingTemplateEditor.tsx` — templates de timeline d'onboarding. Auto-seed "Onboarding Premium" au premier visite (13 points sur J0→J30, basé sur process Romain Synergy).
 - `TrainingTemplateEditor.tsx` (legacy — `ProgramEditor` is preferred).
 
+### `supplements/`
+- `ComplementBoard.tsx` — onglet Complément : DnD (dnd-kit) sur la timeline de la diète. Zones = moment_prise (`R{n}_avant|pendant|apres`, `a_jeun`, `coucher`, `*_training`). Sans diète active → EmptyState.
+- `ComplementLibrary.tsx` — catalogue coach (table `supplements` type complement, dédup par nom), carrés draggables avec dosage inline + panneau ⓘ.
+- `ComplementChip.tsx` — puce assignation (clic=édition, X=retrait `actif=false`+`end_date`).
+- Logique pure : `lib/complement.ts` (zones ↔ moment_prise, `extractDietMeals`).
+
 ### `business/`
 - `BusinessDashboard.tsx`, `LeadsPipeline.tsx`, `MessagesInbox.tsx`, `InstagramAnalytics.tsx`, `ContentPlanner.tsx`, `AutomationsPage.tsx`.
 
@@ -350,6 +356,7 @@ useRefetchOnResume(load, loading)
 | Modify the Templates page (5 sub-tabs) | `app/(app)/templates/page.tsx` |
 | Modify supplement templates list / editor | `components/templates/SupplementTemplatesList.tsx`, `components/templates/SupplementTemplateEditor.tsx` |
 | Modify supplement template import on athlete page | `app/(app)/athletes/[id]/supplements/page.tsx` (`openImportModal`, `importTemplate`) |
+| Modify complément board (DnD, zones, librairie) | `components/supplements/*`, `lib/complement.ts` |
 | Stripe Connect onboarding | `app/api/stripe/route.ts` (action `connect-start`/`connect-status`/`connect-complete`) |
 | Stripe payment / cancel | `app/api/stripe/route.ts` (action `create-checkout`, `cancel`, `cancellation-request`) |
 | Stripe webhook handlers | `app/api/stripe/webhook/route.ts` |

@@ -21,12 +21,16 @@ function formatRepos(secs: number): string {
 }
 
 export interface SetData {
-  type: 'normal' | 'dropset' | 'rest_pause'
+  type: 'normal' | 'dropset' | 'rest_pause' | 'backoff'
   reps: string
   tempo?: string
   repos?: string
   reps_rp?: string
   rest_pause_time?: string
+  /** Drop set : % de baisse de charge vs série principale (ex "30"). Optionnel. */
+  drop_pct?: string
+  /** Back-off set : % de baisse vs dernière série effectuée (ex "20"). */
+  backoff_pct?: string
 }
 
 interface SetRowProps {
@@ -93,7 +97,79 @@ export default function SetRow({ exIdx, setIdx, set, onChange, onRemove, onToggl
             readOnly={readOnly}
           />
         </td>
-        <td><span style={{ color: 'var(--text3)', fontSize: 11 }}>&mdash;</span></td>
+        <td>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+            <span style={{ color: 'var(--text3)', fontSize: 11 }}>-</span>
+            <input
+              type="text"
+              value={set.drop_pct || ''}
+              placeholder="30"
+              style={{ width: 34 }}
+              onChange={(e) => onChange(exIdx, setIdx, 'drop_pct', e.target.value)}
+              readOnly={readOnly}
+              title="% de baisse de charge (optionnel)"
+            />
+            <span style={{ color: 'var(--text3)', fontSize: 11 }}>%</span>
+          </span>
+        </td>
+        <td>
+          {!readOnly && (
+            <button className={styles.tpSetDel} onClick={() => onRemove(exIdx, setIdx)}>
+              <i className="fa-solid fa-times" />
+            </button>
+          )}
+        </td>
+      </tr>
+    )
+  }
+
+  if (set.type === 'backoff') {
+    return (
+      <tr className={styles.tpSetRow}>
+        <td className={styles.tpSetNum}>
+          <span className={`${styles.tpSetTypeTag} ${styles.tpTagDrop}`} style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}>BACK</span>
+        </td>
+        <td>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <input
+              type="text"
+              value={set.reps}
+              placeholder="8-12"
+              style={{ width: 44 }}
+              onChange={(e) => onChange(exIdx, setIdx, 'reps', e.target.value)}
+              readOnly={readOnly}
+            />
+            <span style={{ color: 'var(--text3)', fontSize: 11 }}>-</span>
+            <input
+              type="text"
+              value={set.backoff_pct || ''}
+              placeholder="20"
+              style={{ width: 30 }}
+              onChange={(e) => onChange(exIdx, setIdx, 'backoff_pct', e.target.value)}
+              readOnly={readOnly}
+              title="% de baisse vs dernière série effectuée"
+            />
+            <span style={{ color: 'var(--text3)', fontSize: 11 }}>%</span>
+          </span>
+        </td>
+        <td>
+          <input
+            type="text"
+            value={set.tempo || ''}
+            placeholder="30X1"
+            onChange={(e) => onChange(exIdx, setIdx, 'tempo', e.target.value)}
+            readOnly={readOnly}
+          />
+        </td>
+        <td>
+          <input
+            type="text"
+            value={set.repos || ''}
+            placeholder="1m30"
+            onChange={(e) => onChange(exIdx, setIdx, 'repos', e.target.value)}
+            readOnly={readOnly}
+          />
+        </td>
         <td>
           {!readOnly && (
             <button className={styles.tpSetDel} onClick={() => onRemove(exIdx, setIdx)}>

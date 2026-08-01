@@ -114,7 +114,7 @@ function ViewExCard({ ex, i }: { ex: Record<string, unknown>; i: number }) {
               ) : set.reps || '-'
               return (
                 <tr key={si} className={`${styles.tvSetRow} ${styles.tvSetDrop}`}>
-                  <td><span className={`${styles.tpSetTypeTag} ${styles.tpTagDrop}`}>DROP</span></td>
+                  <td><span className={`${styles.tpSetTypeTag} ${styles.tpTagDrop}`}>DROP{set.drop_pct ? ` -${set.drop_pct}%` : ''}</span></td>
                   <td>{repsDisplay}</td>
                   <td>{set.tempo || '-'}</td>
                   <td>&mdash;</td>
@@ -131,6 +131,16 @@ function ViewExCard({ ex, i }: { ex: Record<string, unknown>; i: number }) {
                 </tr>
               )
             }
+            if (set.type === 'backoff') {
+              return (
+                <tr key={si} className={styles.tvSetRow}>
+                  <td><span className={`${styles.tpSetTypeTag} ${styles.tpTagDrop}`} style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}>BACK{set.backoff_pct ? ` -${set.backoff_pct}%` : ''}</span></td>
+                  <td>{set.reps || '-'}</td>
+                  <td>{set.tempo || '-'}</td>
+                  <td>{set.repos || '-'}</td>
+                </tr>
+              )
+            }
             return (
               <tr key={si} className={styles.tvSetRow}>
                 <td>{si + 1}</td>
@@ -142,6 +152,12 @@ function ViewExCard({ ex, i }: { ex: Record<string, unknown>; i: number }) {
           })}
         </tbody>
       </table>
+      {ex.coach_notes ? (
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text2)', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+          <i className="fa-solid fa-comment-dots" style={{ color: 'var(--primary)', marginTop: 2 }} />
+          <span>{String(ex.coach_notes)}</span>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -197,7 +213,7 @@ export default function TrainingPage() {
     name: string
     patternType: string
     patternData: Record<string, unknown>
-    sessions: { nom: string; jour: string; exercises: { nom: string; exercice_id: string | null; muscle_principal: string; sets: SetData[]; superset_id?: string | null }[] }[]
+    sessions: { nom: string; jour: string; exercises: { nom: string; exercice_id: string | null; muscle_principal: string; sets: SetData[]; superset_id?: string | null; coach_notes?: string | null }[] }[]
   } | null>(null)
   const [viewProgramId, setViewProgramId] = useState<string | null>(null)
   const [viewSessionIdx, setViewSessionIdx] = useState(0)
@@ -349,6 +365,7 @@ export default function TrainingPage() {
             muscle_principal: String(ex.muscle_principal || ''),
             sets: (Array.isArray(ex.sets) ? ex.sets : []) as SetData[],
             superset_id: ex.superset_id ? String(ex.superset_id) : null,
+            coach_notes: ex.coach_notes ? String(ex.coach_notes) : null,
           })),
         }
       })
@@ -441,6 +458,7 @@ export default function TrainingPage() {
             muscle_principal: String(ex.muscle_principal || ''),
             sets: (Array.isArray(ex.sets) ? ex.sets : []) as SetData[],
             superset_id: ex.superset_id ? String(ex.superset_id) : null,
+            coach_notes: ex.coach_notes ? String(ex.coach_notes) : null,
           })),
         }
       })

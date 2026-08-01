@@ -69,13 +69,14 @@ interface ExerciceRef {
 }
 
 interface VideoDetailProps {
+  onStatusChange?: (videoId: string, status: 'a_traiter' | 'traite') => void
   videoId: string
   allVideoIds: string[]
   onBack: () => void
   onNavigate: (videoId: string) => void
 }
 
-export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }: VideoDetailProps) {
+export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate, onStatusChange }: VideoDetailProps) {
   const supabase = createClient()
   const { user } = useAuth()
   const { toast } = useToast()
@@ -221,6 +222,7 @@ export default function VideoDetail({ videoId, allVideoIds, onBack, onNavigate }
     }
 
     setVideo((prev) => (prev ? { ...prev, ...updateData, status: markTreated ? 'traite' : 'a_traiter' } as VideoRow : null))
+    onStatusChange?.(video.id, markTreated ? 'traite' : 'a_traiter')
     clearAudio()
     toast('Correction enregistree !', 'success')
     setSaving(false)
