@@ -398,6 +398,27 @@ export default function MealEditor({
     setMealType(name)
   }
 
+  function duplicateTab() {
+    if (tabs.length >= MAX_DAYS) { toast('Maximum 6 jours', 'error'); return }
+    // Nom : "<label courant> (copie)", dédupliqué.
+    const base = `${editorDayLabel(mealType)} (copie)`
+    let name = base, k = 2
+    while (tabs.some((t) => t.mealType.toLowerCase() === name.toLowerCase())) { name = `${base} ${k++}` }
+    // Snapshot du jour actif dans tempMeals, puis crée l'onglet dupliqué à partir d'une copie profonde.
+    const copiedMeals: MealData[] = JSON.parse(JSON.stringify(meals))
+    const copiedMacros = { ...manualMacros }
+    setTempMeals((prev) => ({
+      ...prev,
+      [mealType]: { meals: [...meals], macros: { ...manualMacros } },
+      [name]: { meals: copiedMeals, macros: copiedMacros },
+    }))
+    setTabs((prev) => [...prev, { mealType: name, label: name }])
+    setMeals(copiedMeals)
+    setManualMacros(copiedMacros)
+    setActiveMealIdx(0)
+    setMealType(name)
+  }
+
   function renameTab(oldType: string) {
     const next = prompt('Nom du jour', oldType)?.trim()
     if (!next || next === oldType) return
