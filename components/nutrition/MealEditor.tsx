@@ -1134,7 +1134,9 @@ export default function MealEditor({
       <CycleCalculator
         days={tabs.map((t) => {
           const isCurrent = t.mealType === mealType
-          const src = isCurrent ? manualMacros : (tempMeals[t.mealType]?.macros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 })
+          const src = isCurrent
+            ? (isMacroOnly ? manualMacros : { calories: totals.kcal, proteines: totals.p, glucides: totals.g, lipides: totals.l })
+            : (tempMeals[t.mealType]?.macros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 })
           return { mealType: t.mealType, label: t.label, calories: src.calories || 0, proteines: src.proteines || 0, glucides: src.glucides || 0, lipides: src.lipides || 0 }
         })}
         counts={cycleCounts}
