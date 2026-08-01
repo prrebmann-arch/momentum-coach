@@ -7,6 +7,7 @@ import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
 import { getMealFoods, getActiveVariant, hasVariants, newVariantId } from '@/lib/nutrition'
 import FoodSearch, { type Aliment } from './FoodSearch'
+import { CycleCalculator } from './CycleCalculator'
 import styles from '@/styles/nutrition.module.css'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -74,6 +75,8 @@ interface MealEditorProps {
   initialTabs?: DayTab[]
   /** Contenu préchargé des onglets non-actifs, keyé par meal_type. */
   initialTempMeals?: Record<string, { meals: MealData[]; macros?: { calories: number; proteines: number; glucides: number; lipides: number } }>
+  /** Répartition initiale du cycle (nb occurrences par meal_type), pour le CycleCalculator. */
+  initialCycleCounts?: Record<string, number>
   /** Day-variant label of the plan being edited (Push, Pull, Standard...). null/undefined = singleton plan. */
   variantLabel?: string | null
   /** Day-variant ordering position. */
@@ -306,7 +309,7 @@ function VariantCompareCards({ meal }: { meal: MealData }) {
 
 export default function MealEditor({
   athleteId, planId, planName: initName, mealType: initMealType,
-  initialMeals, macroOnly: initMacroOnly, initialMacros, initialOtherTab, initialTabs, initialTempMeals, onSaved, onBack,
+  initialMeals, macroOnly: initMacroOnly, initialMacros, initialOtherTab, initialTabs, initialTempMeals, initialCycleCounts, onSaved, onBack,
   templateMode = false, templateId = null, templateCategory: initCategory = '', existingCategories: initExistingCategories = [],
   templateType,
   variantLabel = null, variantOrder = 0,
@@ -330,6 +333,7 @@ export default function MealEditor({
   const [mealType, setMealType] = useState<string>(initMealType)
   const [isMacroOnly, setIsMacroOnly] = useState(initMacroOnly || false)
   const [manualMacros, setManualMacros] = useState(initialMacros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 })
+  const [cycleCounts, setCycleCounts] = useState<Record<string, number>>(initialCycleCounts || {})
   const [saving, setSaving] = useState(false)
   const [clipboardMeal, setClipboardMeal] = useState<MealData | null>(null)
   const [foodRefreshKey, setFoodRefreshKey] = useState(0)
@@ -911,6 +915,13 @@ export default function MealEditor({
           })
         }
 
+        // Persistance tolérante de cycle_days : colonne peut ne pas encore exister (migration pas lancée).
+        try {
+          if (Object.keys(cycleCounts).length) {
+            await supabase.from('nutrition_plans').update({ cycle_days: cycleCounts }).eq('athlete_id', athleteId).eq('nom', planName.trim()).eq('actif', true)
+          }
+        } catch { /* colonne absente : ignore */ }
+
         // Nettoyage des jours renommés/retirés : désactive les lignes orphelines
         // (meal_type qui ne sont plus dans `tabs`) pour cette diète/variante.
         const keepTypes = tabs.map((t) => t.mealType)
@@ -1119,6 +1130,16 @@ export default function MealEditor({
           </>
         )}
       </div>
+
+      <CycleCalculator
+        days={tabs.map((t) => {
+          const isCurrent = t.mealType === mealType
+          const src = isCurrent ? manualMacros : (tempMeals[t.mealType]?.macros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 })
+          return { mealType: t.mealType, label: t.label, calories: src.calories || 0, proteines: src.proteines || 0, glucides: src.glucides || 0, lipides: src.lipides || 0 }
+        })}
+        counts={cycleCounts}
+        onChange={setCycleCounts}
+      />
 
       {/* Options bar */}
       <div className={styles.optionsBar}>

@@ -12,6 +12,7 @@ import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import Toggle from '@/components/ui/Toggle'
 import Skeleton from '@/components/ui/Skeleton'
 import { type MealData, editorDayLabel } from '@/components/nutrition/MealEditor'
+import { CycleCalculator } from '@/components/nutrition/CycleCalculator'
 import { getMealFoods, newVariantId } from '@/lib/nutrition'
 import styles from '@/styles/nutrition.module.css'
 
@@ -196,6 +197,7 @@ export default function NutritionPage() {
   const [editVariantOrder, setEditVariantOrder] = useState<number>(0)
   const [editTabs, setEditTabs] = useState<{ mealType: string; label: string }[] | undefined>(undefined)
   const [editTempMeals, setEditTempMeals] = useState<Record<string, { meals: MealData[]; macros?: { calories: number; proteines: number; glucides: number; lipides: number } }> | undefined>(undefined)
+  const [editCycleCounts, setEditCycleCounts] = useState<Record<string, number>>({})
 
   // Photo repas plein écran (URL signée)
   const [photoLightbox, setPhotoLightbox] = useState<string | null>(null)
@@ -205,6 +207,7 @@ export default function NutritionPage() {
   type DetailDay = { mealType: string; label: string; variants: NutritionPlan[]; plan: NutritionPlan | null }
   const [detailDayType, setDetailDayType] = useState<string>('training')
   const [detailDiet, setDetailDiet] = useState<{ name: string; days: DetailDay[] } | null>(null)
+  const [cycleCounts, setCycleCounts] = useState<Record<string, number>>({})
 
   // Selected variant per diet+day (keyed by `${dietName}|${mealType}`)
   const [selectedVariantByDay, setSelectedVariantByDay] = useState<Record<string, string>>({})
@@ -831,6 +834,13 @@ export default function NutritionPage() {
     setEditVariantLabel((primary as any).variant_label ?? null)
     setEditVariantOrder((primary as any).variant_order ?? 0)
     setEditOtherTab(null)
+
+    try {
+      const { data: cd } = await supabase.from('nutrition_plans').select('cycle_days').eq('nom', dietName).eq('athlete_id', athleteId).not('cycle_days', 'is', null).limit(1)
+      const raw = (cd?.[0] as any)?.cycle_days
+      if (raw && typeof raw === 'object') setEditCycleCounts(raw as Record<string, number>); else setEditCycleCounts({})
+    } catch { setEditCycleCounts({}) }
+
     setView('editor')
   }, [supabase, toast, athleteId])
 
@@ -854,8 +864,22 @@ export default function NutritionPage() {
     setDetailDiet({ name, days })
     setDetailDayType(days[0]?.mealType ?? 'training')
     setDetailPlan(days[0]?.plan ?? null)
+
+    try {
+      const { data: cd } = await supabase.from('nutrition_plans').select('cycle_days').eq('nom', name).eq('athlete_id', athleteId).not('cycle_days', 'is', null).limit(1)
+      const raw = (cd?.[0] as any)?.cycle_days
+      if (raw && typeof raw === 'object') setCycleCounts(raw as Record<string, number>); else setCycleCounts({})
+    } catch { setCycleCounts({}) }
+
     setView('detail')
-  }, [supabase])
+  }, [supabase, athleteId])
+
+  const saveCycleCounts = useCallback(async (dietName: string, counts: Record<string, number>) => {
+    setCycleCounts(counts)
+    try {
+      await supabase.from('nutrition_plans').update({ cycle_days: counts }).eq('athlete_id', athleteId).eq('nom', dietName).eq('actif', true)
+    } catch { /* colonne cycle_days absente : ignore (migration pas encore lancee) */ }
+  }, [supabase, athleteId])
 
   // ── DAY VARIANTS ──
 
@@ -975,6 +999,7 @@ export default function NutritionPage() {
         initialOtherTab={editOtherTab}
         initialTabs={editTabs}
         initialTempMeals={editTempMeals}
+        initialCycleCounts={editCycleCounts}
         variantLabel={editVariantLabel}
         variantOrder={editVariantOrder}
         onSaved={() => { setView('list'); loadPlans() }}
@@ -1073,6 +1098,19 @@ export default function NutritionPage() {
                   <div style={{ fontSize: 12, color: 'var(--text3)' }}>Lipides</div>
                 </div>
               </div>
+
+              <CycleCalculator
+                days={detailDiet.days.map((d) => ({
+                  mealType: d.mealType,
+                  label: d.label,
+                  calories: d.plan?.calories_objectif || 0,
+                  proteines: d.plan?.proteines || 0,
+                  glucides: d.plan?.glucides || 0,
+                  lipides: d.plan?.lipides || 0,
+                }))}
+                counts={cycleCounts}
+                onChange={(c) => saveCycleCounts(detailDiet.name, c)}
+              />
 
               {plan.macro_only ? (
                 <div style={{ textAlign: 'center', padding: 30, background: 'var(--bg3)', borderRadius: 10 }}>
