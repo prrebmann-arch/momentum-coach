@@ -858,7 +858,14 @@ export default function NutritionPage() {
     const byDay = new Map<string, NutritionPlan[]>()
     for (const p of loaded) { const k = p.meal_type || 'custom'; if (!byDay.has(k)) byDay.set(k, []); byDay.get(k)!.push(p) }
     const days: DetailDay[] = Array.from(byDay.entries())
-      .map(([mealType, plans]) => { const v = [...plans].sort(byOrder); return { mealType, label: editorDayLabel(mealType), variants: v, plan: v[0] || null } })
+      .map(([mealType, plans]) => {
+        const sorted = [...plans].sort(byOrder)
+        // Ne sont de vraies variantes de repas que les lignes AVEC un variant_label.
+        // Sinon (lignes sans label = simples doublons/versions), on n'en garde qu'une → pas de barre "Standard".
+        const labelled = sorted.filter((p) => !!p.variant_label)
+        const v = labelled.length > 0 ? labelled : sorted.slice(0, 1)
+        return { mealType, label: editorDayLabel(mealType), variants: v, plan: v[0] || null }
+      })
       .sort((a, b) => rankT(a.mealType) - rankT(b.mealType))
     const name = diet?.name ?? loaded[0]?.nom ?? 'Diete'
     setDetailDiet({ name, days })
