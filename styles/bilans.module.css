@@ -251,9 +251,9 @@
 }
 
 .pcViewer {
-  width: 100%; max-width: 1100px;
+  width: 100%; max-width: 1500px;
   display: flex; flex-direction: column;
-  max-height: 90vh;
+  max-height: 94vh;
 }
 
 /* Header tabs */
@@ -289,25 +289,26 @@
 
 /* Body */
 .pcBody {
-  display: flex; gap: 0; align-items: stretch;
+  display: flex; gap: 0; align-items: stretch; justify-content: center;
   flex: 1; min-height: 0;
 }
 .pcSide {
-  flex: 1; display: flex; align-items: center; justify-content: center;
+  flex: 1; min-width: 0; display: flex; align-items: stretch; justify-content: center;
   position: relative;
 }
-.pcDivider { width: 2px; background: var(--border); margin: 0 6px; flex-shrink: 0; align-self: stretch; }
+/* Fin trait de séparation entre les 2 photos (comme le modèle). */
+.pcDivider { width: 2px; background: #000; flex-shrink: 0; align-self: stretch; }
 
 .pcCellWrap {
-  display: flex; flex-direction: column; align-items: center;
+  display: flex; flex-direction: column; align-items: stretch;
   flex: 1; min-width: 0; gap: 8px; height: 100%;
 }
-/* Photos grandes et proches pour bien comparer : prennent toute la largeur/hauteur dispo. */
+/* Photos grandes et proches : remplissent leur moitié, collées au centre. */
 .pcCell {
   position: relative;
   width: 100%;
   flex: 1; min-height: 0;
-  max-height: min(78vh, 900px);
+  max-height: min(80vh, 950px);
   background: #000;
   border-radius: 12px;
   overflow: hidden;
