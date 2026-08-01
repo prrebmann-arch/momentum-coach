@@ -835,3 +835,12 @@
 .cycleCalcResult { text-align: center; padding: 10px; background: var(--bg3); border-radius: 8px; }
 .cycleCalcResult b { display: block; font-size: 18px; color: var(--primary); }
 .cycleCalcResult span { font-size: 11px; color: var(--text3); }
+
+.dayTabsBar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: 12px; }
+.dayTab { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px; background: var(--bg3); border: 1px solid var(--border-subtle); cursor: pointer; }
+.dayTabActive { background: var(--primary); border-color: var(--primary); }
+.dayTabActive .dayTabLabel { color: #fff; }
+.dayTabLabel { font-size: 13px; font-weight: 600; color: var(--text); border: none; background: none; cursor: pointer; padding: 0; }
+.dayTabIcon { border: none; background: none; cursor: pointer; font-size: 12px; opacity: .7; padding: 0 2px; }
+.dayTabActive .dayTabIcon { color: #fff; }
+.dayTabAdd { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px; background: transparent; border: 1px dashed var(--primary); color: var(--primary); font-size: 13px; font-weight: 600; cursor: pointer; }

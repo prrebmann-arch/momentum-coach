@@ -952,22 +952,17 @@ export default function MealEditor({
           </div>
           {/* ON/OFF tabs: show for athlete mode OR diete template */}
           {(!templateMode || templateType === 'diete') && (
-            <div style={{ display: 'flex', gap: 4, marginLeft: 12, alignItems: 'center' }}>
+            <div className={styles.dayTabsBar}>
               {tabs.map((t, i) => (
-                <span key={t.mealType} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                  <button
-                    type="button"
-                    className={`athlete-tab-btn ${mealType === t.mealType ? 'active' : ''}`}
-                    onClick={() => switchMealType(t.mealType)}
-                  >
-                    {t.label}
-                  </button>
-                  <button type="button" title="Renommer" onClick={() => renameTab(t.mealType)}>&#9998;</button>
-                  {i >= 2 && <button type="button" title="Retirer" onClick={() => removeTab(t.mealType)}>&#10005;</button>}
+                <span key={t.mealType} className={`${styles.dayTab} ${mealType === t.mealType ? styles.dayTabActive : ''}`}>
+                  <button type="button" className={styles.dayTabLabel} onClick={() => switchMealType(t.mealType)}>{t.label}</button>
+                  <button type="button" className={styles.dayTabIcon} title="Renommer" onClick={() => renameTab(t.mealType)}>&#9998;</button>
+                  {i >= 2 && <button type="button" className={styles.dayTabIcon} title="Retirer" onClick={() => removeTab(t.mealType)}>&#10005;</button>}
                 </span>
               ))}
+              <button type="button" className={styles.dayTabAdd} title="Dupliquer le jour actif" onClick={duplicateTab}>&#10697; Dupliquer</button>
               {tabs.length < MAX_DAYS && (
-                <button type="button" title="Ajouter un jour" onClick={addTab}>+ Jour</button>
+                <button type="button" className={styles.dayTabAdd} title="Ajouter un jour" onClick={addTab}>+ Jour</button>
               )}
             </div>
           )}
