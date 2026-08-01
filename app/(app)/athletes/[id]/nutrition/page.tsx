@@ -836,7 +836,7 @@ export default function NutritionPage() {
 
   // Open detail view — fetch full plan data (meals_data) on demand
   const viewDiet = useCallback(async (_t: NutritionPlan | null, _r: NutritionPlan | null, diet?: DietGroup) => {
-    const idsToLoad = diet?.ids ?? []
+    const idsToLoad = diet?.ids ?? [_t?.id, _r?.id].filter(Boolean) as string[]
     if (!idsToLoad.length) return
     const { data: fullPlans } = await supabase
       .from('nutrition_plans')
@@ -862,10 +862,12 @@ export default function NutritionPage() {
   const addDayVariant = useCallback(async (group: DietGroup, mealType: string) => {
     const label = prompt('Label de la nouvelle variante (ex: Push, Pull)')
     if (!label) return
-    const sourceArr = mealType === 'training' ? group.trainingVariants : group.restVariants
+    const isTraining = mealType === 'training' || mealType === 'entrainement'
+    const isRest = mealType === 'rest' || mealType === 'repos'
+    const sourceArr = isTraining ? group.trainingVariants : isRest ? group.restVariants : []
     const source = sourceArr[0]
     if (!source) {
-      toast(`Cree d'abord une diete ${mealType === 'training' ? 'training' : 'rest'} de base`, 'error')
+      toast(`Cree d'abord une diete ${editorDayLabel(mealType)} de base`, 'error')
       return
     }
 
