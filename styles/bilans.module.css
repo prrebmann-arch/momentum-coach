@@ -296,18 +296,18 @@
   flex: 1; display: flex; align-items: center; justify-content: center;
   position: relative;
 }
-.pcDivider { width: 2px; background: var(--border); margin: 0 12px; flex-shrink: 0; }
+.pcDivider { width: 2px; background: var(--border); margin: 0 6px; flex-shrink: 0; align-self: stretch; }
 
 .pcCellWrap {
   display: flex; flex-direction: column; align-items: center;
-  flex: 1; min-width: 0; gap: 10px;
+  flex: 1; min-width: 0; gap: 8px; height: 100%;
 }
-/* Cell aspect ratio matches half of Instagram portrait export (540:1350 = 2:5) */
+/* Photos grandes et proches pour bien comparer : prennent toute la largeur/hauteur dispo. */
 .pcCell {
   position: relative;
-  aspect-ratio: 2 / 5;
-  height: min(72vh, 75vh);
-  max-width: 100%;
+  width: 100%;
+  flex: 1; min-height: 0;
+  max-height: min(78vh, 900px);
   background: #000;
   border-radius: 12px;
   overflow: hidden;
@@ -382,7 +382,7 @@
   .pcViewer { max-width: 100%; }
   .pcBody { flex-direction: column; gap: 16px; }
   .pcDivider { width: 100%; height: 1px; margin: 0; }
-  .pcCell { height: 50vh; }
+  .pcCell { flex: none; height: 50vh; max-height: none; }
   .pcNav { width: 32px; height: 32px; font-size: 12px; }
   .pcExportBtn { padding: 6px 12px; font-size: 12px; }
 }
