@@ -202,12 +202,12 @@ export default function NutritionPage() {
 
   // Detail view
   const [detailPlan, setDetailPlan] = useState<NutritionPlan | null>(null)
-  const [detailType, setDetailType] = useState<'training' | 'rest'>('training')
-  const [detailDiet, setDetailDiet] = useState<{ name: string; tPlan: NutritionPlan | null; rPlan: NutritionPlan | null; trainingVariants: NutritionPlan[]; restVariants: NutritionPlan[] } | null>(null)
+  type DetailDay = { mealType: string; label: string; variants: NutritionPlan[]; plan: NutritionPlan | null }
+  const [detailDayType, setDetailDayType] = useState<string>('training')
+  const [detailDiet, setDetailDiet] = useState<{ name: string; days: DetailDay[] } | null>(null)
 
-  // Selected variant per diet (keyed by diet name)
-  const [selectedTrainingByDiet, setSelectedTrainingByDiet] = useState<Record<string, string>>({})
-  const [selectedRestByDiet, setSelectedRestByDiet] = useState<Record<string, string>>({})
+  // Selected variant per diet+day (keyed by `${dietName}|${mealType}`)
+  const [selectedVariantByDay, setSelectedVariantByDay] = useState<Record<string, string>>({})
 
   // Template picker state
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
@@ -835,32 +835,31 @@ export default function NutritionPage() {
   }, [supabase, toast, athleteId])
 
   // Open detail view — fetch full plan data (meals_data) on demand
-  const viewDiet = useCallback(async (tPlan: NutritionPlan | null, rPlan: NutritionPlan | null, diet?: DietGroup) => {
-    // If a DietGroup is provided, load meals_data for ALL its variants (so variant tabs can switch instantly).
-    const tIds = diet?.trainingVariants?.map((p) => p.id) ?? (tPlan ? [tPlan.id] : [])
-    const rIds = diet?.restVariants?.map((p) => p.id) ?? (rPlan ? [rPlan.id] : [])
-    const idsToLoad = [...tIds, ...rIds]
+  const viewDiet = useCallback(async (_t: NutritionPlan | null, _r: NutritionPlan | null, diet?: DietGroup) => {
+    const idsToLoad = diet?.ids ?? []
     if (!idsToLoad.length) return
     const { data: fullPlans } = await supabase
       .from('nutrition_plans')
       .select('id, nom, athlete_id, coach_id, meal_type, calories_objectif, proteines, glucides, lipides, meals_data, actif, valid_from, created_at, macro_only, meal_times, variant_label, variant_order, archived_at')
       .in('id', idsToLoad)
-    const loaded = (fullPlans || []) as NutritionPlan[]
+    const loaded = ((fullPlans || []) as NutritionPlan[]).filter((p) => !p.archived_at)
     const byOrder = (a: NutritionPlan, b: NutritionPlan) => (a.variant_order ?? 0) - (b.variant_order ?? 0)
-    const trainingVariants = loaded.filter((p) => p.meal_type === 'training' || p.meal_type === 'entrainement').sort(byOrder)
-    const restVariants = loaded.filter((p) => p.meal_type === 'rest' || p.meal_type === 'repos').sort(byOrder)
+    const rankT = (mt: string) => { const m = (mt || '').toLowerCase(); return m === 'training' || m === 'entrainement' ? 0 : (m === 'rest' || m === 'repos' ? 1 : 2) }
+    const byDay = new Map<string, NutritionPlan[]>()
+    for (const p of loaded) { const k = p.meal_type || 'custom'; if (!byDay.has(k)) byDay.set(k, []); byDay.get(k)!.push(p) }
+    const days: DetailDay[] = Array.from(byDay.entries())
+      .map(([mealType, plans]) => { const v = [...plans].sort(byOrder); return { mealType, label: editorDayLabel(mealType), variants: v, plan: v[0] || null } })
+      .sort((a, b) => rankT(a.mealType) - rankT(b.mealType))
     const name = diet?.name ?? loaded[0]?.nom ?? 'Diete'
-    const fullT = trainingVariants[0] || null
-    const fullR = restVariants[0] || null
-    setDetailDiet({ name, tPlan: fullT, rPlan: fullR, trainingVariants, restVariants })
-    setDetailPlan(fullT || fullR)
-    setDetailType(fullT ? 'training' : 'rest')
+    setDetailDiet({ name, days })
+    setDetailDayType(days[0]?.mealType ?? 'training')
+    setDetailPlan(days[0]?.plan ?? null)
     setView('detail')
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [supabase])
 
   // ── DAY VARIANTS ──
 
-  const addDayVariant = useCallback(async (group: DietGroup, mealType: 'training' | 'rest') => {
+  const addDayVariant = useCallback(async (group: DietGroup, mealType: string) => {
     const label = prompt('Label de la nouvelle variante (ex: Push, Pull)')
     if (!label) return
     const sourceArr = mealType === 'training' ? group.trainingVariants : group.restVariants
@@ -984,25 +983,14 @@ export default function NutritionPage() {
 
   // ── DETAIL VIEW ──
   if (view === 'detail' && detailDiet) {
-    // Resolve the currently-selected plan based on per-diet variant selection
+    // Resolve the currently-selected plan based on per-diet+day variant selection
     const dietName = detailDiet.name
-    const selT = selectedTrainingByDiet[dietName]
-    const selR = selectedRestByDiet[dietName]
-    const currentT = (selT && detailDiet.trainingVariants.find((p) => p.id === selT)) || detailDiet.tPlan
-    const currentR = (selR && detailDiet.restVariants.find((p) => p.id === selR)) || detailDiet.rPlan
-    const plan = detailType === 'training' ? currentT : currentR
+    const currentDay = detailDiet.days.find((d) => d.mealType === detailDayType) || detailDiet.days[0]
+    const selVarId = selectedVariantByDay[`${dietName}|${currentDay?.mealType}`]
+    const plan = (selVarId && currentDay?.variants.find((p) => p.id === selVarId)) || currentDay?.plan || null
 
     // Sibling DietGroup (from list state) for add/rename/archive actions
-    const dietGroup = diets.find((d) => d.name === dietName) || {
-      name: dietName,
-      tPlan: detailDiet.tPlan,
-      rPlan: detailDiet.rPlan,
-      trainingVariants: detailDiet.trainingVariants,
-      restVariants: detailDiet.restVariants,
-      isActive: false,
-      versionCount: 0,
-      ids: [],
-    } as DietGroup
+    const dietGroup = diets.find((d) => d.name === dietName)
 
     function parseMeals(p: NutritionPlan | null): any[] {
       if (!p?.meals_data) return []
@@ -1031,50 +1019,36 @@ export default function NutritionPage() {
           </button>
         </div>
 
-        {/* ON/OFF tabs */}
-        <div style={{ display: 'flex', gap: 8, padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
-          <button
-            className={`athlete-tab-btn ${detailType === 'training' ? 'active' : ''}`}
-            onClick={() => { setDetailType('training'); setDetailPlan(currentT) }}
-          >
-            <i className="fa-solid fa-dumbbell" /> Jour ON
-          </button>
-          <button
-            className={`athlete-tab-btn ${detailType === 'rest' ? 'active' : ''}`}
-            onClick={() => { setDetailType('rest'); setDetailPlan(currentR) }}
-          >
-            <i className="fa-solid fa-bed" /> Jour OFF
-          </button>
+        {/* Day tabs */}
+        <div style={{ display: 'flex', gap: 8, padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)', flexWrap: 'wrap' }}>
+          {detailDiet.days.map((d) => (
+            <button
+              key={d.mealType}
+              className={`athlete-tab-btn ${detailDayType === d.mealType ? 'active' : ''}`}
+              onClick={() => { setDetailDayType(d.mealType); setDetailPlan(d.plan) }}
+            >
+              {d.label}
+            </button>
+          ))}
         </div>
 
-        {/* Day variant tabs (for current ON/OFF section) */}
+        {/* Day variant tabs (for current day) */}
         <div style={{ padding: '8px 20px 0' }}>
-          {detailType === 'training' ? (
-            <DayVariantTabs
-              variants={detailDiet.trainingVariants}
-              selectedId={selT ?? detailDiet.tPlan?.id ?? null}
-              onSelect={(id) => setSelectedTrainingByDiet({ ...selectedTrainingByDiet, [dietName]: id })}
-              onAddVariant={() => addDayVariant(dietGroup, 'training')}
-              onRenameVariant={renameDayVariant}
-              onArchiveVariant={archiveDayVariant}
-            />
-          ) : (
-            <DayVariantTabs
-              variants={detailDiet.restVariants}
-              selectedId={selR ?? detailDiet.rPlan?.id ?? null}
-              onSelect={(id) => setSelectedRestByDiet({ ...selectedRestByDiet, [dietName]: id })}
-              onAddVariant={() => addDayVariant(dietGroup, 'rest')}
-              onRenameVariant={renameDayVariant}
-              onArchiveVariant={archiveDayVariant}
-            />
-          )}
+          <DayVariantTabs
+            variants={currentDay?.variants ?? []}
+            selectedId={plan?.id ?? null}
+            onSelect={(id) => setSelectedVariantByDay({ ...selectedVariantByDay, [`${dietName}|${currentDay?.mealType}`]: id })}
+            onAddVariant={() => dietGroup && currentDay && addDayVariant(dietGroup, currentDay.mealType)}
+            onRenameVariant={renameDayVariant}
+            onArchiveVariant={archiveDayVariant}
+          />
         </div>
 
         <div style={{ padding: 20 }}>
           {!plan ? (
             <div className="empty-state">
               <i className="fa-solid fa-utensils" />
-              <p>Aucun plan pour les jours {detailType === 'training' ? "d'entrainement" : 'de repos'}</p>
+              <p>Aucun plan pour ce jour</p>
             </div>
           ) : (
             <>
