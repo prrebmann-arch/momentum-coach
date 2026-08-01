@@ -1,12 +1,39 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { PROG_PHASES } from '@/lib/constants'
 import { toDateStr, getWeekNumber, isBilanDate } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import MensurationCharts from './MensurationCharts'
+import BubbleExportModal from './BubbleExportModal'
 import styles from '@/styles/bilans.module.css'
 import type { Athlete } from '@/lib/types'
 import type { PhotoType, PhotoEntry } from './PhotoCompare'
+
+// Réponse custom de type photo/vidéo : signe l'URL depuis athlete-photos et
+// affiche une miniature (photo) ou un lecteur (vidéo). value = path storage.
+function CustomMediaAnswer({ value, kind, full }: { value: string; kind: 'photo' | 'video'; full?: boolean }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    if (/^https?:\/\//.test(value)) { setUrl(value); return }
+    const supabase = createClient()
+    supabase.storage.from('athlete-photos').createSignedUrl(value, 3600).then(({ data }) => {
+      if (!cancelled) setUrl(data?.signedUrl ?? null)
+    })
+    return () => { cancelled = true }
+  }, [value])
+  if (!url) return <span style={{ color: 'var(--text3)', fontSize: 12 }}>chargement…</span>
+  if (kind === 'video') {
+    return <video src={url} controls style={{ width: full ? '100%' : undefined, maxWidth: full ? '100%' : 220, maxHeight: 320, borderRadius: 8, marginTop: 4 }} />
+  }
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'block' }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="réponse" style={{ width: full ? '100%' : undefined, maxWidth: full ? '100%' : 120, maxHeight: full ? 360 : 160, aspectRatio: full ? '3 / 4' : undefined, borderRadius: 8, marginTop: 4, objectFit: 'cover' }} />
+    </a>
+  )
+}
 
 // ── Types ──
 
@@ -171,6 +198,43 @@ function StatValue({ val, inverted }: { val: number | null; inverted?: boolean }
   return <span style={{ color }}>{v}</span>
 }
 
+// ── Pages de colonnes (infos custom + builtin orphelines) ──
+
+interface ColumnDef {
+  key: string          // clé de lecture : custom_data[key] ou b[field]
+  label: string
+  input_type: string
+  unit?: string
+  source: 'custom' | 'builtin'
+}
+
+// Champs déjà affichés en page 1 (colonnes fixes) ou gérés par une UI dédiée
+// (notes bloc-semaine, mensurations, photos builtin) → exclus des pages 2+.
+const PAGE1_FIELDS = new Set([
+  'weight', 'adherence', 'session_enjoyment', 'cardio_minutes', 'soreness',
+  'stress', 'energy', 'sick_signs', 'sleep_quality', 'bedtime', 'wakeup',
+  'positive_week', 'negative_week', 'general_notes',
+  'belly_measurement', 'hip_measurement', 'thigh_measurement',
+  'photo_front', 'photo_side', 'photo_back',
+])
+
+const COLS_PER_PAGE = 6
+
+/** Construit les pages de colonnes 2+ à partir des questions du template. */
+function buildExtraColumnPages(templateQuestions?: TemplateQuestion[]): ColumnDef[][] {
+  const cols: ColumnDef[] = []
+  const seen = new Set<string>()
+  for (const q of templateQuestions || []) {
+    const key = q.type === 'custom' ? (q.key || '') : (q.field || '')
+    if (!key || seen.has(key) || PAGE1_FIELDS.has(key)) continue
+    seen.add(key)
+    cols.push({ key, label: q.label || key, input_type: q.input_type || 'text_short', source: q.type === 'custom' ? 'custom' : 'builtin' })
+  }
+  const pages: ColumnDef[][] = []
+  for (let i = 0; i < cols.length; i += COLS_PER_PAGE) pages.push(cols.slice(i, i + COLS_PER_PAGE))
+  return pages
+}
+
 // ── Main Component ──
 
 export default function BilanAccordion({
@@ -188,6 +252,12 @@ export default function BilanAccordion({
 }: BilanAccordionProps) {
   const [openWeeks, setOpenWeeks] = useState<Set<string>>(new Set())
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set())
+  const [bubbleText, setBubbleText] = useState<string | null>(null)
+  // Pagination des colonnes du tableau : 0 = colonnes de base, 1+ = pages custom.
+  const [columnPage, setColumnPage] = useState(0)
+  const extraColumnPages = useMemo(() => buildExtraColumnPages(templateQuestions), [templateQuestions])
+  const totalColumnPages = 1 + extraColumnPages.length
+  const currentExtraCols: ColumnDef[] | null = columnPage > 0 ? (extraColumnPages[columnPage - 1] || []) : null
 
   // Bilan scheduling config
   const cbFreq = athlete.complete_bilan_frequency || 'weekly'
@@ -329,6 +399,7 @@ export default function BilanAccordion({
       thigh: bwLast(bb, 'thigh_measurement'),
       positiveWeeks: bwAllTexts(bb, 'positive_week'),
       negativeWeeks: bwAllTexts(bb, 'negative_week'),
+      generalNotes: bwAllTexts(bb, 'general_notes'),
     }
   })
 
@@ -375,8 +446,58 @@ export default function BilanAccordion({
     })
   }, [])
 
+  // Déplie/replie d'un coup TOUS les détails cachés d'une semaine (audit #2).
+  // Si au moins un est fermé -> tout ouvrir ; sinon tout refermer.
+  const toggleWeekDetails = useCallback((noteIds: string[]) => {
+    setOpenNotes(prev => {
+      const next = new Set(prev)
+      const allOpen = noteIds.every(id => next.has(id))
+      if (allOpen) noteIds.forEach(id => next.delete(id))
+      else noteIds.forEach(id => next.add(id))
+      return next
+    })
+  }, [])
+
+  // Rendu d'une cellule pour une colonne custom/builtin-orpheline (pages 2+).
+  function renderCustomCell(b: DailyReport, c: ColumnDef): React.ReactNode {
+    const raw = c.source === 'custom' ? b.custom_data?.[c.key] : (b as Record<string, unknown>)[c.key]
+    if (raw == null || raw === '') return <span style={{ color: 'var(--text3)' }}>—</span>
+    if (c.input_type === 'photo' || c.input_type === 'video') {
+      if (typeof raw !== 'string') return <span style={{ color: 'var(--text3)' }}>—</span>
+      return <CustomMediaAnswer value={raw} kind={c.input_type === 'video' ? 'video' : 'photo'} />
+    }
+    if (c.input_type === 'boolean') return <span>{raw ? 'Oui' : 'Non'}</span>
+    if (c.input_type === 'multiple_choice' && Array.isArray(raw)) return <span title={raw.join(', ')}>{raw.join(', ')}</span>
+    const txt = String(raw) + (c.unit ? ` ${c.unit}` : '')
+    return <span title={txt} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{txt}</span>
+  }
+
   return (
     <div className={styles.container}>
+      {/* Navigation des pages de colonnes (base ↔ suivi perso) */}
+      {totalColumnPages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginBottom: 4 }}>
+          <button
+            className={styles.noteBtn}
+            disabled={columnPage === 0}
+            onClick={() => setColumnPage((p) => Math.max(0, p - 1))}
+            title="Colonnes précédentes"
+          >
+            <i className="fas fa-chevron-left" />
+          </button>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', minWidth: 90, textAlign: 'center' }}>
+            {columnPage === 0 ? 'Mesures' : `Suivi perso ${columnPage}/${extraColumnPages.length}`}
+          </span>
+          <button
+            className={styles.noteBtn}
+            disabled={columnPage >= totalColumnPages - 1}
+            onClick={() => setColumnPage((p) => Math.min(totalColumnPages - 1, p + 1))}
+            title="Colonnes suivantes"
+          >
+            <i className="fas fa-chevron-right" />
+          </button>
+        </div>
+      )}
       {weekData.map((w) => {
         const isCurrent = w.key === todayMonday
         const isFuture = w.key > todayMonday
@@ -413,6 +534,18 @@ export default function BilanAccordion({
         // Nutrition periods
         const nutriPeriods = getNutriPeriodsForWeek(w.monday)
         const sorted = [...w.bilans].sort((a, b) => a.date.localeCompare(b.date))
+
+        // noteIds des jours de LA semaine ayant des détails (pour le bouton "Voir tout")
+        const weekQuestions = (templateQuestions || []).filter(q => q.type === 'custom' && q.key)
+        const weekDetailIds = sorted
+          .filter(b => {
+            const hasPhotos = b.photo_front || b.photo_side || b.photo_back
+            const hasMens = b.belly_measurement || b.hip_measurement || b.thigh_measurement
+            const hasCustom = weekQuestions.some(q => b.custom_data?.[q.key!] != null)
+            return b.steps || hasPhotos || hasMens || hasCustom
+          })
+          .map(b => 'bn-' + (b.id || b.date))
+        const weekAllOpen = weekDetailIds.length > 0 && weekDetailIds.every(id => openNotes.has(id))
 
         // Performance display
         const perfDisplay = (() => {
@@ -536,7 +669,7 @@ export default function BilanAccordion({
               })}
 
               {/* Weekly notes */}
-              {(w.positiveWeeks.length > 0 || w.negativeWeeks.length > 0) && (
+              {(w.positiveWeeks.length > 0 || w.negativeWeeks.length > 0 || w.generalNotes.length > 0) && (
                 <div className={styles.weekNotes}>
                   {w.positiveWeeks.length > 0 && (
                     <div className={styles.weekNote}>
@@ -546,7 +679,12 @@ export default function BilanAccordion({
                       <div>
                         <span className={styles.weekNoteLabel}>Points positifs</span>
                         {w.positiveWeeks.map((e, i) => (
-                          <span key={i} className={styles.weekNoteText}>
+                          <span
+                            key={i}
+                            className={`${styles.weekNoteText} ${styles.weekNoteClickable}`}
+                            onClick={() => setBubbleText(e.text)}
+                            title="Cliquer pour exporter en image"
+                          >
                             <strong style={{ color: 'var(--text2)', marginRight: 6 }}>{e.date}</strong>
                             {e.text}
                           </span>
@@ -562,7 +700,33 @@ export default function BilanAccordion({
                       <div>
                         <span className={styles.weekNoteLabel}>A ameliorer</span>
                         {w.negativeWeeks.map((e, i) => (
-                          <span key={i} className={styles.weekNoteText}>
+                          <span
+                            key={i}
+                            className={`${styles.weekNoteText} ${styles.weekNoteClickable}`}
+                            onClick={() => setBubbleText(e.text)}
+                            title="Cliquer pour exporter en image"
+                          >
+                            <strong style={{ color: 'var(--text2)', marginRight: 6 }}>{e.date}</strong>
+                            {e.text}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {w.generalNotes.length > 0 && (
+                    <div className={styles.weekNote}>
+                      <span className={styles.weekNoteIcon} style={{ color: 'var(--info, #3b82f6)' }}>
+                        <i className="fas fa-note-sticky" />
+                      </span>
+                      <div>
+                        <span className={styles.weekNoteLabel}>Notes generales</span>
+                        {w.generalNotes.map((e, i) => (
+                          <span
+                            key={i}
+                            className={`${styles.weekNoteText} ${styles.weekNoteClickable}`}
+                            onClick={() => setBubbleText(e.text)}
+                            title="Cliquer pour exporter en image"
+                          >
                             <strong style={{ color: 'var(--text2)', marginRight: 6 }}>{e.date}</strong>
                             {e.text}
                           </span>
@@ -577,6 +741,15 @@ export default function BilanAccordion({
 
               {/* Daily detail table */}
               <div className={styles.daysTable}>
+                {currentExtraCols ? (
+                  <div className={styles.dayHdr} style={{ gridTemplateColumns: `94px repeat(${currentExtraCols.length}, minmax(70px, 1fr)) 36px` }}>
+                    <span className={styles.dhDate}>DATE</span>
+                    {currentExtraCols.map((c) => (
+                      <span key={c.key} title={c.label}>{c.label.toUpperCase()}</span>
+                    ))}
+                    <span className={styles.dhEnd} />
+                  </div>
+                ) : (
                 <div className={styles.dayHdr}>
                   <span className={styles.dhDate}>DATE</span>
                   <span>POIDS</span>
@@ -591,8 +764,21 @@ export default function BilanAccordion({
                   <span>MALAD.</span>
                   <span>SOMM.</span>
                   <span>NUIT</span>
-                  <span className={styles.dhEnd} />
+                  <span className={styles.dhEnd}>
+                    {weekDetailIds.length > 0 && (
+                      <button
+                        className={styles.noteBtn}
+                        onClick={(e) => { e.stopPropagation(); toggleWeekDetails(weekDetailIds) }}
+                        title={weekAllOpen ? 'Tout replier' : 'Voir toutes les données de la semaine'}
+                        style={{ fontSize: 10, whiteSpace: 'nowrap' }}
+                      >
+                        <i className={weekAllOpen ? 'fas fa-eye-slash' : 'fas fa-eye'} style={{ marginRight: 4 }} />
+                        {weekAllOpen ? 'Replier' : 'Voir tout'}
+                      </button>
+                    )}
+                  </span>
                 </div>
+                )}
 
                 {sorted.map(b => {
                   const d = new Date(b.date + 'T00:00:00')
@@ -601,11 +787,27 @@ export default function BilanAccordion({
                   const dayStr = DAY_NAMES[di] + ' ' + d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
                   const noteId = 'bn-' + (b.id || b.date)
                   const isBDay = isBilanDate(b.date, cbFreq, cbIntv, cbDay, cbAnchor, cbMonthDay)
+
+                  // Page custom : ligne avec les colonnes du template (pas les mesures de base)
+                  if (currentExtraCols) {
+                    return (
+                      <div key={b.date} className={`${styles.dayRow} ${isBDay ? styles.bilanDay : ''}`} style={{ gridTemplateColumns: `94px repeat(${currentExtraCols.length}, minmax(70px, 1fr)) 36px` }}>
+                        <span className={styles.drDate}>
+                          {dayStr}
+                          {isBDay && <> <i className="fas fa-star" style={{ color: 'var(--warning)', fontSize: 9 }} /></>}
+                        </span>
+                        {currentExtraCols.map((c) => (
+                          <span key={c.key} className={styles.dr}>{renderCustomCell(b, c)}</span>
+                        ))}
+                        <span className={styles.drEnd} />
+                      </div>
+                    )
+                  }
                   const hasPhotos = b.photo_front || b.photo_side || b.photo_back
                   const hasMens = b.belly_measurement || b.hip_measurement || b.thigh_measurement
                   const customQuestions = (templateQuestions || []).filter(q => q.type === 'custom' && q.key)
                   const customAnswers = customQuestions.filter(q => b.custom_data?.[q.key!] != null)
-                  const hasDetails = b.general_notes || b.steps || hasPhotos || hasMens || customAnswers.length > 0
+                  const hasDetails = b.steps || hasPhotos || hasMens || customAnswers.length > 0
 
                   // Session name from workout logs
                   const dayLogs = wlogsByDate[b.date] || []
@@ -682,12 +884,14 @@ export default function BilanAccordion({
                               <i className="fas fa-camera" style={{ color: 'var(--primary)', fontSize: 11 }} />
                             </button>
                           )}
+                          {/* Réponses custom : désormais consultables via les pages
+                              de colonnes (flèches en haut), plus de pastille ici. */}
                           {hasDetails && (
                             <button
                               className={styles.noteBtn}
                               onClick={(e) => { e.stopPropagation(); toggleNote(noteId) }}
                             >
-                              <i className="fas fa-chevron-down" />
+                              <i className={`fas fa-chevron-${openNotes.has(noteId) ? 'up' : 'down'}`} />
                             </button>
                           )}
                           {b.id && (
@@ -721,31 +925,7 @@ export default function BilanAccordion({
                               </div>
                             </div>
                           )}
-                          {b.general_notes && (
-                            <div className={styles.detailNote}>
-                              <i className="fas fa-pen" style={{ color: 'var(--text3)', marginRight: 6, fontSize: 11 }} />
-                              {b.general_notes}
-                            </div>
-                          )}
-                          {customAnswers.length > 0 && (
-                            <div style={{ marginTop: 8, padding: '8px 10px', background: 'var(--bg3)', borderRadius: 8 }}>
-                              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Réponses personnalisées</div>
-                              <div className={styles.detailGrid}>
-                                {customAnswers.map(q => {
-                                  const raw = b.custom_data![q.key!]
-                                  let display = String(raw)
-                                  if (q.input_type === 'boolean') display = raw ? 'Oui' : 'Non'
-                                  else if (q.input_type === 'multiple_choice' && Array.isArray(raw)) display = raw.join(', ')
-                                  return (
-                                    <div key={q.key} className={styles.detailItem}>
-                                      <span className={styles.detailLabel}>{q.label}</span>
-                                      <span>{display}</span>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
+                          {/* Réponses custom : consultables via les pages de colonnes (flèches en haut). */}
                         </div>
                       )}
                     </div>
@@ -756,6 +936,9 @@ export default function BilanAccordion({
           </div>
         )
       })}
+      {bubbleText != null && (
+        <BubbleExportModal text={bubbleText} onClose={() => setBubbleText(null)} />
+      )}
     </div>
   )
 }

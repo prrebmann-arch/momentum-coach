@@ -43,8 +43,10 @@ interface SessionTabProps {
   onRemoveSet: (exIdx: number, setIdx: number) => void
   onAddDropSet: (exIdx: number) => void
   onAddRestPause: (exIdx: number) => void
+  onAddBackoff?: (exIdx: number) => void
   onToggleSuperset: (exIdx: number) => void
   onToggleMaxRep: (exIdx: number, setIdx: number, isMax: boolean) => void
+  onNotesChange?: (exIdx: number, notes: string) => void
 }
 
 export default function SessionTab({
@@ -60,8 +62,10 @@ export default function SessionTab({
   onRemoveSet,
   onAddDropSet,
   onAddRestPause,
+  onAddBackoff,
   onToggleSuperset,
   onToggleMaxRep,
+  onNotesChange,
 }: SessionTabProps) {
   const volumeEntries = getVolumePills(session.exercises)
 
@@ -123,8 +127,10 @@ export default function SessionTab({
               onRemoveSet={onRemoveSet}
               onAddDropSet={onAddDropSet}
               onAddRestPause={onAddRestPause}
+              onAddBackoff={onAddBackoff}
               onToggleSuperset={onToggleSuperset}
               onToggleMaxRep={onToggleMaxRep}
+              onNotesChange={onNotesChange}
             />
           ))
         ) : (

@@ -106,6 +106,7 @@ export default function VideosPage() {
         allVideoIds={filteredIds}
         onBack={handleBack}
         onNavigate={(id) => setSelectedVideoId(id)}
+        onStatusChange={(id, status) => setVideos((prev) => prev.map((v) => v.id === id ? { ...v, status } : v))}
       />
     )
   }
@@ -122,15 +123,17 @@ export default function VideosPage() {
         </div>
       ) : (
         <>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20 }}>
+          <div className={styles.vidToolbar}>
             <div className={styles.vidFilters}>
               {(['all', 'a_traiter', 'traite'] as Filter[]).map((f) => {
                 const label = f === 'all' ? 'Toutes' : f === 'a_traiter' ? 'A traiter' : 'Traites'
                 const count = f === 'all' ? videos.length : f === 'a_traiter' ? pending : done
+                // "A traiter" en rouge permanent uniquement s'il reste du pending
+                const pendingClass = f === 'a_traiter' && pending > 0 ? styles.vidFilterPending : ''
                 return (
                   <button
                     key={f}
-                    className={`${styles.vidFilterBtn} ${f === 'a_traiter' ? styles.vidFilterPending : ''} ${filter === f ? 'active' : ''}`}
+                    className={`${styles.vidFilterBtn} ${pendingClass} ${filter === f ? 'active' : ''}`}
                     onClick={() => setFilter(f)}
                   >
                     {label} <span className={styles.vidFilterCount}>{count}</span>
@@ -140,19 +143,10 @@ export default function VideosPage() {
             </div>
             <input
               type="text"
+              className={styles.vidSearch}
               placeholder="Rechercher un athlete..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              style={{
-                background: 'var(--bg2)',
-                border: 'var(--card-border)',
-                borderRadius: 20,
-                padding: '8px 16px',
-                fontSize: 13,
-                color: 'var(--text)',
-                outline: 'none',
-                width: 200,
-              }}
             />
           </div>
 

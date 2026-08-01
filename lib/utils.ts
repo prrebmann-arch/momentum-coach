@@ -138,6 +138,10 @@ export function isBilanDate(
   if (frequency === 'none') return false
   if (frequency === 'daily') return true
 
+  // Override universel : une date d'ancrage explicite est toujours un jour de bilan
+  // (le coach épingle un jour précis, en plus de la récurrence). Custom garde son modulo.
+  if (anchorDate && frequency !== 'custom' && dateStr === anchorDate) return true
+
   const date = new Date(dateStr + 'T12:00:00')
 
   if (frequency === 'weekly') {

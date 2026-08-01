@@ -28,13 +28,26 @@ export interface MealVariant {
   foods: FoodItem[]
 }
 
+export function editorDayLabel(mealType: string): string {
+  const m = (mealType || '').toLowerCase()
+  if (m === 'training' || m === 'entrainement') return 'Entraînement'
+  if (m === 'rest' || m === 'repos') return 'Repos'
+  return mealType || 'Jour'
+}
+type DayTab = { mealType: string; label: string }
+const MAX_DAYS = 6
+
+export type WorkoutTiming = 'pre' | 'intra' | 'post'
+
 export interface MealData {
   /** Label du repas (ex: "Repas 1"). */
   label?: string
   /** Heure (HH:MM). */
   time?: string
-  /** Pré-workout flag. */
+  /** Pré-workout flag (rétrocompat — synchronisé avec workout_timing === 'pre'). */
   pre_workout?: boolean
+  /** Timing training du repas : pré / intra / post-training, ou absent. */
+  workout_timing?: WorkoutTiming | null
   /** Foods d'un repas SANS variantes. Mutuellement exclusif avec `variants`. */
   foods?: FoodItem[]
   /** Variantes d'un repas (max 3). Mutuellement exclusif avec `foods`. */
@@ -48,7 +61,7 @@ interface MealEditorProps {
   /** Initial plan name */
   planName: string
   /** Initial meal type: 'training' | 'rest' */
-  mealType: 'training' | 'rest'
+  mealType: string
   /** Initial meals data */
   initialMeals: MealData[]
   /** Macro-only mode */
@@ -56,7 +69,11 @@ interface MealEditorProps {
   /** Initial macro targets (for macro-only mode) */
   initialMacros?: { calories: number; proteines: number; glucides: number; lipides: number }
   /** Pre-loaded other tab data (ON if editing OFF, or vice versa) */
-  initialOtherTab?: { type: 'training' | 'rest'; id: string; meals: MealData[]; macros: { calories: number; proteines: number; glucides: number; lipides: number }; variantLabel?: string | null; variantOrder?: number } | null
+  initialOtherTab?: { type: string; id: string; meals: MealData[]; macros: { calories: number; proteines: number; glucides: number; lipides: number }; variantLabel?: string | null; variantOrder?: number } | null
+  /** Onglets de jour initiaux (défaut : Entraînement + Repos). */
+  initialTabs?: DayTab[]
+  /** Contenu préchargé des onglets non-actifs, keyé par meal_type. */
+  initialTempMeals?: Record<string, { meals: MealData[]; macros?: { calories: number; proteines: number; glucides: number; lipides: number } }>
   /** Day-variant label of the plan being edited (Push, Pull, Standard...). null/undefined = singleton plan. */
   variantLabel?: string | null
   /** Day-variant ordering position. */
@@ -132,7 +149,7 @@ function serializeMealsForSave(meals: MealData[]): MealData[] {
       return {
         label: m.label,
         time: m.time,
-        pre_workout: m.pre_workout,
+        pre_workout: m.pre_workout, workout_timing: m.workout_timing ?? (m.pre_workout ? 'pre' : null),
         variants: m.variants!.map((v) => ({
           id: v.id,
           label: v.label,
@@ -143,7 +160,7 @@ function serializeMealsForSave(meals: MealData[]): MealData[] {
     return {
       label: m.label,
       time: m.time,
-      pre_workout: m.pre_workout,
+      pre_workout: m.pre_workout, workout_timing: m.workout_timing ?? (m.pre_workout ? 'pre' : null),
       foods: (m.foods ?? []).map(serializeFood),
     }
   })
@@ -181,7 +198,7 @@ function addVariantToMeal(meal: MealData, label: string): MealData {
     return {
       label: meal.label,
       time: meal.time,
-      pre_workout: meal.pre_workout,
+      pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null),
       variants: [first, { ...newVariant, label }],
     }
   }
@@ -221,7 +238,7 @@ function convertToSimpleMeal(meal: MealData, keepVariantId: string): MealData {
   return {
     label: meal.label,
     time: meal.time,
-    pre_workout: meal.pre_workout,
+    pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null),
     foods: keep.foods,
   }
 }
@@ -289,7 +306,7 @@ function VariantCompareCards({ meal }: { meal: MealData }) {
 
 export default function MealEditor({
   athleteId, planId, planName: initName, mealType: initMealType,
-  initialMeals, macroOnly: initMacroOnly, initialMacros, initialOtherTab, onSaved, onBack,
+  initialMeals, macroOnly: initMacroOnly, initialMacros, initialOtherTab, initialTabs, initialTempMeals, onSaved, onBack,
   templateMode = false, templateId = null, templateCategory: initCategory = '', existingCategories: initExistingCategories = [],
   templateType,
   variantLabel = null, variantOrder = 0,
@@ -305,12 +322,34 @@ export default function MealEditor({
   // Inline-edit state for variant labels: { mealIdx, variantId } | null.
   const [editingVariantOf, setEditingVariantOf] = useState<{ mealIdx: number; variantId: string } | null>(null)
   const [planName, setPlanName] = useState(initName)
-  const [mealType, setMealType] = useState<'training' | 'rest'>(initMealType)
+  const [tabs, setTabs] = useState<DayTab[]>(() =>
+    initialTabs && initialTabs.length
+      ? initialTabs
+      : [{ mealType: 'training', label: 'Entraînement' }, { mealType: 'rest', label: 'Repos' }]
+  )
+  const [mealType, setMealType] = useState<string>(initMealType)
   const [isMacroOnly, setIsMacroOnly] = useState(initMacroOnly || false)
   const [manualMacros, setManualMacros] = useState(initialMacros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 })
   const [saving, setSaving] = useState(false)
   const [clipboardMeal, setClipboardMeal] = useState<MealData | null>(null)
   const [foodRefreshKey, setFoodRefreshKey] = useState(0)
+
+  // Objectifs journaliers sel + eau (diète athlète uniquement, pas les templates)
+  const showDietGoals = !templateMode && !!athleteId
+  const [dietGoals, setDietGoals] = useState<{ sel_g: string; water_goal_ml: string }>({ sel_g: '', water_goal_ml: '' })
+  useEffect(() => {
+    if (!showDietGoals) return
+    let cancelled = false
+    supabase.from('athletes').select('sel_g, water_goal_ml').eq('id', athleteId).maybeSingle()
+      .then(({ data }: { data: { sel_g?: number | null; water_goal_ml?: number | null } | null }) => {
+        if (cancelled || !data) return
+        setDietGoals({
+          sel_g: data.sel_g != null ? String(data.sel_g) : '',
+          water_goal_ml: data.water_goal_ml != null ? String(data.water_goal_ml) : '',
+        })
+      })
+    return () => { cancelled = true }
+  }, [showDietGoals, athleteId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Template-mode category state
   const [tplCategory, setTplCategory] = useState(initCategory)
@@ -321,14 +360,13 @@ export default function MealEditor({
   // Paired plan: store meals for the other tab so we can save both on submit
   // Pre-load from initialOtherTab if provided
   const [tempMeals, setTempMeals] = useState<Record<string, { meals: MealData[]; macros?: { calories: number; proteines: number; glucides: number; lipides: number } }>>(() => {
-    if (initialOtherTab) {
-      return { [initialOtherTab.type]: { meals: initialOtherTab.meals, macros: initialOtherTab.macros } }
-    }
+    if (initialTempMeals) return initialTempMeals
+    if (initialOtherTab) return { [initialOtherTab.type]: { meals: initialOtherTab.meals, macros: initialOtherTab.macros } }
     return {}
   })
 
   // When switching meal type, store current meals and load other tab's meals
-  function switchMealType(newType: 'training' | 'rest') {
+  function switchMealType(newType: string) {
     if (newType === mealType) return
     // Always persist current tab's meals AND macros so we can reload them later
     setTempMeals((prev) => ({ ...prev, [mealType]: { meals: [...meals], macros: { ...manualMacros } } }))
@@ -344,6 +382,44 @@ export default function MealEditor({
     }
     setActiveMealIdx(0)
     setMealType(newType)
+  }
+
+  function addTab() {
+    if (tabs.length >= MAX_DAYS) { toast('Maximum 6 jours', 'error'); return }
+    const name = prompt('Nom du jour', `Jour ${tabs.length + 1}`)?.trim()
+    if (!name) return
+    if (tabs.some((t) => t.mealType.toLowerCase() === name.toLowerCase())) { toast('Ce nom existe déjà', 'error'); return }
+    // Snapshot onglet courant, crée l'onglet vide, bascule dessus.
+    setTempMeals((prev) => ({ ...prev, [mealType]: { meals: [...meals], macros: { ...manualMacros } } }))
+    setTabs((prev) => [...prev, { mealType: name, label: name }])
+    setMeals([{ foods: [] }])
+    setManualMacros({ calories: 0, proteines: 0, glucides: 0, lipides: 0 })
+    setActiveMealIdx(0)
+    setMealType(name)
+  }
+
+  function renameTab(oldType: string) {
+    const next = prompt('Nom du jour', oldType)?.trim()
+    if (!next || next === oldType) return
+    if (tabs.some((t) => t.mealType.toLowerCase() === next.toLowerCase())) { toast('Ce nom existe déjà', 'error'); return }
+    setTabs((prev) => prev.map((t) => t.mealType === oldType ? { mealType: next, label: next } : t))
+    setTempMeals((prev) => {
+      if (!(oldType in prev)) return prev
+      const { [oldType]: moved, ...rest } = prev
+      return { ...rest, [next]: moved }
+    })
+    if (mealType === oldType) setMealType(next)
+  }
+
+  function removeTab(mt: string) {
+    if (tabs.length <= 1) return
+    if (!confirm(`Retirer le jour "${editorDayLabel(mt)}" ?`)) return
+    setTabs((prev) => prev.filter((t) => t.mealType !== mt))
+    setTempMeals((prev) => { const { [mt]: _drop, ...rest } = prev; return rest })
+    if (mealType === mt) {
+      const fallback = tabs.find((t) => t.mealType !== mt)!
+      switchMealType(fallback.mealType)
+    }
   }
 
   // Load aliments cache — skip when cache exists unless caller bumped foodRefreshKey
@@ -504,7 +580,7 @@ export default function MealEditor({
         return {
           label: item.label,
           time: item.time,
-          pre_workout: item.pre_workout,
+          pre_workout: item.pre_workout, workout_timing: item.workout_timing ?? (item.pre_workout ? 'pre' : null),
           variants: item.variants.map((v: any, vi: number) => ({
             id: (typeof v?.id === 'string' && v.id.trim()) ? v.id : newVariantId(),
             label: v?.label || `Variante ${vi + 1}`,
@@ -512,7 +588,7 @@ export default function MealEditor({
           })),
         }
       }
-      if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, time: item.time }
+      if (item && !Array.isArray(item) && item.foods) return { foods: item.foods, pre_workout: item.pre_workout, workout_timing: item.workout_timing ?? (item.pre_workout ? 'pre' : null), time: item.time }
       if (Array.isArray(item)) return { foods: item }
       return { foods: [] }
     }
@@ -589,9 +665,16 @@ export default function MealEditor({
     if (activeMealIdx >= meals.length - 1) setActiveMealIdx(Math.max(0, meals.length - 2))
   }
 
-  // Toggle pre-workout
+  // Cycle le timing training du repas : aucun → pré → intra → post → aucun.
+  // pre_workout reste synchronisé (rétrocompat avec le code athlète existant).
   function togglePreWorkout(idx: number) {
-    setMeals((prev) => prev.map((m, i) => i === idx ? { ...m, pre_workout: !m.pre_workout } : m))
+    const CYCLE: (WorkoutTiming | null)[] = [null, 'pre', 'intra', 'post']
+    setMeals((prev) => prev.map((m, i) => {
+      if (i !== idx) return m
+      const cur = m.workout_timing ?? (m.pre_workout ? 'pre' : null)
+      const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length]
+      return { ...m, workout_timing: next, pre_workout: next === 'pre' }
+    }))
   }
 
   // Template-mode category helpers
@@ -616,6 +699,16 @@ export default function MealEditor({
     try {
       setSaving(true)
 
+      // Objectifs sel + eau (diète athlète) — sauvés sur la table athletes.
+      if (showDietGoals && athleteId) {
+        const goalsPayload: Record<string, number | null> = {
+          sel_g: dietGoals.sel_g.trim() ? Number(dietGoals.sel_g) : null,
+          water_goal_ml: dietGoals.water_goal_ml.trim() ? Number(dietGoals.water_goal_ml) : null,
+        }
+        const { error: goalsErr } = await supabase.from('athletes').update(goalsPayload).eq('id', athleteId)
+        if (goalsErr) console.error('[MealEditor] save diet goals', goalsErr)
+      }
+
       // Recompute macros on each food before serialization, so DB always reflects
       // the latest aliments_db values (qty changes, food edits, etc.).
       const mealsWithFreshMacros: MealData[] = meals.map((m) => {
@@ -639,6 +732,12 @@ export default function MealEditor({
         calories: totals.kcal, proteines: Math.round(totals.p), glucides: Math.round(totals.g), lipides: Math.round(totals.l),
       }
 
+      // Snapshot de tous les onglets (tempMeals + onglet courant) avant sauvegarde.
+      const allTabsData: Record<string, { meals: MealData[]; macros: { calories: number; proteines: number; glucides: number; lipides: number } }> = {
+        ...Object.fromEntries(Object.entries(tempMeals).map(([k, v]) => [k, { meals: v.meals, macros: v.macros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 } }])),
+        [mealType]: { meals, macros: manualMacros },
+      }
+
       if (templateMode) {
         // ── TEMPLATE MODE: save to nutrition_templates ──
         let tplMealsPayload: any
@@ -648,30 +747,35 @@ export default function MealEditor({
         let tplLipides = finalTotals.lipides
 
         if (templateType === 'diete') {
-          // Full diet: store both ON and OFF in meals_data as { training: {...}, rest: {...} }
-          const currentTab = {
-            meals: mealsData,
-            macros: finalTotals,
-            macro_only: isMacroOnly || false,
-          }
-          const otherType = mealType === 'training' ? 'rest' : 'training'
-          const otherTemp = tempMeals[otherType]
+          // Full diet: store one day per tab in meals_data as { [meal_type]: {...}, ... }
+          tplMealsPayload = {}
+          type TabPayload = { meals: any; macros: { calories: number; proteines: number; glucides: number; lipides: number }; macro_only: boolean }
+          let firstTabData: TabPayload | null = null
+          let trainingData: TabPayload | null = null
 
-          let otherTab: any = { meals: [], macros: { calories: 0, proteines: 0, glucides: 0, lipides: 0 }, macro_only: false }
-          if (otherTemp) {
-            // hasFood doit prendre en compte variants ET foods.
-            const hasFood = otherTemp.meals.some((m) => getMealFoods(m).length > 0)
-            const otherMacros = otherTemp.macros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 }
-            const hasMacros = !!(otherMacros.calories || otherMacros.proteines || otherMacros.glucides || otherMacros.lipides)
+          for (const [mt, data] of Object.entries(allTabsData)) {
+            const isCurrent = mt === mealType
+            const tabMeals = data.meals
+            const tabMacros = data.macros
+            const hasFood = tabMeals.some((m) => getMealFoods(m).length > 0)
+            const hasMacros = !!(tabMacros.calories || tabMacros.proteines || tabMacros.glucides || tabMacros.lipides)
 
-            if (isMacroOnly && hasMacros) {
-              otherTab = {
+            let tabPayload: TabPayload
+
+            if (isCurrent) {
+              tabPayload = {
+                meals: mealsData,
+                macros: finalTotals,
+                macro_only: isMacroOnly || false,
+              }
+            } else if (isMacroOnly && hasMacros) {
+              tabPayload = {
                 meals: [],
-                macros: otherMacros,
+                macros: tabMacros,
                 macro_only: true,
               }
             } else if (hasFood) {
-              const otherWithFreshMacros: MealData[] = otherTemp.meals.map((m) => {
+              const tabWithFreshMacros: MealData[] = tabMeals.map((m) => {
                 if (hasVariants(m)) {
                   return {
                     ...m,
@@ -686,33 +790,35 @@ export default function MealEditor({
                   foods: (m.foods ?? []).map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
                 }
               })
-              const otherMealsData = serializeMealsForSave(otherWithFreshMacros)
+              const tabMealsData = serializeMealsForSave(tabWithFreshMacros)
               // Totals: pour les repas multi-variantes, on prend la 1re variante comme canonique.
-              const otherTotals = otherWithFreshMacros.reduce(
+              const tabTotals = tabWithFreshMacros.reduce(
                 (acc, m) => {
                   const t = calcMealTotals(getMealFoods(m))
                   return { kcal: acc.kcal + t.kcal, p: acc.p + t.p, g: acc.g + t.g, l: acc.l + t.l }
                 },
                 { kcal: 0, p: 0, g: 0, l: 0 },
               )
-              otherTab = {
-                meals: otherMealsData,
-                macros: { calories: Math.round(otherTotals.kcal), proteines: Math.round(otherTotals.p), glucides: Math.round(otherTotals.g), lipides: Math.round(otherTotals.l) },
+              tabPayload = {
+                meals: tabMealsData,
+                macros: { calories: Math.round(tabTotals.kcal), proteines: Math.round(tabTotals.p), glucides: Math.round(tabTotals.g), lipides: Math.round(tabTotals.l) },
                 macro_only: false,
               }
+            } else {
+              tabPayload = { meals: [], macros: { calories: 0, proteines: 0, glucides: 0, lipides: 0 }, macro_only: false }
             }
+
+            tplMealsPayload[mt] = tabPayload
+            if (!firstTabData) firstTabData = tabPayload
+            if (mt === 'training') trainingData = tabPayload
           }
 
-          tplMealsPayload = {
-            [mealType]: currentTab,
-            [otherType]: otherTab,
-          }
-          // Use training day macros for the summary columns
-          const trainingData = mealType === 'training' ? currentTab : otherTab
-          tplCalories = trainingData.macros.calories
-          tplProteines = trainingData.macros.proteines
-          tplGlucides = trainingData.macros.glucides
-          tplLipides = trainingData.macros.lipides
+          // Use training day macros for the summary columns, else the first tab.
+          const summaryData = trainingData || firstTabData || { macros: { calories: 0, proteines: 0, glucides: 0, lipides: 0 } }
+          tplCalories = summaryData.macros.calories
+          tplProteines = summaryData.macros.proteines
+          tplGlucides = summaryData.macros.glucides
+          tplLipides = summaryData.macros.lipides
         } else {
           // jour or repas: flat array of meals
           tplMealsPayload = mealsData
@@ -743,129 +849,54 @@ export default function MealEditor({
         return
       } else {
         // ── ATHLETE MODE: save to nutrition_plans ──
-        const today = new Date().toISOString().split('T')[0]
+        const today2 = new Date().toISOString().split('T')[0]
 
         // Day variants : si on édite une variante de jour (variant_label set), on ne désactive
         // QUE les versions précédentes de cette variante (même nom + même variant_label).
         // Sinon (plan singleton legacy), on désactive comme avant tous les plans du même meal_type.
-        if (variantLabel) {
-          await supabase
-            .from('nutrition_plans')
-            .update({ actif: false })
-            .eq('athlete_id', athleteId)
-            .eq('meal_type', mealType)
-            .eq('nom', planName.trim())
-            .eq('variant_label', variantLabel)
-        } else {
-          await supabase
-            .from('nutrition_plans')
-            .update({ actif: false })
-            .eq('athlete_id', athleteId)
-            .eq('meal_type', mealType)
-            .is('variant_label', null)
-        }
+        // Boucle sur TOUS les onglets (tempMeals + onglet courant) : une ligne nutrition_plans par jour.
+        for (const [mt, data] of Object.entries(allTabsData)) {
+          const isCurrent = mt === mealType
+          const tabMeals = data.meals
+          const tabMacros = data.macros
+          const hasFood = tabMeals.some((m) => getMealFoods(m).length > 0)
+          const hasMacros = !!(tabMacros.calories || tabMacros.proteines || tabMacros.glucides || tabMacros.lipides)
+          if (!isCurrent && !hasFood && !(isMacroOnly && hasMacros)) continue
 
-        const payload: Record<string, any> = {
-          nom: planName.trim(),
-          meal_type: mealType,
-          meals_data: JSON.stringify(mealsData),
-          calories_objectif: finalTotals.calories,
-          proteines: finalTotals.proteines,
-          glucides: finalTotals.glucides,
-          lipides: finalTotals.lipides,
-          valid_from: today,
-          actif: true,
-          athlete_id: athleteId,
-          coach_id: user.id,
-          macro_only: isMacroOnly || false,
-          // Préserver day-variant label/order pour ne pas écraser une variante en "Standard".
-          variant_label: variantLabel ?? null,
-          variant_order: variantOrder ?? 0,
-        }
-
-        const { error } = await supabase.from('nutrition_plans').insert(payload)
-        if (error) { toast('Erreur: ' + error.message, 'error'); setSaving(false); return }
-
-        // Save paired plan (other tab) if coach edited it during this session
-        const otherType = mealType === 'training' ? 'rest' : 'training'
-        const otherTemp = tempMeals[otherType]
-        if (otherTemp) {
-          const hasFood = otherTemp.meals.some((m) => getMealFoods(m).length > 0)
-          const otherMacros = otherTemp.macros || { calories: 0, proteines: 0, glucides: 0, lipides: 0 }
-          const hasMacros = !!(otherMacros.calories || otherMacros.proteines || otherMacros.glucides || otherMacros.lipides)
-          // Save if user filled foods OR (macro-only) entered any macro values
-          if (hasFood || (isMacroOnly && hasMacros)) {
-            // Comme pour la tab principale : si la complémentaire a un variant_label, scoper la deactivation.
-            if (variantLabel) {
-              await supabase
-                .from('nutrition_plans')
-                .update({ actif: false })
-                .eq('athlete_id', athleteId)
-                .eq('meal_type', otherType)
-                .eq('nom', planName.trim())
-                .eq('variant_label', variantLabel)
-            } else {
-              await supabase
-                .from('nutrition_plans')
-                .update({ actif: false })
-                .eq('athlete_id', athleteId)
-                .eq('meal_type', otherType)
-                .is('variant_label', null)
-            }
-
-            const otherWithFreshMacros: MealData[] = otherTemp.meals.map((m) => {
-              if (hasVariants(m)) {
-                return {
-                  ...m,
-                  variants: m.variants!.map((v) => ({
-                    ...v,
-                    foods: v.foods.map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
-                  })),
-                }
-              }
-              return {
-                ...m,
-                foods: (m.foods ?? []).map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })),
-              }
-            })
-            const otherMealsData = isMacroOnly ? [] : serializeMealsForSave(otherWithFreshMacros)
-
-            let otherCal = 0, otherP = 0, otherG = 0, otherL = 0
-            if (isMacroOnly) {
-              otherCal = otherMacros.calories
-              otherP = otherMacros.proteines
-              otherG = otherMacros.glucides
-              otherL = otherMacros.lipides
-            } else {
-              // Totals: 1re variante = canonique pour les repas multi-variantes.
-              const totals = otherWithFreshMacros.reduce(
-                (acc, m) => {
-                  const t = calcMealTotals(getMealFoods(m))
-                  return { kcal: acc.kcal + t.kcal, p: acc.p + t.p, g: acc.g + t.g, l: acc.l + t.l }
-                },
-                { kcal: 0, p: 0, g: 0, l: 0 },
-              )
-              otherCal = Math.round(totals.kcal); otherP = Math.round(totals.p); otherG = Math.round(totals.g); otherL = Math.round(totals.l)
-            }
-
-            await supabase.from('nutrition_plans').insert({
-              nom: planName.trim(),
-              meal_type: otherType,
-              meals_data: JSON.stringify(otherMealsData),
-              calories_objectif: otherCal,
-              proteines: otherP,
-              glucides: otherG,
-              lipides: otherL,
-              valid_from: today,
-              actif: true,
-              athlete_id: athleteId,
-              coach_id: user.id,
-              macro_only: isMacroOnly || false,
-              // Apparier la variante de jour côté complémentaire (Push ↔ Push, etc.).
-              variant_label: variantLabel ?? null,
-              variant_order: variantOrder ?? 0,
-            })
+          // Désactiver l'ancienne version de ce jour (même scoping variant_label qu'avant).
+          if (variantLabel) {
+            await supabase.from('nutrition_plans').update({ actif: false })
+              .eq('athlete_id', athleteId).eq('meal_type', mt).eq('nom', planName.trim()).eq('variant_label', variantLabel)
+          } else {
+            await supabase.from('nutrition_plans').update({ actif: false })
+              .eq('athlete_id', athleteId).eq('meal_type', mt).is('variant_label', null)
           }
+
+          const withFresh: MealData[] = tabMeals.map((m) => hasVariants(m)
+            ? { ...m, variants: m.variants!.map((v) => ({ ...v, foods: v.foods.map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })) })) }
+            : { ...m, foods: (m.foods ?? []).map((f) => ({ ...f, ...calcFoodMacros(f), allow_conversion: f.allow_conversion || false })) })
+          const mealsPayload = isMacroOnly ? [] : serializeMealsForSave(withFresh)
+          let cal = 0, p = 0, g = 0, l = 0
+          if (isMacroOnly) { cal = tabMacros.calories; p = tabMacros.proteines; g = tabMacros.glucides; l = tabMacros.lipides }
+          else {
+            const t = withFresh.reduce((acc, m) => { const x = calcMealTotals(getMealFoods(m)); return { kcal: acc.kcal + x.kcal, p: acc.p + x.p, g: acc.g + x.g, l: acc.l + x.l } }, { kcal: 0, p: 0, g: 0, l: 0 })
+            cal = Math.round(t.kcal); p = Math.round(t.p); g = Math.round(t.g); l = Math.round(t.l)
+          }
+          await supabase.from('nutrition_plans').insert({
+            nom: planName.trim(), meal_type: mt, meals_data: JSON.stringify(mealsPayload),
+            calories_objectif: cal, proteines: p, glucides: g, lipides: l,
+            valid_from: today2, actif: true, athlete_id: athleteId, coach_id: user.id,
+            macro_only: isMacroOnly || false, variant_label: variantLabel ?? null, variant_order: variantOrder ?? 0,
+          })
+        }
+
+        // Nettoyage des jours renommés/retirés : désactive les lignes orphelines
+        // (meal_type qui ne sont plus dans `tabs`) pour cette diète/variante.
+        const keepTypes = tabs.map((t) => t.mealType)
+        if (keepTypes.length) {
+          const q = supabase.from('nutrition_plans').update({ actif: false })
+            .eq('athlete_id', athleteId).eq('nom', planName.trim()).not('meal_type', 'in', `(${keepTypes.map((t) => `"${t.replace(/"/g, '')}"`).join(',')})`)
+          if (variantLabel) { await q.eq('variant_label', variantLabel) } else { await q.is('variant_label', null) }
         }
 
         // Notify athlete (DB + push)
@@ -900,19 +931,23 @@ export default function MealEditor({
           </div>
           {/* ON/OFF tabs: show for athlete mode OR diete template */}
           {(!templateMode || templateType === 'diete') && (
-            <div style={{ display: 'flex', gap: 4, marginLeft: 12 }}>
-              <button
-                className={`athlete-tab-btn ${mealType === 'training' ? 'active' : ''}`}
-                onClick={() => switchMealType('training')}
-              >
-                <i className="fa-solid fa-dumbbell" /> Jour ON
-              </button>
-              <button
-                className={`athlete-tab-btn ${mealType === 'rest' ? 'active' : ''}`}
-                onClick={() => switchMealType('rest')}
-              >
-                <i className="fa-solid fa-bed" /> Jour OFF
-              </button>
+            <div style={{ display: 'flex', gap: 4, marginLeft: 12, alignItems: 'center' }}>
+              {tabs.map((t, i) => (
+                <span key={t.mealType} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                  <button
+                    type="button"
+                    className={`athlete-tab-btn ${mealType === t.mealType ? 'active' : ''}`}
+                    onClick={() => switchMealType(t.mealType)}
+                  >
+                    {t.label}
+                  </button>
+                  <button type="button" title="Renommer" onClick={() => renameTab(t.mealType)}>&#9998;</button>
+                  {i >= 2 && <button type="button" title="Retirer" onClick={() => removeTab(t.mealType)}>&#10005;</button>}
+                </span>
+              ))}
+              {tabs.length < MAX_DAYS && (
+                <button type="button" title="Ajouter un jour" onClick={addTab}>+ Jour</button>
+              )}
             </div>
           )}
           {/* Single day label for jour template */}
@@ -980,6 +1015,22 @@ export default function MealEditor({
           </button>
         </div>
       </div>
+
+      {/* Objectifs sel + eau (diète athlète) */}
+      {showDietGoals && (
+        <div className={styles.editorMacros} style={{ marginBottom: 8 }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label><i className="fa-solid fa-shaker" style={{ marginRight: 4 }} />Sel (g/jour)</label>
+            <input type="number" step="0.5" value={dietGoals.sel_g} placeholder="—"
+              onChange={(e) => setDietGoals((p) => ({ ...p, sel_g: e.target.value }))} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label><i className="fa-solid fa-tint" style={{ marginRight: 4 }} />Eau (ml/jour)</label>
+            <input type="number" step="100" value={dietGoals.water_goal_ml} placeholder="—"
+              onChange={(e) => setDietGoals((p) => ({ ...p, water_goal_ml: e.target.value }))} />
+          </div>
+        </div>
+      )}
 
       {/* Macro header */}
       <div className={styles.editorMacros}>
@@ -1118,7 +1169,12 @@ export default function MealEditor({
                         <i className="fa-solid fa-grip-vertical" />
                       </span>
                       <span className={styles.mealTitle}>R{mealIdx + 1}</span>
-                      {meal.pre_workout && <span className={styles.pwBadge}>Pre training</span>}
+                      {(() => {
+                        const t = meal.workout_timing ?? (meal.pre_workout ? 'pre' : null)
+                        if (!t) return null
+                        const lbl = t === 'pre' ? 'Pré training' : t === 'intra' ? 'Intra training' : 'Post training'
+                        return <span className={styles.pwBadge}>{lbl}</span>
+                      })()}
                       {mealFoods.length > 0 && (
                         <span className={styles.mealHeadMacros}>
                           {mealTotals.kcal} kcal | P:{mealTotals.p.toFixed(1)}g G:{mealTotals.g.toFixed(1)}g L:{mealTotals.l.toFixed(1)}g
@@ -1129,7 +1185,7 @@ export default function MealEditor({
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
-                        onClick={(e) => { e.stopPropagation(); setClipboardMeal({ foods: mealFoods.map(f => ({ ...f })), pre_workout: meal.pre_workout, time: meal.time }); toast('Repas copie', 'success') }}
+                        onClick={(e) => { e.stopPropagation(); setClipboardMeal({ foods: mealFoods.map(f => ({ ...f })), pre_workout: meal.pre_workout, workout_timing: meal.workout_timing ?? (meal.pre_workout ? 'pre' : null), time: meal.time }); toast('Repas copie', 'success') }}
                         title="Copier ce repas"
                       >
                         <i className="fa-solid fa-copy" />
@@ -1144,15 +1200,26 @@ export default function MealEditor({
                           <i className="fa-solid fa-paste" />
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className={`btn btn-outline btn-sm ${meal.pre_workout ? 'active' : ''}`}
-                        onClick={(e) => { e.stopPropagation(); togglePreWorkout(mealIdx) }}
-                        title="Pre training"
-                        style={meal.pre_workout ? { borderColor: 'var(--primary)', color: 'var(--primary)', background: 'rgba(179,8,8,0.1)' } : {}}
-                      >
-                        <i className="fa-solid fa-person-running" />
-                      </button>
+                      {(() => {
+                        const t = meal.workout_timing ?? (meal.pre_workout ? 'pre' : null)
+                        const active = !!t
+                        const title = t === 'pre' ? 'Pré training (cliquer : intra)'
+                          : t === 'intra' ? 'Intra training (cliquer : post)'
+                          : t === 'post' ? 'Post training (cliquer : aucun)'
+                          : 'Marquer training (pré/intra/post)'
+                        return (
+                          <button
+                            type="button"
+                            className={`btn btn-outline btn-sm ${active ? 'active' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); togglePreWorkout(mealIdx) }}
+                            title={title}
+                            style={active ? { borderColor: 'var(--primary)', color: 'var(--primary)', background: 'rgba(179,8,8,0.1)' } : {}}
+                          >
+                            <i className="fa-solid fa-person-running" />
+                            {t && <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700 }}>{t === 'pre' ? 'PRÉ' : t === 'intra' ? 'INTRA' : 'POST'}</span>}
+                          </button>
+                        )
+                      })()}
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"

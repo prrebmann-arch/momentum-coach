@@ -202,6 +202,13 @@ export default function ProgramEditor({
     }))
   }, [activeSession])
 
+  const onNotesChange = useCallback((exIdx: number, notes: string) => {
+    setSessions((prev) => prev.map((s, i) => {
+      if (i !== activeSession) return s
+      return { ...s, exercises: s.exercises.map((ex, ei) => ei === exIdx ? { ...ex, coach_notes: notes } : ex) }
+    }))
+  }, [activeSession])
+
   const addSet = useCallback((exIdx: number) => {
     setSessions((prev) => prev.map((s, i) => {
       if (i !== activeSession) return s
@@ -248,6 +255,17 @@ export default function ProgramEditor({
           ...ex,
           sets: [...ex.sets, { reps: '12', reps_rp: '20', rest_pause_time: '15', type: 'rest_pause' as const }],
         }
+      })
+      return { ...s, exercises }
+    }))
+  }, [activeSession])
+
+  const addBackoff = useCallback((exIdx: number) => {
+    setSessions((prev) => prev.map((s, i) => {
+      if (i !== activeSession) return s
+      const exercises = s.exercises.map((ex, ei) => {
+        if (ei !== exIdx) return ex
+        return { ...ex, sets: [...ex.sets, { reps: '8-12', tempo: '30X1', repos: '1m30', backoff_pct: '20', type: 'backoff' as const }] }
       })
       return { ...s, exercises }
     }))
@@ -364,6 +382,7 @@ export default function ProgramEditor({
               base.sets = e.sets
             }
             if (e.superset_id) base.superset_id = e.superset_id
+            if (e.coach_notes && e.coach_notes.trim()) base.coach_notes = e.coach_notes.trim()
             return base
           }),
         }))
@@ -437,6 +456,7 @@ export default function ProgramEditor({
               base.sets = e.sets
             }
             if (e.superset_id) base.superset_id = e.superset_id
+            if (e.coach_notes && e.coach_notes.trim()) base.coach_notes = e.coach_notes.trim()
             return base
           })
           const { error } = await supabase
@@ -664,8 +684,10 @@ export default function ProgramEditor({
             onRemoveSet={removeSet}
             onAddDropSet={addDropSet}
             onAddRestPause={addRestPause}
+            onAddBackoff={addBackoff}
             onToggleSuperset={toggleSuperset}
             onToggleMaxRep={toggleMaxRep}
+            onNotesChange={onNotesChange}
           />
         )}
       </div>

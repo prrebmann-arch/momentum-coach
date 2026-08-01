@@ -206,6 +206,7 @@ function formatInputType(type: string): string {
     case 'boolean':     return 'Oui/Non'
     case 'time':        return 'Heure'
     case 'photo':       return 'Photo'
+    case 'video':       return 'Vidéo'
     default:            return type
   }
 }
