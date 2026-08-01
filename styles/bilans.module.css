@@ -287,7 +287,7 @@
 }
 .pcClose:hover { background: var(--bg3); color: var(--text); }
 
-/* Body */
+/* Body : les 2 photos collées, aucun espace. */
 .pcBody {
   display: flex; gap: 0; align-items: stretch; justify-content: center;
   flex: 1; min-height: 0;
@@ -296,21 +296,20 @@
   flex: 1; min-width: 0; display: flex; align-items: stretch; justify-content: center;
   position: relative;
 }
-/* Fin trait de séparation entre les 2 photos (comme le modèle). */
 .pcDivider { width: 2px; background: #000; flex-shrink: 0; align-self: stretch; }
 
 .pcCellWrap {
   display: flex; flex-direction: column; align-items: stretch;
   flex: 1; min-width: 0; gap: 8px; height: 100%;
 }
-/* Photos grandes et proches : remplissent leur moitié, collées au centre. */
+/* Photos remplissent toute leur moitié, collées, sans arrondi. */
 .pcCell {
   position: relative;
   width: 100%;
   flex: 1; min-height: 0;
   max-height: min(80vh, 950px);
   background: #000;
-  border-radius: 12px;
+  border-radius: 0;
   overflow: hidden;
   transition: opacity 0.15s ease;
 }
