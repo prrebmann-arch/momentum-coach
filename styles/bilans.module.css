@@ -314,10 +314,15 @@
   height: min(80vh, 950px);
   width: auto;
   background: #000;
-  border-radius: 0;
+  border-radius: 14px;
   overflow: hidden;
   transition: opacity 0.15s ease;
 }
+/* Coins intérieurs droits pour que les 2 photos restent collées, extérieurs arrondis. */
+.pcSide:first-of-type .pcCell { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.pcSide:last-of-type .pcCell { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+/* Fin trait de séparation clair entre les 2 photos. */
+.pcSide:last-of-type .pcCell { box-shadow: -1px 0 0 0 rgba(255,255,255,0.12); }
 .pcCell img { display: block; height: 100%; width: auto; }
 .pcImgFade { opacity: 0.3; }
 
