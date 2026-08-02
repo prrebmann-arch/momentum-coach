@@ -361,7 +361,7 @@ export default function PhotoCompare({ isOpen, onClose, initialType, initialDate
                         src={leftPhoto.url}
                         alt={`${TYPE_LABELS[type]} - ${leftPhoto.date}`}
                         crossOrigin="anonymous"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', userSelect: 'none' }}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
                         draggable={false}
                       />
                     )}
@@ -412,7 +412,7 @@ export default function PhotoCompare({ isOpen, onClose, initialType, initialDate
                         src={rightPhoto.url}
                         alt={`${TYPE_LABELS[type]} - ${rightPhoto.date}`}
                         crossOrigin="anonymous"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', userSelect: 'none' }}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
                         draggable={false}
                       />
                     )}
