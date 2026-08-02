@@ -355,13 +355,13 @@ export default function PhotoCompare({ isOpen, onClose, initialType, initialDate
                   doubleClick={{ disabled: false, mode: 'reset' }}
                   wheel={{ step: 0.1 }}
                 >
-                  <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }} contentStyle={{ width: '100%', height: '100%' }}>
+                  <TransformComponent wrapperStyle={{ height: '100%', width: 'auto' }} contentStyle={{ height: '100%', width: 'auto' }}>
                     {leftPhoto && (
                       <img
                         src={leftPhoto.url}
                         alt={`${TYPE_LABELS[type]} - ${leftPhoto.date}`}
                         crossOrigin="anonymous"
-                        style={{ width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
+                        style={{ height: '100%', width: 'auto', userSelect: 'none' }}
                         draggable={false}
                       />
                     )}
@@ -406,13 +406,13 @@ export default function PhotoCompare({ isOpen, onClose, initialType, initialDate
                   doubleClick={{ disabled: false, mode: 'reset' }}
                   wheel={{ step: 0.1 }}
                 >
-                  <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }} contentStyle={{ width: '100%', height: '100%' }}>
+                  <TransformComponent wrapperStyle={{ height: '100%', width: 'auto' }} contentStyle={{ height: '100%', width: 'auto' }}>
                     {rightPhoto && (
                       <img
                         src={rightPhoto.url}
                         alt={`${TYPE_LABELS[type]} - ${rightPhoto.date}`}
                         crossOrigin="anonymous"
-                        style={{ width: '100%', height: '100%', objectFit: 'contain', userSelect: 'none' }}
+                        style={{ height: '100%', width: 'auto', userSelect: 'none' }}
                         draggable={false}
                       />
                     )}

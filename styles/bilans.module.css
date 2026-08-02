@@ -287,32 +287,38 @@
 }
 .pcClose:hover { background: var(--bg3); color: var(--text); }
 
-/* Body : les 2 photos collées, aucun espace. */
+/* Body : les 2 photos collées au centre, chacune à la largeur de son portrait.
+   Les côtés ne prennent PAS toute la moitié d'écran (sinon bandes noires au centre).
+   On centre les 2 blocs ensemble et on colle les cellules. */
 .pcBody {
-  display: flex; gap: 0; align-items: stretch; justify-content: center;
-  flex: 1; min-height: 0;
+  display: flex; gap: 0; align-items: flex-start; justify-content: center;
+  flex: 1; min-height: 0; padding: 0 8px;
 }
 .pcSide {
-  flex: 1; min-width: 0; display: flex; align-items: stretch; justify-content: center;
+  min-width: 0; display: flex; flex-direction: column;
   position: relative;
 }
-.pcDivider { width: 2px; background: #000; flex-shrink: 0; align-self: stretch; }
+.pcDivider { display: none; }
 
 .pcCellWrap {
-  display: flex; flex-direction: column; align-items: stretch;
-  flex: 1; min-width: 0; gap: 8px; height: 100%;
+  display: flex; flex-direction: column; align-items: center;
+  min-width: 0; gap: 8px; height: 100%;
 }
-/* Photos remplissent toute leur moitié, collées, sans arrondi. */
+/* Le caption prend la largeur de la cellule (= largeur de l'image). */
+.pcCellWrap > .pcCaption { width: 100%; max-width: 100%; }
+/* Cellule à hauteur fixe ; sa largeur = celle de l'image (ratio naturel).
+   Résultat : aucune bande noire latérale → les 2 photos se touchent, sans être coupées.
+   width auto + l'image en height:100% width:auto définit la largeur. */
 .pcCell {
   position: relative;
-  width: 100%;
-  flex: 1; min-height: 0;
-  max-height: min(80vh, 950px);
+  height: min(80vh, 950px);
+  width: auto;
   background: #000;
   border-radius: 0;
   overflow: hidden;
   transition: opacity 0.15s ease;
 }
+.pcCell img { display: block; height: 100%; width: auto; }
 .pcImgFade { opacity: 0.3; }
 
 .pcResetBtn {
