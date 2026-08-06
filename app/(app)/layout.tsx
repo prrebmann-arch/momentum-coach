@@ -8,6 +8,8 @@ import dynamic from 'next/dynamic'
 import Sidebar from '@/components/layout/Sidebar'
 import styles from '@/styles/sidebar.module.css'
 import { RecorderProvider } from '@/contexts/RecorderContext'
+import { NotificationsProvider } from '@/contexts/NotificationsContext'
+import Topbar from '@/components/layout/Topbar'
 
 // Recorder UI — lazy. Only mounted when actively recording (the components
 // no-op themselves when idle). Keeps RecorderContext provider in tree so the
@@ -112,17 +114,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <AthleteProvider>
-      <RecorderProvider>
-        <div className={styles.appLayout}>
-          <Sidebar />
-          <main className={styles.mainContent}>
-            {children}
-          </main>
-        </div>
-        <RecordingPill />
-        <LiveCamBubble />
-        <RetourFinalizeModal />
-      </RecorderProvider>
+      <NotificationsProvider>
+        <RecorderProvider>
+          <div className={styles.appLayout}>
+            <Sidebar />
+            <div className={styles.mainContent} style={{ display: 'flex', flexDirection: 'column' }}>
+              <Topbar />
+              <main style={{ flex: 1 }}>{children}</main>
+            </div>
+          </div>
+          <RecordingPill />
+          <LiveCamBubble />
+          <RetourFinalizeModal />
+        </RecorderProvider>
+      </NotificationsProvider>
     </AthleteProvider>
   )
 }
