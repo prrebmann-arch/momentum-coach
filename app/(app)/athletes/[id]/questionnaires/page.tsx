@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
 import { getPageCache, setPageCache } from '@/lib/utils'
+import { markResourceNotificationsRead } from '@/lib/notifications'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 
@@ -82,6 +83,13 @@ export default function QuestionnairesPage() {
   const { user } = useAuth()
   const { toast } = useToast()
   const supabase = createClient()
+
+  useEffect(() => {
+    if (!params.id) return
+    markResourceNotificationsRead(params.id, 'questionnaire').catch((err) =>
+      console.error('[Notifications] markResourceNotificationsRead failed:', err)
+    )
+  }, [params.id])
 
   const cacheKey = `athlete_${params.id}_questionnaires`
   const [cached] = useState(() => getPageCache<{ assignments: any[]; responsesMap: Record<string, any>; templates: any[] }>(cacheKey))

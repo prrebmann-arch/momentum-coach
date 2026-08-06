@@ -8,6 +8,7 @@ import { useAthleteContext } from '@/contexts/AthleteContext'
 import { useToast } from '@/contexts/ToastContext'
 import { notifyAthlete } from '@/lib/push'
 import { getPageCache, setPageCache } from '@/lib/utils'
+import { markResourceNotificationsRead } from '@/lib/notifications'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import dynamic from 'next/dynamic'
@@ -221,6 +222,13 @@ export default function BilansPage() {
   const athlete = selectedAthlete?.id === params.id ? selectedAthlete : athletes.find(a => a.id === params.id)
   const athleteId = params.id
   const athleteUserId = athlete?.user_id
+
+  useEffect(() => {
+    if (!athleteId) return
+    markResourceNotificationsRead(athleteId, 'bilan').catch((err) =>
+      console.error('[Notifications] markResourceNotificationsRead failed:', err)
+    )
+  }, [athleteId])
 
   const cacheKey = `athlete_${athleteId}_bilans`
   const [cached] = useState(() => getPageCache<{ bilans: DailyReport[]; progWeeks: unknown[]; nutriPlans: unknown[]; phases: unknown[] }>(cacheKey))

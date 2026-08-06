@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/contexts/ToastContext'
+import { markResourceNotificationsRead } from '@/lib/notifications'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import Toggle from '@/components/ui/Toggle'
 import Skeleton from '@/components/ui/Skeleton'
@@ -60,6 +61,13 @@ export default function FodmapPage() {
   const [loading, setLoading] = useState(true)
   const [enabled, setEnabled] = useState(false)
   const [logs, setLogs] = useState<FodmapLog[]>([])
+
+  useEffect(() => {
+    if (!params.id) return
+    markResourceNotificationsRead(params.id, 'fodmap').catch((err) =>
+      console.error('[Notifications] markResourceNotificationsRead failed:', err)
+    )
+  }, [params.id])
 
   const loadData = useCallback(async () => {
     try {
