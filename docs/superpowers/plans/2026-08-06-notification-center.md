@@ -96,15 +96,19 @@ CREATE POLICY "coach_update_own_notifications" ON coach_notifications FOR UPDATE
 -- (kept separate, not parameterized, so each stays simple SQL)
 -- ============================================================
 
+-- daily_reports identifies the athlete via user_id (auth uid of the
+-- athlete), not athlete_id like the other source tables — resolve
+-- athletes.id + coach_id together via that column.
 CREATE OR REPLACE FUNCTION notify_coach_on_bilan()
 RETURNS TRIGGER
 SECURITY DEFINER
 SET search_path = public
 LANGUAGE plpgsql AS $$
 DECLARE
+  v_athlete_id uuid;
   v_coach_id uuid;
 BEGIN
-  SELECT coach_id INTO v_coach_id FROM athletes WHERE id = NEW.athlete_id;
+  SELECT id, coach_id INTO v_athlete_id, v_coach_id FROM athletes WHERE user_id = NEW.user_id;
   IF v_coach_id IS NULL THEN
     RETURN NEW;
   END IF;
@@ -112,11 +116,11 @@ BEGIN
   INSERT INTO coach_notifications (coach_id, athlete_id, type, title, body, resource_link, source_table, source_id)
   VALUES (
     v_coach_id,
-    NEW.athlete_id,
+    v_athlete_id,
     'bilan',
     'Nouveau bilan',
     'Un bilan a été soumis.',
-    '/athletes/' || NEW.athlete_id || '/bilans',
+    '/athletes/' || v_athlete_id || '/bilans',
     'daily_reports',
     NEW.id
   );
@@ -264,8 +268,19 @@ CREATE TRIGGER trg_notify_coach_on_fodmap
 -- ============================================================
 -- Realtime: add table to the supabase_realtime publication so
 -- postgres_changes subscriptions fire for INSERT/UPDATE.
+-- Guarded for idempotent re-runs (ALTER PUBLICATION ... ADD TABLE has
+-- no IF NOT EXISTS form).
 -- ============================================================
-ALTER PUBLICATION supabase_realtime ADD TABLE coach_notifications;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'coach_notifications'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE coach_notifications;
+  END IF;
+END;
+$$;
 ```
 
 - [ ] **Step 2: Apply in Supabase SQL Editor**
@@ -274,10 +289,10 @@ Run the full file content in the Supabase project's SQL Editor (repo convention 
 
 - [ ] **Step 3: Manual verification query**
 
-In the SQL Editor, pick a real `athlete_id` you own as coach and run:
+In the SQL Editor, pick a real athlete you own as coach and note both their `athletes.id` and `athletes.user_id` (the bilan trigger keys off `user_id`, not `athlete_id` — see `app/(app)/athletes/[id]/bilans/page.tsx`'s `daily_reports` query). Run:
 
 ```sql
-INSERT INTO daily_reports (athlete_id, date) VALUES ('<athlete_id>', current_date)
+INSERT INTO daily_reports (user_id, date) VALUES ('<athlete_user_id>', current_date)
 RETURNING id;
 ```
 
@@ -287,7 +302,7 @@ Then:
 SELECT * FROM coach_notifications WHERE source_table = 'daily_reports' ORDER BY created_at DESC LIMIT 1;
 ```
 
-Expected: one row with `type = 'bilan'`, correct `coach_id`, `resource_link = '/athletes/<athlete_id>/bilans'`.
+Expected: one row with `type = 'bilan'`, correct `coach_id`, `resource_link = '/athletes/<athlete_id>/bilans'` (the athlete's `athletes.id`, not their `user_id`).
 
 Clean up the test row afterward:
 ```sql
