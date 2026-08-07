@@ -523,16 +523,21 @@ export default function InfosPage() {
     }
     if (card === 'personal') {
       const todayStr = new Date().toISOString().split('T')[0]
-      // Set anchor dates if frequency changed
-      if (updateData.bilan_frequency !== (a.bilan_frequency || 'daily')) {
-        updateData.bilan_anchor_date = todayStr
-      } else {
-        updateData.bilan_anchor_date = a.bilan_anchor_date || todayStr
+      // Respect whatever the coach typed in the anchor date field (already in
+      // updateData via the formData spread above). Only fall back to
+      // today/previous value when the field is empty, or when the frequency
+      // just changed and there's no anchor yet to carry over.
+      if (!updateData.bilan_anchor_date) {
+        updateData.bilan_anchor_date =
+          updateData.bilan_frequency !== (a.bilan_frequency || 'daily')
+            ? todayStr
+            : (a.bilan_anchor_date || todayStr)
       }
-      if (updateData.complete_bilan_frequency !== (a.complete_bilan_frequency || 'weekly')) {
-        updateData.complete_bilan_anchor_date = todayStr
-      } else {
-        updateData.complete_bilan_anchor_date = a.complete_bilan_anchor_date || todayStr
+      if (!updateData.complete_bilan_anchor_date) {
+        updateData.complete_bilan_anchor_date =
+          updateData.complete_bilan_frequency !== (a.complete_bilan_frequency || 'weekly')
+            ? todayStr
+            : (a.complete_bilan_anchor_date || todayStr)
       }
     }
     const selectedQuotidienId = updateData.selected_template_quotidien_id ?? ''
