@@ -1,7 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react'
-import type { REALTIME_SUBSCRIBE_STATES, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -23,7 +22,6 @@ const NotificationsContext = createContext<NotificationsContextValue | null>(nul
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [notifications, setNotifications] = useState<CoachNotification[]>([])
-  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
 
   const reload = useCallback(async () => {
     if (!user) return
@@ -48,22 +46,16 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'coach_notifications', filter: `coach_id=eq.${user.id}` },
-        (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+        () => {
           // Any insert/update for this coach — just reload the unread set.
           // Simpler and safer than hand-merging partial payloads.
-          console.log('[Notifications] Realtime event received:', payload)
           reload()
         }
       )
-      .subscribe((status: REALTIME_SUBSCRIBE_STATES, err?: Error) => {
-        console.log('[Notifications] channel status:', status, err ?? '')
-      })
-
-    channelRef.current = channel
+      .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
-      channelRef.current = null
     }
   }, [user, reload])
 
