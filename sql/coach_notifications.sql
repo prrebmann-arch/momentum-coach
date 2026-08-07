@@ -58,6 +58,11 @@ CREATE POLICY "coach_update_own_notifications" ON coach_notifications FOR UPDATE
 -- bilan.js: energy + sleep_quality both set) — fire only on the
 -- transition into that state, exactly once, whether it happens via
 -- INSERT (already complete on first write) or UPDATE (completed later).
+-- Trigger-level WHEN clauses cannot reference OLD when the trigger's event
+-- set includes INSERT (Postgres rejects it at CREATE TRIGGER time — OLD is
+-- undefined for INSERT). So the WHEN clause only does the cheap NEW-only
+-- completion check; the INSERT-vs-UPDATE transition guard (comparing
+-- against OLD) lives inside the function body instead.
 CREATE OR REPLACE FUNCTION notify_coach_on_bilan()
 RETURNS TRIGGER
 SECURITY DEFINER
@@ -67,6 +72,12 @@ DECLARE
   v_athlete_id uuid;
   v_coach_id uuid;
 BEGIN
+  IF TG_OP = 'UPDATE' AND OLD.energy IS NOT NULL AND OLD.sleep_quality IS NOT NULL THEN
+    -- Already complete before this write (e.g. editing a past bilan) —
+    -- not a new completion, don't re-notify.
+    RETURN NEW;
+  END IF;
+
   SELECT id, coach_id INTO v_athlete_id, v_coach_id FROM athletes WHERE user_id = NEW.user_id;
   IF v_coach_id IS NULL THEN
     RETURN NEW;
@@ -94,10 +105,7 @@ DROP TRIGGER IF EXISTS trg_notify_coach_on_bilan ON daily_reports;
 CREATE TRIGGER trg_notify_coach_on_bilan
   AFTER INSERT OR UPDATE ON daily_reports
   FOR EACH ROW
-  WHEN (
-    NEW.energy IS NOT NULL AND NEW.sleep_quality IS NOT NULL
-    AND (TG_OP = 'INSERT' OR OLD.energy IS NULL OR OLD.sleep_quality IS NULL)
-  )
+  WHEN (NEW.energy IS NOT NULL AND NEW.sleep_quality IS NOT NULL)
   EXECUTE FUNCTION notify_coach_on_bilan();
 
 CREATE OR REPLACE FUNCTION notify_coach_on_questionnaire()
