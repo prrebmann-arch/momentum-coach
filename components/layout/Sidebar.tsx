@@ -26,6 +26,7 @@ const navGroups: { label?: string; items: NavItem[] }[] = [
     items: [
       { label: 'Bilans', icon: 'fa-clipboard-check', route: '/bilans' },
       { label: 'Vidéos', icon: 'fa-video', route: '/videos' },
+      { label: 'Questionnaires', icon: 'fa-clipboard-question', route: '/questionnaires' },
       { label: 'Annonces', icon: 'fa-bullhorn', route: '/annonces' },
     ],
   },
