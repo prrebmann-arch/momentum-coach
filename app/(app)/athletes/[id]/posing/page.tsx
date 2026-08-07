@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { getPageCache, setPageCache } from '@/lib/utils'
+import { markResourceNotificationsRead } from '@/lib/notifications'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import Toggle from '@/components/ui/Toggle'
 import Modal from '@/components/ui/Modal'
@@ -24,6 +25,13 @@ export default function PosingPage() {
   const { user } = useAuth()
   const { toast } = useToast()
   const supabase = createClient()
+
+  useEffect(() => {
+    if (!params.id || !user) return
+    markResourceNotificationsRead(user.id, params.id, 'posing_video').catch((err) =>
+      console.error('[Notifications] markResourceNotificationsRead failed:', err)
+    )
+  }, [params.id, user])
 
   const cacheKey = `athlete_${params.id}_posing`
   const [cached] = useState(() => getPageCache<{ enabled: boolean; videos: any[]; retours: any[] }>(cacheKey))
