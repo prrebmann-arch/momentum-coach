@@ -134,7 +134,8 @@ All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer 
 
 ### `questionnaires/`
 - `QuestionnaireAnswer.tsx` — shared answer-rendering pieces (`Q_TYPES`, `PHOTO_POSITIONS`, `isPhotoAnswer`, `PhotoAnswer`, `QuestionRow`, `AnswerCell`). Used by both the per-athlete tab and the cross-athlete overview — extend here, not in either page.
-- `QuestionnairesOverview.tsx` — `/questionnaires` page body. Cross-athlete list, filter Tous/Complétés/En attente, accordion detail.
+- `QuickQuestionnaireEditor.tsx` — controlled question-list editor (add/remove/edit questions, per-type options). Used by both the per-athlete "questionnaire rapide" flow and the bulk-send panel on the overview page.
+- `QuestionnairesOverview.tsx` — `/questionnaires` page body. Cross-athlete list, filter Tous/Complétés/En attente, accordion detail, bulk-send panel (multi-athlete select + template or quick questionnaire).
 
 ### `training/`
 - `ProgramEditor.tsx` — full program editor (also supports `templateMode`).
@@ -401,6 +402,7 @@ useRefetchOnResume(load, loading)
 | Modify FODMAP status derivation / ISO week helpers | `lib/fodmap.ts` |
 | Modify the cross-athlete questionnaires overview | `components/questionnaires/QuestionnairesOverview.tsx` |
 | Modify shared questionnaire answer rendering (used by both per-athlete and overview pages) | `components/questionnaires/QuestionnaireAnswer.tsx` |
+| Modify the bulk questionnaire send logic | `lib/questionnaires.ts` (`sendQuestionnaireToAthletes`) |
 | Modify the onboarding timeline UI (drag, add, month nav) | `components/onboarding/OnboardingTimeline.tsx` |
 | Modify badge colors / urgency thresholds (J-3 etc.) | `lib/onboarding.ts` (`computeUrgency`) |
 | Modify the seeded "Premium" template content | `lib/onboarding.ts` (`PREMIUM_TEMPLATE_STEPS`) |

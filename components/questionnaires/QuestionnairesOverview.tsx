@@ -8,6 +8,9 @@ import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import { Q_TYPES, QuestionRow } from '@/components/questionnaires/QuestionnaireAnswer'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
+import { useToast } from '@/contexts/ToastContext'
+import { sendQuestionnaireToAthletes, type BulkSendTarget } from '@/lib/questionnaires'
+import { QuickQuestionnaireEditor, type QuickQuestion } from '@/components/questionnaires/QuickQuestionnaireEditor'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -19,6 +22,7 @@ export default function QuestionnairesOverview() {
   const supabase = createClient()
   const { user } = useAuth()
   const { athletes, loading: athletesLoading } = useAthleteContext()
+  const { toast } = useToast()
 
   const [assignments, setAssignments] = useState<any[]>([])
   const [responsesMap, setResponsesMap] = useState<Record<string, any>>({})
@@ -26,6 +30,16 @@ export default function QuestionnairesOverview() {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [search, setSearch] = useState('')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  const [showSendPanel, setShowSendPanel] = useState(false)
+  const [selectedAthleteIds, setSelectedAthleteIds] = useState<Set<string>>(new Set())
+  const [sendMode, setSendMode] = useState<'template' | 'quick'>('template')
+  const [templates, setTemplates] = useState<any[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [bulkObligatoire, setBulkObligatoire] = useState(false)
+  const [quickTitre, setQuickTitre] = useState('')
+  const [quickQuestions, setQuickQuestions] = useState<QuickQuestion[]>([])
+  const [sending, setSending] = useState(false)
 
   const athleteMap = useMemo(() => {
     const m: Record<string, { prenom: string; nom: string }> = {}
@@ -74,12 +88,96 @@ export default function QuestionnairesOverview() {
 
   useRefetchOnResume(loadData, loading)
 
+  useEffect(() => {
+    if (!user || !showSendPanel) return
+    supabase
+      .from('questionnaire_templates')
+      .select('id, titre, questions')
+      .eq('coach_id', user.id)
+      .order('titre')
+      .limit(100)
+      .then(({ data }: { data: any[] | null }) => setTemplates(data || []))
+  }, [user, showSendPanel]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function toggleDetail(id: string) {
     setExpandedIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
+  }
+
+  function toggleAthleteSelected(id: string) {
+    setSelectedAthleteIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function selectAllAthletes() {
+    setSelectedAthleteIds(new Set(athletes.map((a) => a.id)))
+  }
+
+  function deselectAllAthletes() {
+    setSelectedAthleteIds(new Set())
+  }
+
+  function resetSendPanel() {
+    setShowSendPanel(false)
+    setSelectedAthleteIds(new Set())
+    setSendMode('template')
+    setSelectedTemplateId('')
+    setBulkObligatoire(false)
+    setQuickTitre('')
+    setQuickQuestions([])
+  }
+
+  async function handleBulkSend() {
+    if (!user || selectedAthleteIds.size === 0) return
+    if (sendMode === 'template' && !selectedTemplateId) {
+      toast('Selectionnez un template', 'error')
+      return
+    }
+    if (sendMode === 'quick' && (!quickTitre.trim() || !quickQuestions.some((q) => q.label.trim()))) {
+      toast('Titre et au moins une question requis', 'error')
+      return
+    }
+
+    setSending(true)
+    try {
+      const targets: BulkSendTarget[] = Array.from(selectedAthleteIds).map((athleteId) => ({
+        athleteId,
+        userId: athleteMap[athleteId] ? (athletes.find((a) => a.id === athleteId)?.user_id ?? null) : null,
+      }))
+
+      let questions: any[]
+      let templateTitre: string | undefined
+      if (sendMode === 'template') {
+        const tpl = templates.find((t: any) => t.id === selectedTemplateId)
+        questions = tpl?.questions || []
+        templateTitre = tpl?.titre
+      } else {
+        questions = quickQuestions.map((q) => ({ ...q, id: q.id || crypto.randomUUID() }))
+      }
+
+      const result = await sendQuestionnaireToAthletes(user.id, targets, {
+        templateId: sendMode === 'template' ? selectedTemplateId : undefined,
+        templateTitre,
+        quickTitre: sendMode === 'quick' ? quickTitre.trim() : undefined,
+        questions,
+        obligatoire: bulkObligatoire,
+      })
+
+      toast(`Questionnaire envoye a ${result.sent} athlete${result.sent > 1 ? 's' : ''}`, 'success')
+      resetSendPanel()
+      loadData()
+    } catch (err) {
+      console.error('[QuestionnairesOverview] bulk send failed:', err)
+      toast('Erreur lors de l\'envoi', 'error')
+    } finally {
+      setSending(false)
+    }
   }
 
   const filtered = useMemo(() => {
@@ -125,6 +223,127 @@ export default function QuestionnairesOverview() {
       <div className="page-header">
         <h1 className="page-title">Questionnaires</h1>
       </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <button className="btn btn-red btn-sm" onClick={() => setShowSendPanel((v) => !v)}>
+          <i className="fa-solid fa-paper-plane" style={{ marginRight: 6 }} />
+          Envoyer
+        </button>
+      </div>
+
+      {showSendPanel && (
+        <div
+          style={{
+            background: 'linear-gradient(180deg, var(--bg3, var(--bg2)), var(--bg2))',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: '18px 20px',
+            marginBottom: 20,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <h3 style={{ margin: 0, fontSize: 15 }}>Envoyer un questionnaire</h3>
+            <button className="btn btn-outline btn-sm" onClick={resetSendPanel}>
+              <i className="fas fa-times" /> Fermer
+            </button>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <label style={{ fontSize: 12, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                Destinataires ({selectedAthleteIds.size})
+              </label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-outline btn-sm" onClick={selectAllAthletes}>Tout selectionner</button>
+                <button className="btn btn-outline btn-sm" onClick={deselectAllAthletes}>Tout deselectionner</button>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxHeight: 160, overflowY: 'auto', padding: 4 }}>
+              {athletes.map((a) => (
+                <label
+                  key={a.id}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px',
+                    background: selectedAthleteIds.has(a.id) ? 'rgba(239, 68, 68, 0.12)' : 'var(--bg3)',
+                    border: `1px solid ${selectedAthleteIds.has(a.id) ? 'var(--primary)' : 'var(--border)'}`,
+                    borderRadius: 999, fontSize: 12, cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedAthleteIds.has(a.id)}
+                    onChange={() => toggleAthleteSelected(a.id)}
+                  />
+                  {a.prenom} {a.nom}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            <button
+              className={`btn btn-sm ${sendMode === 'template' ? 'btn-red' : 'btn-outline'}`}
+              onClick={() => setSendMode('template')}
+            >
+              Depuis un template
+            </button>
+            <button
+              className={`btn btn-sm ${sendMode === 'quick' ? 'btn-red' : 'btn-outline'}`}
+              onClick={() => setSendMode('quick')}
+            >
+              Questionnaire rapide
+            </button>
+          </div>
+
+          {sendMode === 'template' ? (
+            templates.length ? (
+              <select
+                className="form-control"
+                style={{ marginBottom: 14 }}
+                value={selectedTemplateId}
+                onChange={(e) => setSelectedTemplateId(e.target.value)}
+              >
+                <option value="">— Choisir un template —</option>
+                {templates.map((t: any) => (
+                  <option key={t.id} value={t.id}>{t.titre} ({(t.questions || []).length}q)</option>
+                ))}
+              </select>
+            ) : (
+              <div style={{ marginBottom: 14, color: 'var(--text3)', fontSize: 13 }}>Aucun template. Creez-en un dans Templates.</div>
+            )
+          ) : (
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 12, color: 'var(--text3)', display: 'block', marginBottom: 4 }}>Titre *</label>
+              <input
+                type="text"
+                className="form-control"
+                value={quickTitre}
+                onChange={(e) => setQuickTitre(e.target.value)}
+                placeholder="Ex: Retour de vacances"
+              />
+              <QuickQuestionnaireEditor questions={quickQuestions} onChange={setQuickQuestions} />
+            </div>
+          )}
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={bulkObligatoire} onChange={(e) => setBulkObligatoire(e.target.checked)} />
+            Rendre obligatoire
+          </label>
+
+          <button
+            className="btn btn-red"
+            onClick={handleBulkSend}
+            disabled={
+              sending ||
+              selectedAthleteIds.size === 0 ||
+              (sendMode === 'template' && !selectedTemplateId) ||
+              (sendMode === 'quick' && (!quickTitre.trim() || !quickQuestions.some((q) => q.label.trim())))
+            }
+          >
+            {sending ? <i className="fas fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane" style={{ marginRight: 6 }} />Envoyer a {selectedAthleteIds.size} athlete{selectedAthleteIds.size > 1 ? 's' : ''}</>}
+          </button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
         {(['all', 'completed', 'pending'] as FilterKey[]).map((f) => {
