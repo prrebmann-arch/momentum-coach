@@ -164,6 +164,8 @@ Self-contained per-domain components; check folder for the right file.
 - `Sidebar.tsx` — main app nav (lines 16-45 = nav groups).
 - `AdminSidebar.tsx` — `/admin` nav.
 - `Navbar.tsx`, `Footer.tsx` — public landing.
+- `Topbar.tsx` — thin global bar rendered above `<main>` in `(app)/layout.tsx`, right-aligned. Currently just wraps `NotificationBell`.
+- `NotificationBell.tsx` — bell icon + unread badge + dropdown, consumes `useNotifications()`. Click = mark read + navigate to `resourceLink`; "tout marquer lu" button.
 
 ### `ui/` — primitives
 `Avatar`, `Badge`, `Button`, `Card`, `EmptyState`, `FormGroup`, `Modal`, `Skeleton`, `Tabs`, `Toggle`. All small (≤55 lines).
@@ -179,8 +181,9 @@ Self-contained per-domain components; check folder for the right file.
 | `RecorderContext.tsx` | Global screen recorder state | Wraps `useScreenRecorder`. Manages `pending`, `isProcessing`, `isUploading`, `uploadProgress`, finalize -> `/api/videos/save-retour`. **Auto-pickup `autoStoppedAt` for browser-end / hard-cap.** |
 | `ToastContext.tsx` | `toast(msg, type)` | Portal-based, mounted post-hydration. |
 | `ThemeContext.tsx` | next-themes wrapper | `data-theme="dark"` default, storageKey `prc-theme`. |
+| `NotificationsContext.tsx` | Coach notification center | Wraps `coach_notifications` (see §7 Notif & push). Exposes `notifications`, `unreadCount`, `markRead(id)`, `markAllRead()`. Loads unread on mount + subscribes to Supabase Realtime (`postgres_changes` filtered `coach_id=eq.<uid>`) for live badge updates; `coach:wake` listener as resync fallback if the channel drops during tab sleep. Channel torn down/recreated on `user` change (coach switch/logout) and on unmount. |
 
-Provider tree (root): `ThemeProvider` -> `AuthProvider` -> `ToastProvider` -> children. Inside `(app)/layout.tsx`: `AthleteProvider` -> `RecorderProvider` -> shell.
+Provider tree (root): `ThemeProvider` -> `AuthProvider` -> `ToastProvider` -> children. Inside `(app)/layout.tsx`: `AthleteProvider` -> `NotificationsProvider` -> `RecorderProvider` -> shell (`Topbar` + `main`, replacing the old bare `<main className={styles.mainContent}>`).
 
 ---
 
@@ -206,7 +209,7 @@ Source of truth = SQL migrations in `sql/*.sql` + observed SELECTs.
 - `athletes` — PK `id`, `user_id` (auth.uid of athlete, nullable), `coach_id` (auth.uid of coach). `prenom/nom/email`, `objectif`, `poids_*`, `complete_bilan_*` config, `pas_journalier`, `water_goal_ml`, `access_mode`, `onboarding_workflow_id`. **Owned by `coach_id` for RLS.**
 
 ### Suivi (tracking)
-- `daily_reports` — daily check-ins (poids, mensurations, photo_front/side/back, energie, sommeil, etc.). FK: `athlete_id`. `coach_reviewed_at` (added).
+- `daily_reports` — daily check-ins (poids, mensurations, photo_front/side/back, energie, sommeil, etc.). FK: `user_id` (auth uid of athlete — **not** `athlete_id`, unlike most other tables). `coach_reviewed_at` (added).
 - `daily_tracking` — per-day pas/water/etc.
 - `daily_entries`, `daily_actions`, `weekly_objectives`.
 - `bilan_retours` — coach's video/loom/audio/text feedback. Cols: `id, athlete_id, coach_id, titre, commentaire, type ('video'|'loom'|'audio'|'message'|'mixed'), video_path, thumbnail_path, duration_s, width, height, mime_type, archived_at, loom_url, audio_url, created_at`.
@@ -239,8 +242,9 @@ Source of truth = SQL migrations in `sql/*.sql` + observed SELECTs.
 - `athletes.bloodtest_enabled` (bool toggle), `athletes.bloodtest_tracked_markers` (jsonb array).
 
 ### Notif & push
-- `notifications` — `user_id` (athlete auth uid), `type, title, body, metadata jsonb`.
+- `notifications` — `user_id` (athlete auth uid), `type, title, body, metadata jsonb`. **Coach → athlete** direction (via `notifyAthlete()` in `lib/push.ts`).
 - `push_tokens` — `user_id, token` (Expo).
+- `coach_notifications` — **athlete → coach** direction (opposite of `notifications`). Cols: `id, coach_id, athlete_id, type ('bilan'|'questionnaire'|'execution_video'|'posing_video'|'fodmap'), title, body, resource_link, source_table, source_id, read_at, created_at`. Populated exclusively by 5 `SECURITY DEFINER` triggers on `daily_reports`/`questionnaire_responses`/`execution_videos`/`posing_videos`/`athlete_fodmap_logs` (see `sql/coach_notifications.sql`) — no application code writes to this table directly, and the ATHLETE repo is untouched. RLS: `coach_id = auth.uid()` for SELECT/UPDATE only (no INSERT/DELETE policy — writes are trigger-only). In the `supabase_realtime` publication for live badge updates.
 
 ### Stripe / SaaS (sql/stripe_migration.sql)
 - `athlete_payment_plans` (`coach_id, athlete_id, amount cents, frequency, is_free, payment_status, stripe_subscription_id`).
@@ -286,12 +290,17 @@ Source of truth = SQL migrations in `sql/*.sql` + observed SELECTs.
 2. **Screen recording path**: button -> `useRecorder.startRecording()` (RecorderContext) -> `useScreenRecorder` -> on stop, `RetourFinalizeModal` shows -> `finalizeRecording()` uploads to `coach-video` bucket then POSTs `/api/videos/save-retour` -> server inserts `bilan_retours` + Expo push.
 3. **Other (loom/audio/message)**: direct `supabase.from('bilan_retours').insert()` from button + `notifyAthlete()` from `lib/push.ts`.
 
-### Push a notification
+### Push a notification (coach → athlete)
 ```ts
 import { notifyAthlete } from '@/lib/push'
 await notifyAthlete(athleteUserId, type, title, body, metadata, accessToken)
 // inserts into `notifications` table + POSTs to /api/push -> Expo
 ```
+
+### Coach notification center (athlete → coach)
+- No application code writes to `coach_notifications` — 5 DB triggers (`sql/coach_notifications.sql`) populate it automatically when an athlete inserts into `daily_reports`/`questionnaire_responses`/`execution_videos`/`posing_videos`/`athlete_fodmap_logs`. To add a new event type, add a 6th trigger there — never insert from COACH or ATHLETE app code.
+- Read side: `useNotifications()` from `contexts/NotificationsContext.tsx`.
+- To mark a page's related notifications read on visit: `markResourceNotificationsRead(athleteId, type)` from `lib/notifications.ts`, called in a `useEffect` (see `app/(app)/athletes/[id]/bilans/page.tsx` for the per-athlete pattern, `app/(app)/videos/page.tsx` for the cross-athlete pattern).
 
 ### Get a signed URL for a private file
 - Retour video/thumb: `GET /api/videos/retour-signed-url?id=<retourId>` with Bearer.
@@ -343,7 +352,10 @@ useRefetchOnResume(load, loading)
 | Modify the sidebar nav | `components/layout/Sidebar.tsx` (`navGroups`) |
 | Add/modify a global recording UI element | `components/recorder/RecordingPill.tsx` (mounted in `(app)/layout.tsx`) |
 | Add a new API endpoint | `app/api/<segment>/route.ts`, use `verifyAuth()` from `lib/api/auth.ts` |
-| Add a new push notification | Use `notifyAthlete()` from `lib/push.ts` |
+| Add a new push notification (coach → athlete) | Use `notifyAthlete()` from `lib/push.ts` |
+| Add a new coach-notification event type (athlete → coach) | Add a trigger to `sql/coach_notifications.sql` on the source table (never insert from app code) |
+| Modify the notification bell UI | `components/layout/NotificationBell.tsx` |
+| Modify notification fetch/Realtime/mark-read logic | `contexts/NotificationsContext.tsx`, `lib/notifications.ts` |
 | Modify auth flow / token caching | `contexts/AuthContext.tsx` |
 | Modify athletes list query | `contexts/AthleteContext.tsx` (`fetchAthletesData`) |
 | Add a new toast call site | Import `useToast()` from `contexts/ToastContext.tsx` |
