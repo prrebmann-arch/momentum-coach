@@ -49,6 +49,15 @@ CREATE POLICY "coach_update_own_notifications" ON coach_notifications FOR UPDATE
 -- daily_reports identifies the athlete via user_id (auth uid of the
 -- athlete), not athlete_id like the other source tables — resolve
 -- athletes.id + coach_id together via that column.
+--
+-- daily_reports is a per-(user_id, date) upsert target written by many
+-- unrelated flows (background step sync, debounced draft autosave while
+-- typing, quick-weight entry, coach's own photo upload) — a plain
+-- AFTER INSERT fires on the first partial write, not on submission. A
+-- bilan is "complete" per the app's own definition (ATHLETE/src/api/
+-- bilan.js: energy + sleep_quality both set) — fire only on the
+-- transition into that state, exactly once, whether it happens via
+-- INSERT (already complete on first write) or UPDATE (completed later).
 CREATE OR REPLACE FUNCTION notify_coach_on_bilan()
 RETURNS TRIGGER
 SECURITY DEFINER
@@ -75,13 +84,21 @@ BEGIN
     NEW.id
   );
   RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Never let a notification failure abort the athlete's own bilan write.
+  RETURN NEW;
 END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_notify_coach_on_bilan ON daily_reports;
 CREATE TRIGGER trg_notify_coach_on_bilan
-  AFTER INSERT ON daily_reports
-  FOR EACH ROW EXECUTE FUNCTION notify_coach_on_bilan();
+  AFTER INSERT OR UPDATE ON daily_reports
+  FOR EACH ROW
+  WHEN (
+    NEW.energy IS NOT NULL AND NEW.sleep_quality IS NOT NULL
+    AND (TG_OP = 'INSERT' OR OLD.energy IS NULL OR OLD.sleep_quality IS NULL)
+  )
+  EXECUTE FUNCTION notify_coach_on_bilan();
 
 CREATE OR REPLACE FUNCTION notify_coach_on_questionnaire()
 RETURNS TRIGGER
@@ -107,6 +124,9 @@ BEGIN
     'questionnaire_responses',
     NEW.id
   );
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Never let a notification failure abort the athlete's own write.
   RETURN NEW;
 END;
 $$;
@@ -141,6 +161,9 @@ BEGIN
     NEW.id
   );
   RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Never let a notification failure abort the athlete's own write.
+  RETURN NEW;
 END;
 $$;
 
@@ -174,6 +197,9 @@ BEGIN
     NEW.id
   );
   RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Never let a notification failure abort the athlete's own write.
+  RETURN NEW;
 END;
 $$;
 
@@ -206,6 +232,9 @@ BEGIN
     'athlete_fodmap_logs',
     NEW.id
   );
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Never let a notification failure abort the athlete's own write.
   RETURN NEW;
 END;
 $$;

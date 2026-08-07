@@ -27,11 +27,11 @@ export default function PosingPage() {
   const supabase = createClient()
 
   useEffect(() => {
-    if (!params.id) return
-    markResourceNotificationsRead(params.id, 'posing_video').catch((err) =>
+    if (!params.id || !user) return
+    markResourceNotificationsRead(user.id, params.id, 'posing_video').catch((err) =>
       console.error('[Notifications] markResourceNotificationsRead failed:', err)
     )
-  }, [params.id])
+  }, [params.id, user])
 
   const cacheKey = `athlete_${params.id}_posing`
   const [cached] = useState(() => getPageCache<{ enabled: boolean; videos: any[]; retours: any[] }>(cacheKey))

@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAthleteContext } from '@/contexts/AthleteContext'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
-import { useNotifications } from '@/contexts/NotificationsContext'
+import { markTypeNotificationsRead } from '@/lib/notifications'
 import { MAX_VIDEOS_LOAD } from '@/lib/constants'
 import VideosGrid, { type VideoItem } from '@/components/videos/VideosGrid'
 import dynamic from 'next/dynamic'
@@ -20,20 +20,19 @@ export default function VideosPage() {
   const supabase = createClient()
   const { user } = useAuth()
   const { athletes: contextAthletes } = useAthleteContext()
-  const { notifications, markRead } = useNotifications()
 
   useEffect(() => {
-    const unreadExecutionVideoIds = notifications
-      .filter((n) => n.type === 'execution_video')
-      .map((n) => n.id)
-    unreadExecutionVideoIds.forEach((id) => {
-      markRead(id).catch((err) => console.error('[Notifications] markRead failed:', err))
-    })
-    // Only run once on mount — do not re-run when `notifications` updates from
-    // the Realtime subscription, or a video added while the page is open
-    // would be immediately marked read before the coach sees it.
+    if (!user) return
+    // Resolves server-side (not from the client's Realtime-loaded
+    // notification list) so it doesn't race the list's initial async
+    // fetch on cold navigation. Runs once on mount only — re-running on
+    // every notification update would mark a video read via Realtime
+    // before the coach has actually seen it.
+    markTypeNotificationsRead(user.id, 'execution_video').catch((err) =>
+      console.error('[Notifications] markTypeNotificationsRead failed:', err)
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [user])
 
   const [videos, setVideos] = useState<VideoItem[]>([])
   const [loading, setLoading] = useState(true)

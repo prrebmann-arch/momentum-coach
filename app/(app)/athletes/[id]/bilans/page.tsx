@@ -224,11 +224,11 @@ export default function BilansPage() {
   const athleteUserId = athlete?.user_id
 
   useEffect(() => {
-    if (!athleteId) return
-    markResourceNotificationsRead(athleteId, 'bilan').catch((err) =>
+    if (!athleteId || !user) return
+    markResourceNotificationsRead(user.id, athleteId, 'bilan').catch((err) =>
       console.error('[Notifications] markResourceNotificationsRead failed:', err)
     )
-  }, [athleteId])
+  }, [athleteId, user])
 
   const cacheKey = `athlete_${athleteId}_bilans`
   const [cached] = useState(() => getPageCache<{ bilans: DailyReport[]; progWeeks: unknown[]; nutriPlans: unknown[]; phases: unknown[] }>(cacheKey))

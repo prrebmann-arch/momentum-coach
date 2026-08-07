@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/contexts/ToastContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { markResourceNotificationsRead } from '@/lib/notifications'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
 import Toggle from '@/components/ui/Toggle'
@@ -56,6 +57,7 @@ const PORTION_ORDER: Record<'S' | 'M' | 'L', number> = { S: 0, M: 1, L: 2 }
 export default function FodmapPage() {
   const params = useParams<{ id: string }>()
   const { toast } = useToast()
+  const { user } = useAuth()
   const supabase = createClient()
 
   const [loading, setLoading] = useState(true)
@@ -63,11 +65,11 @@ export default function FodmapPage() {
   const [logs, setLogs] = useState<FodmapLog[]>([])
 
   useEffect(() => {
-    if (!params.id) return
-    markResourceNotificationsRead(params.id, 'fodmap').catch((err) =>
+    if (!params.id || !user) return
+    markResourceNotificationsRead(user.id, params.id, 'fodmap').catch((err) =>
       console.error('[Notifications] markResourceNotificationsRead failed:', err)
     )
-  }, [params.id])
+  }, [params.id, user])
 
   const loadData = useCallback(async () => {
     try {

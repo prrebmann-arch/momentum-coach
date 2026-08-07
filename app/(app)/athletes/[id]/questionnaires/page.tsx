@@ -85,11 +85,11 @@ export default function QuestionnairesPage() {
   const supabase = createClient()
 
   useEffect(() => {
-    if (!params.id) return
-    markResourceNotificationsRead(params.id, 'questionnaire').catch((err) =>
+    if (!params.id || !user) return
+    markResourceNotificationsRead(user.id, params.id, 'questionnaire').catch((err) =>
       console.error('[Notifications] markResourceNotificationsRead failed:', err)
     )
-  }, [params.id])
+  }, [params.id, user])
 
   const cacheKey = `athlete_${params.id}_questionnaires`
   const [cached] = useState(() => getPageCache<{ assignments: any[]; responsesMap: Record<string, any>; templates: any[] }>(cacheKey))

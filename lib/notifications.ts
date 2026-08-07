@@ -83,7 +83,29 @@ export async function markAllNotificationsRead(coachId: string): Promise<void> {
   if (error) throw error
 }
 
+/** Marks every unread notification of `type` for this coach as read,
+ * regardless of athlete. For cross-athlete pages (e.g. /videos) where
+ * there's no single relevant athleteId — resolves server-side, so it
+ * doesn't depend on the client's Realtime-loaded notification list
+ * having already arrived (a load-order race markRead-in-a-loop would hit
+ * on cold navigation). */
+export async function markTypeNotificationsRead(
+  coachId: string,
+  type: NotificationType
+): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('coach_notifications')
+    .update({ read_at: new Date().toISOString() })
+    .eq('coach_id', coachId)
+    .eq('type', type)
+    .is('read_at', null)
+
+  if (error) throw error
+}
+
 export async function markResourceNotificationsRead(
+  coachId: string,
   athleteId: string,
   type: NotificationType
 ): Promise<void> {
@@ -91,6 +113,7 @@ export async function markResourceNotificationsRead(
   const { error } = await supabase
     .from('coach_notifications')
     .update({ read_at: new Date().toISOString() })
+    .eq('coach_id', coachId)
     .eq('athlete_id', athleteId)
     .eq('type', type)
     .is('read_at', null)
