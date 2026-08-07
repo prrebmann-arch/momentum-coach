@@ -51,6 +51,7 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/athletes/[id]/menstrual` | cycle logs | — |
 | `/bilans` | `app/(app)/bilans/page.tsx` -> `components/bilans/BilansOverview.tsx` | Cross-athlete bilans review |
 | `/videos` | `app/(app)/videos/page.tsx` | Cross-athlete technique videos to review |
+| `/questionnaires` | `app/(app)/questionnaires/page.tsx` -> `components/questionnaires/QuestionnairesOverview.tsx` | Cross-athlete questionnaire responses review |
 | `/templates` | `app/(app)/templates/page.tsx` | Training/Nutrition/**Compléments**/**Onboarding**/Workflows/Questionnaires tabs |
 | `/aliments` | `app/(app)/aliments/page.tsx` (464 lines) | Coach's food DB CRUD |
 | `/exercices` | `app/(app)/exercices/page.tsx` | Coach's exercises DB CRUD |
@@ -130,6 +131,10 @@ All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer 
 - `BilanProgressView.tsx` — chart view.
 - `BilanPhotosUploadModal.tsx` — coach uploads photos via `/api/bilan-photos/upload`.
 - `MensurationCharts.tsx`, `PhotoCompare.tsx` — reusable.
+
+### `questionnaires/`
+- `QuestionnaireAnswer.tsx` — shared answer-rendering pieces (`Q_TYPES`, `PHOTO_POSITIONS`, `isPhotoAnswer`, `PhotoAnswer`, `QuestionRow`, `AnswerCell`). Used by both the per-athlete tab and the cross-athlete overview — extend here, not in either page.
+- `QuestionnairesOverview.tsx` — `/questionnaires` page body. Cross-athlete list, filter Tous/Complétés/En attente, accordion detail.
 
 ### `training/`
 - `ProgramEditor.tsx` — full program editor (also supports `templateMode`).
@@ -382,6 +387,8 @@ useRefetchOnResume(load, loading)
 | Modify FODMAP coach UI | `app/(app)/athletes/[id]/fodmap/page.tsx` |
 | Modify FODMAP catalog (8 groups, 24 foods, 72 portions) | `lib/fodmapCatalog.ts` (mirror in ATHLETE/src/utils/fodmapCatalog.js) |
 | Modify FODMAP status derivation / ISO week helpers | `lib/fodmap.ts` |
+| Modify the cross-athlete questionnaires overview | `components/questionnaires/QuestionnairesOverview.tsx` |
+| Modify shared questionnaire answer rendering (used by both per-athlete and overview pages) | `components/questionnaires/QuestionnaireAnswer.tsx` |
 | Modify the onboarding timeline UI (drag, add, month nav) | `components/onboarding/OnboardingTimeline.tsx` |
 | Modify badge colors / urgency thresholds (J-3 etc.) | `lib/onboarding.ts` (`computeUrgency`) |
 | Modify the seeded "Premium" template content | `lib/onboarding.ts` (`PREMIUM_TEMPLATE_STEPS`) |
