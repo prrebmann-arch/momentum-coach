@@ -333,7 +333,12 @@ export default function QuestionnairesOverview() {
           <button
             className="btn btn-red"
             onClick={handleBulkSend}
-            disabled={sending || selectedAthleteIds.size === 0}
+            disabled={
+              sending ||
+              selectedAthleteIds.size === 0 ||
+              (sendMode === 'template' && !selectedTemplateId) ||
+              (sendMode === 'quick' && (!quickTitre.trim() || !quickQuestions.some((q) => q.label.trim())))
+            }
           >
             {sending ? <i className="fas fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane" style={{ marginRight: 6 }} />Envoyer a {selectedAthleteIds.size} athlete{selectedAthleteIds.size > 1 ? 's' : ''}</>}
           </button>
