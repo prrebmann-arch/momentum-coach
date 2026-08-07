@@ -229,7 +229,7 @@
   50% { opacity: 0.6; transform: scale(1.15); }
 }
 
-.mainContent > * {
+.mainContent > main {
   position: relative;
   z-index: 1;
 }
@@ -270,7 +270,7 @@
 }
 
 /* ===== FADE-IN ===== */
-.mainContent > * {
+.mainContent > main {
   animation: pageIn 0.3s ease-out both;
 }
 
