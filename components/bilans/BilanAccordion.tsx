@@ -437,6 +437,18 @@ export default function BilanAccordion({
     })
   }, [])
 
+  // Ouverture/fermeture du tableau "détail jour par jour", par semaine.
+  // Uniquement pilotable en mobile (le bouton est display:none au-dessus de 768px).
+  const [dayDetailOpen, setDayDetailOpen] = useState<Set<string>>(new Set())
+  const toggleDayDetail = useCallback((weekKey: string) => {
+    setDayDetailOpen(prev => {
+      const next = new Set(prev)
+      if (next.has(weekKey)) next.delete(weekKey)
+      else next.add(weekKey)
+      return next
+    })
+  }, [])
+
   const toggleNote = useCallback((id: string) => {
     setOpenNotes(prev => {
       const next = new Set(prev)
@@ -470,6 +482,63 @@ export default function BilanAccordion({
     if (c.input_type === 'multiple_choice' && Array.isArray(raw)) return <span title={raw.join(', ')}>{raw.join(', ')}</span>
     const txt = String(raw) + (c.unit ? ` ${c.unit}` : '')
     return <span title={txt} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{txt}</span>
+  }
+
+  // Dérive tout ce dont a besoin l'affichage d'un jour (ligne du tableau desktop
+  // ET carte empilée mobile) : une seule source de vérité pour les deux rendus.
+  function computeDayView(b: DailyReport) {
+    const d = new Date(b.date + 'T00:00:00')
+    let di = d.getDay() - 1
+    if (di < 0) di = 6
+    const dayStr = DAY_NAMES[di] + ' ' + d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+    const noteId = 'bn-' + (b.id || b.date)
+    const isBDay = isBilanDate(b.date, cbFreq, cbIntv, cbDay, cbAnchor, cbMonthDay)
+
+    const hasPhotos = b.photo_front || b.photo_side || b.photo_back
+    const hasMens = b.belly_measurement || b.hip_measurement || b.thigh_measurement
+    const customQuestions = (templateQuestions || []).filter(q => q.type === 'custom' && q.key)
+    const customAnswers = customQuestions.filter(q => b.custom_data?.[q.key!] != null)
+    const hasDetails = b.steps || hasPhotos || hasMens || customAnswers.length > 0
+
+    // Session name from workout logs
+    const dayLogs = wlogsByDate[b.date] || []
+    let sessionCell: React.ReactNode = '—'
+    if (dayLogs.length) {
+      const names = dayLogs.map(l => l.session_name || l.titre || 'Seance').filter(Boolean)
+      sessionCell = <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--primary)' }}>{names.join(', ')}</span>
+    }
+
+    // Performance
+    let perfCell: React.ReactNode = '—'
+    if (dayLogs.length) {
+      const perfs = dayLogs.map(log => {
+        const logName = log.session_name || log.titre
+        const prevLog = allWLogs.find(l =>
+          l.date < log.date && (
+            (l.session_id && log.session_id && l.session_id === log.session_id) ||
+            (!l.session_id && !log.session_id && logName && (l.session_name === logName || l.titre === logName))
+          )
+        )
+        if (!prevLog) return null
+        const curExs = parseExs(log.exercices_completes)
+        const prevExs = parseExs(prevLog.exercices_completes)
+        let curVol = 0, prevVol = 0
+        curExs.forEach(e => { (e.series || []).forEach(s => { curVol += (parseFloat(String(s.reps ?? '0')) || 0) * (parseFloat(String(s.kg ?? s.charge ?? s.load ?? '1')) || 1) }) })
+        prevExs.forEach(e => { (e.series || []).forEach(s => { prevVol += (parseFloat(String(s.reps ?? '0')) || 0) * (parseFloat(String(s.kg ?? s.charge ?? s.load ?? '1')) || 1) }) })
+        if (prevVol === 0) return null
+        const ratio = curVol / prevVol
+        if (ratio > 1.02) return 'Progres'
+        if (ratio < 0.98) return 'Regression'
+        return 'Maintien'
+      }).filter(Boolean) as string[]
+      if (perfs.length) {
+        const best = perfs.includes('Progres') ? 'Progres' : perfs.includes('Regression') ? 'Regression' : 'Maintien'
+        const pc = best === 'Progres' ? 'var(--success)' : best === 'Regression' ? 'var(--danger)' : 'var(--warning)'
+        perfCell = <span style={{ fontSize: 10, fontWeight: 600, color: pc }}>{best}</span>
+      }
+    }
+
+    return { dayStr, noteId, isBDay, hasPhotos, hasMens, hasDetails, sessionCell, perfCell }
   }
 
   return (
@@ -753,8 +822,15 @@ export default function BilanAccordion({
 
               {/* Mensurations shown in daily detail expandable only */}
 
-              {/* Daily detail table */}
-              <div className={styles.daysTable}>
+              {/* Daily detail table — repliable en mobile via son propre bouton */}
+              <button
+                className={styles.dayDetailToggle}
+                onClick={() => toggleDayDetail(w.key)}
+              >
+                <i className={`fas fa-chevron-${dayDetailOpen.has(w.key) ? 'up' : 'down'}`} style={{ marginRight: 6 }} />
+                Voir le detail jour par jour
+              </button>
+              <div className={`${styles.daysTable} ${!dayDetailOpen.has(w.key) ? styles.daysTableCollapsedMobile : ''}`}>
                 {currentExtraCols ? (
                   <div className={styles.dayHdr} style={{ gridTemplateColumns: `94px repeat(${currentExtraCols.length}, minmax(70px, 1fr)) 36px` }}>
                     <span className={styles.dhDate}>DATE</span>
@@ -795,12 +871,7 @@ export default function BilanAccordion({
                 )}
 
                 {sorted.map(b => {
-                  const d = new Date(b.date + 'T00:00:00')
-                  let di = d.getDay() - 1
-                  if (di < 0) di = 6
-                  const dayStr = DAY_NAMES[di] + ' ' + d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
-                  const noteId = 'bn-' + (b.id || b.date)
-                  const isBDay = isBilanDate(b.date, cbFreq, cbIntv, cbDay, cbAnchor, cbMonthDay)
+                  const { dayStr, noteId, isBDay, hasPhotos, hasMens, hasDetails, sessionCell, perfCell } = computeDayView(b)
 
                   // Page custom : ligne avec les colonnes du template (pas les mesures de base)
                   if (currentExtraCols) {
@@ -817,50 +888,6 @@ export default function BilanAccordion({
                       </div>
                     )
                   }
-                  const hasPhotos = b.photo_front || b.photo_side || b.photo_back
-                  const hasMens = b.belly_measurement || b.hip_measurement || b.thigh_measurement
-                  const customQuestions = (templateQuestions || []).filter(q => q.type === 'custom' && q.key)
-                  const customAnswers = customQuestions.filter(q => b.custom_data?.[q.key!] != null)
-                  const hasDetails = b.steps || hasPhotos || hasMens || customAnswers.length > 0
-
-                  // Session name from workout logs
-                  const dayLogs = wlogsByDate[b.date] || []
-                  let sessionCell: React.ReactNode = '\u2014'
-                  if (dayLogs.length) {
-                    const names = dayLogs.map(l => l.session_name || l.titre || 'Seance').filter(Boolean)
-                    sessionCell = <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--primary)' }}>{names.join(', ')}</span>
-                  }
-
-                  // Performance
-                  let perfCell: React.ReactNode = '\u2014'
-                  if (dayLogs.length) {
-                    const perfs = dayLogs.map(log => {
-                      const logName = log.session_name || log.titre
-                      const prevLog = allWLogs.find(l =>
-                        l.date < log.date && (
-                          (l.session_id && log.session_id && l.session_id === log.session_id) ||
-                          (!l.session_id && !log.session_id && logName && (l.session_name === logName || l.titre === logName))
-                        )
-                      )
-                      if (!prevLog) return null
-                      const curExs = parseExs(log.exercices_completes)
-                      const prevExs = parseExs(prevLog.exercices_completes)
-                      let curVol = 0, prevVol = 0
-                      curExs.forEach(e => { (e.series || []).forEach(s => { curVol += (parseFloat(String(s.reps ?? '0')) || 0) * (parseFloat(String(s.kg ?? s.charge ?? s.load ?? '1')) || 1) }) })
-                      prevExs.forEach(e => { (e.series || []).forEach(s => { prevVol += (parseFloat(String(s.reps ?? '0')) || 0) * (parseFloat(String(s.kg ?? s.charge ?? s.load ?? '1')) || 1) }) })
-                      if (prevVol === 0) return null
-                      const ratio = curVol / prevVol
-                      if (ratio > 1.02) return 'Progres'
-                      if (ratio < 0.98) return 'Regression'
-                      return 'Maintien'
-                    }).filter(Boolean) as string[]
-                    if (perfs.length) {
-                      const best = perfs.includes('Progres') ? 'Progres' : perfs.includes('Regression') ? 'Regression' : 'Maintien'
-                      const pc = best === 'Progres' ? 'var(--success)' : best === 'Regression' ? 'var(--danger)' : 'var(--warning)'
-                      perfCell = <span style={{ fontSize: 10, fontWeight: 600, color: pc }}>{best}</span>
-                    }
-                  }
-
                   return (
                     <div key={b.date}>
                       <div className={`${styles.dayRow} ${isBDay ? styles.bilanDay : ''}`}>
@@ -940,6 +967,153 @@ export default function BilanAccordion({
                             </div>
                           )}
                           {/* Réponses custom : consultables via les pages de colonnes (flèches en haut). */}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Vue mobile empilée : mêmes données que la grille ci-dessus,
+                  une carte par jour. Rendue en permanence dans le DOM, la
+                  visibilité est décidée par le CSS (média query + .daysCardsOpen). */}
+              <div className={`${styles.daysCardsWrap} ${dayDetailOpen.has(w.key) ? styles.daysCardsOpen : ''}`}>
+                {sorted.map(b => {
+                  const { dayStr, noteId, isBDay, hasPhotos, hasMens, hasDetails, sessionCell, perfCell } = computeDayView(b)
+
+                  if (currentExtraCols) {
+                    return (
+                      <div key={b.date} className={`${styles.dayCard} ${isBDay ? styles.bilanDay : ''}`}>
+                        <div className={styles.dayCardHeader}>
+                          {dayStr}
+                          {isBDay && <> <i className="fas fa-star" style={{ color: 'var(--warning)', fontSize: 9 }} /></>}
+                        </div>
+                        <div className={styles.detailGrid}>
+                          {currentExtraCols.map((c) => (
+                            <div key={c.key} className={styles.detailItem}>
+                              <span className={styles.detailLabel}>{c.label}</span>
+                              <span>{renderCustomCell(b, c)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div key={b.date} className={`${styles.dayCard} ${isBDay ? styles.bilanDay : ''}`}>
+                      <div className={styles.dayCardHeader}>
+                        <span>
+                          {dayStr}
+                          {isBDay && <> <i className="fas fa-star" style={{ color: 'var(--warning)', fontSize: 9 }} /></>}
+                        </span>
+                        <span className={styles.dayCardActions}>
+                          {hasPhotos && (
+                            <button
+                              className={styles.noteBtn}
+                              onClick={(e) => { e.stopPropagation(); onOpenPhoto('front', b.date) }}
+                              title="Photos"
+                            >
+                              <i className="fas fa-camera" style={{ color: 'var(--primary)', fontSize: 11 }} />
+                            </button>
+                          )}
+                          {hasDetails && (
+                            <button
+                              className={styles.noteBtn}
+                              onClick={(e) => { e.stopPropagation(); toggleNote(noteId) }}
+                            >
+                              <i className={`fas fa-chevron-${openNotes.has(noteId) ? 'up' : 'down'}`} />
+                            </button>
+                          )}
+                          {b.id && (
+                            <button
+                              className={styles.noteBtn}
+                              onClick={(e) => { e.stopPropagation(); onDeleteBilan(b.id!, b.date) }}
+                              title="Supprimer ce bilan"
+                              style={{ marginLeft: 2 }}
+                            >
+                              <i className="fas fa-trash" style={{ color: 'var(--danger)', fontSize: 10, opacity: 0.5 }} />
+                            </button>
+                          )}
+                        </span>
+                      </div>
+                      <div className={styles.detailGrid}>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Poids</span>
+                          <span>{b.weight != null ? String(b.weight) : '—'}</span>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Adher.</span>
+                          <span><TagBadge value={b.adherence} /></span>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Seance</span>
+                          <span>{sessionCell}</span>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Perf.</span>
+                          <span>{perfCell}</span>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Plaisir</span>
+                          <span><TagBadge value={b.session_enjoyment} /></span>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Cardio</span>
+                          <span>{b.cardio_minutes != null ? b.cardio_minutes + "'" : '—'}</span>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Courb.</span>
+                          <span><TagBadge value={b.soreness} inverted /></span>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Stress</span>
+                          <span><TagBadge value={b.stress} inverted /></span>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Energie</span>
+                          <span><TagBadge value={b.energy} /></span>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Malad.</span>
+                          <span>
+                            {b.sick_signs
+                              ? <i className="fas fa-triangle-exclamation" style={{ color: 'var(--danger)', fontSize: 10 }} />
+                              : '—'}
+                          </span>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Somm.</span>
+                          <span><TagBadge value={b.sleep_quality} /></span>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span className={styles.detailLabel}>Nuit</span>
+                          <span>
+                            {b.bedtime && b.wakeup
+                              ? <span style={{ fontSize: 10 }}>{b.bedtime.slice(0, 5)}<span style={{ color: 'var(--text3)', margin: '0 1px' }}>&rarr;</span>{b.wakeup.slice(0, 5)}</span>
+                              : '—'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Expandable detail (même état openNotes que la grille) */}
+                      {hasDetails && (
+                        <div className={`${styles.noteRow} ${openNotes.has(noteId) ? styles.noteRowOpen : ''}`}>
+                          {hasMens && (
+                            <MensurationCharts
+                              bilans={bilans}
+                              upToDate={b.date}
+                              suffix={'c' + (b.id || b.date).replace(/-/g, '')}
+                            />
+                          )}
+                          {b.steps != null && (
+                            <div className={styles.detailGrid}>
+                              <div className={styles.detailItem}>
+                                <span className={styles.detailLabel}>Pas</span>
+                                <span>{Number(b.steps).toLocaleString('fr-FR')}</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

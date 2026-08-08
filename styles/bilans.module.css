@@ -239,6 +239,28 @@
   font-size: 10px; font-weight: 600; color: var(--text3);
   text-transform: uppercase; letter-spacing: 0.3px;
 }
+/* Détail jour par jour : bouton de repli + vue cartes (mobile uniquement) */
+.dayDetailToggle { display: none; }
+.daysCardsWrap { display: none; }
+.dayCard {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.dayCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.dayCardActions { display: flex; align-items: center; gap: 2px; }
+
 .detailNote {
   font-size: 12px; color: var(--text2); line-height: 1.4;
   padding-top: 8px; border-top: 1px solid var(--border);
@@ -266,6 +288,24 @@
     min-width: 44px;
     min-height: 44px;
   }
+  .dayDetailToggle {
+    display: flex;
+    align-items: center;
+    width: calc(100% - 28px);
+    margin: 0 14px 8px;
+    min-height: 44px;
+    padding: 10px 14px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text2);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .daysTableCollapsedMobile { display: none; }
+  .daysCardsOpen { display: block; padding: 0 14px 12px; }
+  .dayCard .detailGrid { gap: 8px 16px; margin-bottom: 0; }
 }
 
 /* ===== PHOTO COMPARE VIEWER (.pc-*) ===== */
