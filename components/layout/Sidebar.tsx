@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useAuth } from '@/contexts/AuthContext'
+import { useMobileNav } from '@/contexts/MobileNavContext'
 import styles from '@/styles/sidebar.module.css'
 
 interface NavItem {
@@ -52,6 +53,7 @@ function SidebarImpl() {
   const router = useRouter()
   const { user, signOut } = useAuth()
   const { theme, setTheme } = useTheme()
+  const { mobileOpen, setMobileOpen } = useMobileNav()
 
   // localStorage lu en useEffect post-hydration (jamais pendant le render
   // initial : divergence SSR/client = React #418 = skeleton infini).
@@ -93,71 +95,80 @@ function SidebarImpl() {
   const userName = user?.email?.split('@')[0] ?? 'Coach'
 
   return (
-    <div className={`${styles.sidebar} ${collapsed ? styles.sidebarCollapsed : ''}`}>
-      <button
-        onClick={toggle}
-        className={styles.sidebarToggleBtn}
-        title={collapsed ? 'Développer' : 'Réduire'}
-      >
-        <i className={`fa-solid fa-chevron-${collapsed ? 'right' : 'left'}`} />
-      </button>
+    <>
+      {mobileOpen && (
+        <div
+          className={styles.mobileOverlay}
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+      <div className={`${styles.sidebar} ${collapsed ? styles.sidebarCollapsed : ''} ${mobileOpen ? styles.sidebarOpen : ''}`}>
+        <button
+          onClick={toggle}
+          className={styles.sidebarToggleBtn}
+          title={collapsed ? 'Développer' : 'Réduire'}
+        >
+          <i className={`fa-solid fa-chevron-${collapsed ? 'right' : 'left'}`} />
+        </button>
 
-      <div className={styles.sidebarHeader}>
-        <div className={styles.sidebarBrand}>
-          <div className={styles.brandIcon}>M</div>
-          {!collapsed && <span className={styles.brandText}>Momentum</span>}
-        </div>
-      </div>
-
-      <nav className={styles.sidebarNav}>
-        {navGroups.map((group, gi) => (
-          <div key={gi}>
-            {!collapsed
-              ? group.label && <div className={styles.navLabel}>{group.label}</div>
-              : gi > 0 && <div className={styles.navLabelCollapsed} />
-            }
-            {group.items.map((item) => (
-              <Link
-                key={item.route}
-                href={item.route}
-                className={isActive(item.route) ? styles.navItemActive : styles.navItem}
-                title={collapsed ? item.label : undefined}
-              >
-                <i className={`fas ${item.icon}`} />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-            ))}
+        <div className={styles.sidebarHeader}>
+          <div className={styles.sidebarBrand}>
+            <div className={styles.brandIcon}>M</div>
+            {!collapsed && <span className={styles.brandText}>Momentum</span>}
           </div>
-        ))}
-      </nav>
+        </div>
 
-      <div className={styles.sidebarFooter}>
-        <div className={styles.sidebarUser}>
-          <Link href="/profile" className={styles.userAvatar} title="Mon profil">
-            {userInitial}
-          </Link>
-          {!collapsed && (
-            <Link href="/profile" className={styles.userInfo} title="Mon profil">
-              <div className={styles.userName}>{userName}</div>
+        <nav className={styles.sidebarNav}>
+          {navGroups.map((group, gi) => (
+            <div key={gi}>
+              {!collapsed
+                ? group.label && <div className={styles.navLabel}>{group.label}</div>
+                : gi > 0 && <div className={styles.navLabelCollapsed} />
+              }
+              {group.items.map((item) => (
+                <Link
+                  key={item.route}
+                  href={item.route}
+                  className={isActive(item.route) ? styles.navItemActive : styles.navItem}
+                  title={collapsed ? item.label : undefined}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <i className={`fas ${item.icon}`} />
+                  {!collapsed && <span>{item.label}</span>}
+                </Link>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className={styles.sidebarFooter}>
+          <div className={styles.sidebarUser}>
+            <Link href="/profile" className={styles.userAvatar} title="Mon profil">
+              {userInitial}
             </Link>
-          )}
-          <button
-            className={styles.footerBtn}
-            onClick={toggleTheme}
-            title="Mode jour / nuit"
-          >
-            <i className={`fas ${theme === 'light' ? 'fa-moon' : 'fa-sun'}`} />
-          </button>
-          <button
-            className={styles.footerBtn}
-            onClick={handleLogout}
-            title="Se déconnecter"
-          >
-            <i className="fas fa-sign-out-alt" />
-          </button>
+            {!collapsed && (
+              <Link href="/profile" className={styles.userInfo} title="Mon profil">
+                <div className={styles.userName}>{userName}</div>
+              </Link>
+            )}
+            <button
+              className={styles.footerBtn}
+              onClick={toggleTheme}
+              title="Mode jour / nuit"
+            >
+              <i className={`fas ${theme === 'light' ? 'fa-moon' : 'fa-sun'}`} />
+            </button>
+            <button
+              className={styles.footerBtn}
+              onClick={handleLogout}
+              title="Se déconnecter"
+            >
+              <i className="fas fa-sign-out-alt" />
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }
 
