@@ -209,6 +209,19 @@
 }
 .noteBtn:hover { background: var(--bg4); color: var(--text); }
 
+.headerPhotoBtn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.headerPhotoBtn:hover { background: var(--bg4); }
+
 .noteRow {
   max-height: 0; overflow: hidden; transition: max-height 0.25s ease;
   margin: 0 0 4px; background: var(--bg3); border-radius: 8px;
@@ -246,6 +259,13 @@
     font-size: 12px;
   }
   .mens { gap: 16px; }
+  .headerPhotoBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 /* ===== PHOTO COMPARE VIEWER (.pc-*) ===== */

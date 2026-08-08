@@ -535,6 +535,9 @@ export default function BilanAccordion({
         const nutriPeriods = getNutriPeriodsForWeek(w.monday)
         const sorted = [...w.bilans].sort((a, b) => a.date.localeCompare(b.date))
 
+        // Most recent day in this week with at least one photo (for the header photo button)
+        const weekPhotoDate = [...sorted].reverse().find(b => b.photo_front || b.photo_side || b.photo_back)?.date ?? null
+
         // noteIds des jours de LA semaine ayant des détails (pour le bouton "Voir tout")
         const weekQuestions = (templateQuestions || []).filter(q => q.type === 'custom' && q.key)
         const weekDetailIds = sorted
@@ -584,6 +587,15 @@ export default function BilanAccordion({
                   {isFuture && <span className={`${styles.status} ${styles.statusFuture}`}>A VENIR</span>}
                 </div>
                 <div className={styles.headerRight}>
+                  {weekPhotoDate && (
+                    <button
+                      className={styles.headerPhotoBtn}
+                      onClick={(e) => { e.stopPropagation(); onOpenPhoto('front', weekPhotoDate) }}
+                      title="Photos de la semaine"
+                    >
+                      <i className="fas fa-camera" />
+                    </button>
+                  )}
                   <button
                     className={styles.noteBtn}
                     style={{ color: 'var(--success)', fontSize: 12 }}
