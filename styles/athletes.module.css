@@ -675,4 +675,13 @@
   .infoGrid { grid-template-columns: 1fr; }
   .athleteGrid { grid-template-columns: 1fr; }
   .statGrid { grid-template-columns: 1fr 1fr; }
+  .athleteTabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .athleteTabs::-webkit-scrollbar {
+    display: none;
+  }
 }
