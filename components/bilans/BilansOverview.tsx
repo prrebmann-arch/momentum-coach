@@ -325,6 +325,83 @@ export default function BilansOverview() {
         </table>
       </div>
 
+      {/* Mobile card view */}
+      <div className={styles.boCardsWrap}>
+        {filtered.length ? filtered.map(d => {
+          const a = d.athlete
+          const initials = (a.prenom?.charAt(0) || '') + (a.nom?.charAt(0) || '')
+          const lastBilanDate = d.lastBilanReport?.date
+          const lastDateStr = lastBilanDate
+            ? new Date(lastBilanDate + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+            : '—'
+          const echeanceStr = new Date(d.expectedStr + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+          const bilanInfo = d.bilanReport
+            ? (d.bilanReport.weight ? d.bilanReport.weight + ' kg' : 'Soumis')
+            : '—'
+
+          return (
+            <div
+              key={a.id}
+              className={styles.boCard}
+              onClick={() => router.push(`/athletes/${a.id}/bilans`)}
+            >
+              <div className={styles.boCardHeader}>
+                <div className={styles.boAvatar}>{initials}</div>
+                <div className={styles.boCardName}>{a.prenom} {a.nom}</div>
+                <StatusBadge status={d.status} />
+              </div>
+              <div className={styles.boCardRow}>
+                <span className={styles.boCardLabel}>Poids</span>
+                <span>{bilanInfo}</span>
+              </div>
+              <div className={styles.boCardRow}>
+                <span className={styles.boCardLabel}>Echeance</span>
+                <span>{echeanceStr}</span>
+              </div>
+              <div className={styles.boCardRow}>
+                <span className={styles.boCardLabel}>Dernier bilan</span>
+                <span>{lastBilanDate ? lastDateStr : '—'}</span>
+              </div>
+              <div className={styles.boCardActions} onClick={(e) => e.stopPropagation()}>
+                {d.status === 'done' && d.bilanReport && (
+                  <button
+                    className={styles.boCardActionBtn}
+                    style={{ color: 'var(--success)' }}
+                    onClick={() => markAsTreated(d.bilanReport!.id)}
+                    disabled={marking === d.bilanReport.id}
+                  >
+                    <i className={marking === d.bilanReport.id ? 'fas fa-spinner fa-spin' : 'fas fa-check'} />
+                    {' '}Marquer traite
+                  </button>
+                )}
+                {d.status === 'late' && a.user_id && (
+                  <button
+                    className={styles.boCardActionBtn}
+                    style={{ color: rappelSentRef.current.has(a.id) ? 'var(--text3)' : 'var(--primary)' }}
+                    onClick={() => sendRappel(a)}
+                    disabled={sendingRappel === a.id || rappelSentRef.current.has(a.id)}
+                  >
+                    <i className={sendingRappel === a.id ? 'fas fa-spinner fa-spin' : rappelSentRef.current.has(a.id) ? 'fas fa-bell-slash' : 'fas fa-bell'} />
+                    {' '}{rappelSentRef.current.has(a.id) ? 'Rappel envoye' : 'Envoyer rappel'}
+                  </button>
+                )}
+                <Link
+                  href={`/athletes/${a.id}/bilans`}
+                  className={styles.boCardActionBtn}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <i className="fas fa-eye" /> Voir
+                </Link>
+              </div>
+            </div>
+          )
+        }) : (
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)', fontSize: 13 }}>
+            Aucun bilan dans cette categorie
+          </div>
+        )}
+      </div>
+
     </div>
   )
 }

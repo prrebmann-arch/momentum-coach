@@ -235,10 +235,16 @@
 @media (max-width: 768px) {
   .header { padding: 14px 14px; }
   .headerTop { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .statsWrap { overflow-x: auto; }
   .stats { grid-template-columns: 80px repeat(12, 1fr) 60px 32px; min-width: 720px; }
   .statValue { font-size: 12px; }
   .daysTable { overflow-x: auto; padding: 0 14px 12px; }
   .dayHdr, .dayRow, .dayAvg { grid-template-columns: 80px repeat(12, 1fr) 60px 32px; min-width: 720px; }
+  .dayHdr span,
+  .dr,
+  .drDate {
+    font-size: 12px;
+  }
   .mens { gap: 16px; }
 }
 
@@ -528,6 +534,84 @@
 .boActionBtn:hover {
   background: var(--bg4);
   color: var(--text);
+}
+
+.boCardsWrap {
+  display: none;
+}
+
+.boCard {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.boCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.boCardName {
+  flex: 1;
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.boCardRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--text2);
+}
+
+.boCardLabel {
+  color: var(--text3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.boCardActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle, var(--border));
+  flex-wrap: wrap;
+}
+
+.boCardActionBtn {
+  flex: 1;
+  min-width: 100px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg3);
+  color: var(--text);
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .boTableWrap {
+    display: none;
+  }
+  .boCardsWrap {
+    display: block;
+  }
 }
 
 /* ===== BILAN TRAITE POPUP (.bt-*) ===== */

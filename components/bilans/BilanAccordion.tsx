@@ -604,6 +604,7 @@ export default function BilanAccordion({
               </div>
 
               {/* Stats row */}
+              <div className={styles.statsWrap}>
               <div className={styles.stats}>
                 <div className={styles.stat} />
                 <div className={styles.stat}>
@@ -629,6 +630,7 @@ export default function BilanAccordion({
                 <div className={styles.stat}><span className={styles.statLabel}>SOMMEIL</span><span className={styles.statValue}><StatValue val={w.avgSleep} /></span></div>
                 <div className={styles.stat}><span className={styles.statLabel}>PAS</span><span className={styles.statValue}>{w.avgSteps !== null ? Math.round(w.avgSteps).toLocaleString('fr-FR') : '\u2014'}</span></div>
                 <div className={styles.stat} />
+              </div>
               </div>
             </div>
 

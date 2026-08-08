@@ -9,6 +9,7 @@ import Sidebar from '@/components/layout/Sidebar'
 import styles from '@/styles/sidebar.module.css'
 import { RecorderProvider } from '@/contexts/RecorderContext'
 import { NotificationsProvider } from '@/contexts/NotificationsContext'
+import { MobileNavProvider } from '@/contexts/MobileNavContext'
 import Topbar from '@/components/layout/Topbar'
 
 // Recorder UI — lazy. Only mounted when actively recording (the components
@@ -115,18 +116,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AthleteProvider>
       <NotificationsProvider>
-        <RecorderProvider>
-          <div className={styles.appLayout}>
-            <Sidebar />
-            <div className={styles.mainContent} style={{ display: 'flex', flexDirection: 'column' }}>
-              <Topbar />
-              <main style={{ flex: 1 }}>{children}</main>
+        <MobileNavProvider>
+          <RecorderProvider>
+            <div className={styles.appLayout}>
+              <Sidebar />
+              <div className={styles.mainContent} style={{ display: 'flex', flexDirection: 'column' }}>
+                <Topbar />
+                <main style={{ flex: 1 }}>{children}</main>
+              </div>
             </div>
-          </div>
-          <RecordingPill />
-          <LiveCamBubble />
-          <RetourFinalizeModal />
-        </RecorderProvider>
+            <RecordingPill />
+            <LiveCamBubble />
+            <RetourFinalizeModal />
+          </RecorderProvider>
+        </MobileNavProvider>
       </NotificationsProvider>
     </AthleteProvider>
   )
