@@ -530,6 +530,84 @@
   color: var(--text);
 }
 
+.boCardsWrap {
+  display: none;
+}
+
+.boCard {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.boCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.boCardName {
+  flex: 1;
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.boCardRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--text2);
+}
+
+.boCardLabel {
+  color: var(--text3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.boCardActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle, var(--border));
+  flex-wrap: wrap;
+}
+
+.boCardActionBtn {
+  flex: 1;
+  min-width: 100px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg3);
+  color: var(--text);
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .boTableWrap {
+    display: none;
+  }
+  .boCardsWrap {
+    display: block;
+  }
+}
+
 /* ===== BILAN TRAITE POPUP (.bt-*) ===== */
 .btOverlay {
   position: fixed; inset: 0; background: var(--overlay); z-index: 1000;
