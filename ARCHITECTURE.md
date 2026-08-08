@@ -188,8 +188,9 @@ Self-contained per-domain components; check folder for the right file.
 | `ToastContext.tsx` | `toast(msg, type)` | Portal-based, mounted post-hydration. |
 | `ThemeContext.tsx` | next-themes wrapper | `data-theme="dark"` default, storageKey `prc-theme`. |
 | `NotificationsContext.tsx` | Coach notification center | Wraps `coach_notifications` (see §7 Notif & push). Exposes `notifications`, `unreadCount`, `markRead(id)`, `markAllRead()`. Loads unread on mount + subscribes to Supabase Realtime (`postgres_changes` filtered `coach_id=eq.<uid>`) for live badge updates; `coach:wake` listener as resync fallback if the channel drops during tab sleep. Channel torn down/recreated on `user` change (coach switch/logout) and on unmount. |
+| `MobileNavContext.tsx` | Mobile sidebar off-canvas open state | `mobileOpen`, `setMobileOpen`, `toggleMobileOpen`. Only meaningful under the 1024px breakpoint — desktop's `collapsed` sidebar state (in `Sidebar.tsx`, localStorage-persisted) is a separate, unrelated mechanism. Toggled by the hamburger button in `Topbar.tsx` (mobile-only, `display: none` above 1024px). |
 
-Provider tree (root): `ThemeProvider` -> `AuthProvider` -> `ToastProvider` -> children. Inside `(app)/layout.tsx`: `AthleteProvider` -> `NotificationsProvider` -> `RecorderProvider` -> shell (`Topbar` + `main`, replacing the old bare `<main className={styles.mainContent}>`).
+Provider tree (root): `ThemeProvider` -> `AuthProvider` -> `ToastProvider` -> children. Inside `(app)/layout.tsx`: `AthleteProvider` -> `NotificationsProvider` -> `MobileNavProvider` -> `RecorderProvider` -> shell (`Topbar` + `main`, replacing the old bare `<main className={styles.mainContent}>`).
 
 ---
 

@@ -684,4 +684,7 @@
   .athleteTabs::-webkit-scrollbar {
     display: none;
   }
+  .athleteTabBtn {
+    flex-shrink: 0;
+  }
 }

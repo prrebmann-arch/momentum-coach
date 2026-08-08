@@ -69,6 +69,18 @@ function SidebarImpl() {
     )
   }, [collapsed])
 
+  // Lock body scroll while the mobile off-canvas menu is open — desktop
+  // never sets mobileOpen true (hamburger is display:none there), so this
+  // effect is a no-op above the 1024px breakpoint.
+  useEffect(() => {
+    if (!mobileOpen) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [mobileOpen])
+
   const toggle = useCallback(() => {
     setCollapsed(prev => {
       const next = !prev

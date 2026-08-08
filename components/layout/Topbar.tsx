@@ -5,14 +5,15 @@ import { useMobileNav } from '@/contexts/MobileNavContext'
 import styles from '@/styles/topbar.module.css'
 
 export default function Topbar() {
-  const { toggleMobileOpen } = useMobileNav()
+  const { mobileOpen, toggleMobileOpen } = useMobileNav()
 
   return (
     <div className={styles.topbar}>
       <button
         type="button"
         className={styles.hamburgerBtn}
-        aria-label="Ouvrir le menu"
+        aria-label={mobileOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+        aria-expanded={mobileOpen}
         onClick={toggleMobileOpen}
       >
         <i className="fa-solid fa-bars" />
