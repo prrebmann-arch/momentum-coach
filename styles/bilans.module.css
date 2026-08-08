@@ -74,7 +74,7 @@
 
 /* Expandable body */
 .body { max-height: 0; overflow: hidden; transition: max-height 0.35s ease; }
-.cardOpen .body { max-height: 3000px; }
+.cardOpen .body { max-height: 6000px; }
 
 /* Nutrition objectives */
 .nutri {
