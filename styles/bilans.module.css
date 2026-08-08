@@ -235,10 +235,15 @@
 @media (max-width: 768px) {
   .header { padding: 14px 14px; }
   .headerTop { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .stats { grid-template-columns: 80px repeat(12, 1fr) 60px 32px; min-width: 720px; }
+  .stats { grid-template-columns: 80px repeat(12, 1fr) 60px 32px; min-width: 720px; overflow-x: auto; }
   .statValue { font-size: 12px; }
   .daysTable { overflow-x: auto; padding: 0 14px 12px; }
   .dayHdr, .dayRow, .dayAvg { grid-template-columns: 80px repeat(12, 1fr) 60px 32px; min-width: 720px; }
+  .dayHdr span,
+  .dr,
+  .drDate {
+    font-size: 12px;
+  }
   .mens { gap: 16px; }
 }
 

@@ -38,7 +38,7 @@
   position: absolute;
   top: 46px;
   right: 0;
-  width: 340px;
+  width: min(340px, 90vw);
   max-height: 420px;
   overflow-y: auto;
   background: var(--glass-bg);
