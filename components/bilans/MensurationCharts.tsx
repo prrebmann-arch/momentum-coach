@@ -57,7 +57,7 @@ function MiniChart({ points, color, uid }: { points: ChartPoint[]; color: string
     yLabels.push({ y: yScale(v), val: v })
   }
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const updateFromClientX = useCallback((clientX: number) => {
     const wrap = wrapRef.current
     if (!wrap) return
     const rect = wrap.getBoundingClientRect()
@@ -65,7 +65,7 @@ function MiniChart({ points, color, uid }: { points: ChartPoint[]; color: string
     const tooltip = wrap.querySelector<HTMLDivElement>('[data-tooltip]')
     if (!crosshair || !tooltip) return
 
-    const mouseDataX = ((e.clientX - rect.left) / rect.width) * VB_W + VB_X
+    const mouseDataX = ((clientX - rect.left) / rect.width) * VB_W + VB_X
     let nearest = points[0]
     let minDist = Infinity
     for (const pt of points) {
@@ -82,6 +82,15 @@ function MiniChart({ points, color, uid }: { points: ChartPoint[]; color: string
     tooltip.style.left = Math.min(Math.max(leftPx, 50), rect.width - 50) + 'px'
   }, [points])
 
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    updateFromClientX(e.clientX)
+  }, [updateFromClientX])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0]
+    if (touch) updateFromClientX(touch.clientX)
+  }, [updateFromClientX])
+
   const handleMouseLeave = useCallback(() => {
     const wrap = wrapRef.current
     if (!wrap) return
@@ -91,12 +100,18 @@ function MiniChart({ points, color, uid }: { points: ChartPoint[]; color: string
     if (tooltip) tooltip.style.display = 'none'
   }, [])
 
+  const handleTouchEnd = useCallback(() => {
+    handleMouseLeave()
+  }, [handleMouseLeave])
+
   return (
     <div
       ref={wrapRef}
       className={styles.mensChartWrap}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       <svg
         viewBox={`${VB_X} -4 ${VB_W} 108`}

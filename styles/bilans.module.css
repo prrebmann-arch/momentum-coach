@@ -7,7 +7,7 @@
   background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 8px; overflow: hidden;
   backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
 }
-.mensChartWrap { position: relative; cursor: crosshair; margin-top: 2px; }
+.mensChartWrap { position: relative; cursor: crosshair; margin-top: 2px; touch-action: none; }
 @media (max-width: 900px) {
   .mensChartsRow { grid-template-columns: 1fr; }
 }
@@ -209,6 +209,19 @@
 }
 .noteBtn:hover { background: var(--bg4); color: var(--text); }
 
+.headerPhotoBtn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.headerPhotoBtn:hover { background: var(--bg4); }
+
 .noteRow {
   max-height: 0; overflow: hidden; transition: max-height 0.25s ease;
   margin: 0 0 4px; background: var(--bg3); border-radius: 8px;
@@ -226,6 +239,28 @@
   font-size: 10px; font-weight: 600; color: var(--text3);
   text-transform: uppercase; letter-spacing: 0.3px;
 }
+/* Détail jour par jour : bouton de repli + vue cartes (mobile uniquement) */
+.dayDetailToggle { display: none; }
+.daysCardsWrap { display: none; }
+.dayCard {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.dayCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.dayCardActions { display: flex; align-items: center; gap: 2px; }
+
 .detailNote {
   font-size: 12px; color: var(--text2); line-height: 1.4;
   padding-top: 8px; border-top: 1px solid var(--border);
@@ -246,6 +281,67 @@
     font-size: 12px;
   }
   .mens { gap: 16px; }
+  .headerPhotoBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .headerRight {
+    gap: 8px;
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .dots {
+    gap: 3px;
+    flex-shrink: 1;
+    overflow: hidden;
+  }
+  .dot {
+    width: 18px;
+    height: 18px;
+    font-size: 8px;
+    flex-shrink: 0;
+  }
+  .dayDetailToggle {
+    display: flex;
+    align-items: center;
+    width: calc(100% - 28px);
+    margin: 0 14px 8px;
+    min-height: 44px;
+    padding: 10px 14px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text2);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .daysTableCollapsedMobile { display: none; }
+  .daysCardsOpen { display: block; padding: 0 14px 12px; }
+  .dayCard .detailGrid { gap: 8px 16px; margin-bottom: 0; }
+  .dayCard.bilanDay {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+  .cardOpen .body {
+    max-height: 6000px;
+  }
+  .noteBtn {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btPopupWide {
+    width: 100%;
+  }
+  .btPopupBody {
+    padding: 16px 16px;
+  }
 }
 
 /* ===== PHOTO COMPARE VIEWER (.pc-*) ===== */
@@ -400,7 +496,11 @@
   .pcBody { flex-direction: column; gap: 16px; }
   .pcDivider { width: 100%; height: 1px; margin: 0; }
   .pcCell { flex: none; height: 50vh; max-height: none; }
-  .pcNav { width: 32px; height: 32px; font-size: 12px; }
+  .pcNav { width: 44px; height: 44px; font-size: 14px; }
+  .pcResetLink {
+    padding: 8px;
+    min-height: 44px;
+  }
   .pcExportBtn { padding: 6px 12px; font-size: 12px; }
 }
 
@@ -625,6 +725,9 @@
   background: var(--bg); border-radius: 16px; width: 460px; max-width: 92vw;
   border: 1px solid var(--border); box-shadow: var(--shadow-elevated);
   overflow: hidden; margin: auto 0;
+}
+.btPopupWide {
+  width: 540px;
 }
 .btPopupHeader {
   display: flex; align-items: center; justify-content: space-between;

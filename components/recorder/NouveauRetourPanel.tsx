@@ -51,6 +51,20 @@ export default function NouveauRetourPanel({ athleteId, broadcastIds, onCreated,
   // - 'screen' (default) → captures the screen, optional cam bubble overlay (in-page)
   // - 'selfie' → portrait cam only (no screen share, no getDisplayMedia prompt)
   const [recordMode, setRecordMode] = useState<'screen' | 'selfie'>('screen')
+  // Mobile browsers can't do getDisplayMedia (screen-share) — default to
+  // selfie mode there so tapping "Démarrer" doesn't hit a guaranteed
+  // failure. Desktop's matchMedia check is false, so this never fires
+  // there and recordMode stays 'screen' exactly as before — same
+  // post-hydration pattern as Sidebar.tsx's `collapsed` localStorage read
+  // (initial state is the desktop-safe value; a client-only effect may
+  // correct it after mount, so SSR and first client render always agree).
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 768px)').matches) {
+      setRecordMode('selfie')
+      setIsMobileViewport(true)
+    }
+  }, [])
   const [withWebcam, setWithWebcam] = useState(false)
   const [starting, setStarting] = useState(false)
   const [previewCamStream, setPreviewCamStream] = useState<MediaStream | null>(null)
@@ -449,14 +463,17 @@ export default function NouveauRetourPanel({ athleteId, broadcastIds, onCreated,
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button
                 type="button"
-                onClick={() => setRecordMode('screen')}
+                onClick={() => { if (!isMobileViewport) setRecordMode('screen') }}
+                disabled={isMobileViewport}
+                title={isMobileViewport ? 'Disponible sur ordinateur uniquement' : undefined}
                 style={{
                   padding: '10px 12px',
                   borderRadius: 10,
                   border: recordMode === 'screen' ? '2px solid var(--primary, #5b8dff)' : '1px solid var(--border, #2a2a2a)',
                   background: recordMode === 'screen' ? 'rgba(91,141,255,0.1)' : 'transparent',
-                  color: recordMode === 'screen' ? 'var(--primary, #5b8dff)' : 'var(--text2)',
-                  cursor: 'pointer',
+                  color: isMobileViewport ? 'var(--text3, #666)' : (recordMode === 'screen' ? 'var(--primary, #5b8dff)' : 'var(--text2)'),
+                  cursor: isMobileViewport ? 'not-allowed' : 'pointer',
+                  opacity: isMobileViewport ? 0.5 : 1,
                   fontSize: 13,
                   fontWeight: 600,
                   textAlign: 'center',
@@ -482,6 +499,13 @@ export default function NouveauRetourPanel({ athleteId, broadcastIds, onCreated,
                 <i className="fas fa-mobile-screen" style={{ marginRight: 6 }} />Selfie portrait
               </button>
             </div>
+
+            {isMobileViewport && (
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                <i className="fas fa-info-circle" style={{ marginRight: 4 }} />
+                Le partage d&apos;&eacute;cran n&apos;est disponible que sur ordinateur.
+              </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div style={{ minWidth: 0 }}>
