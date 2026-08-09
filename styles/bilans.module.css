@@ -7,7 +7,7 @@
   background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 8px; overflow: hidden;
   backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
 }
-.mensChartWrap { position: relative; cursor: crosshair; margin-top: 2px; }
+.mensChartWrap { position: relative; cursor: crosshair; margin-top: 2px; touch-action: none; }
 @media (max-width: 900px) {
   .mensChartsRow { grid-template-columns: 1fr; }
 }
@@ -74,7 +74,7 @@
 
 /* Expandable body */
 .body { max-height: 0; overflow: hidden; transition: max-height 0.35s ease; }
-.cardOpen .body { max-height: 6000px; }
+.cardOpen .body { max-height: 3000px; }
 
 /* Nutrition objectives */
 .nutri {
@@ -288,6 +288,22 @@
     min-width: 44px;
     min-height: 44px;
   }
+  .headerRight {
+    gap: 8px;
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .dots {
+    gap: 3px;
+    flex-shrink: 1;
+    overflow: hidden;
+  }
+  .dot {
+    width: 18px;
+    height: 18px;
+    font-size: 8px;
+    flex-shrink: 0;
+  }
   .dayDetailToggle {
     display: flex;
     align-items: center;
@@ -306,6 +322,13 @@
   .daysTableCollapsedMobile { display: none; }
   .daysCardsOpen { display: block; padding: 0 14px 12px; }
   .dayCard .detailGrid { gap: 8px 16px; margin-bottom: 0; }
+  .dayCard.bilanDay {
+    background: rgba(245, 158, 11, 0.08);
+    border-color: rgba(245, 158, 11, 0.3);
+  }
+  .cardOpen .body {
+    max-height: 6000px;
+  }
   .noteBtn {
     min-width: 44px;
     min-height: 44px;
