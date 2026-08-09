@@ -503,7 +503,7 @@ export default function NouveauRetourPanel({ athleteId, broadcastIds, onCreated,
             {isMobileViewport && (
               <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
                 <i className="fas fa-info-circle" style={{ marginRight: 4 }} />
-                Le partage d&apos;ecran n&apos;est disponible que sur ordinateur.
+                Le partage d&apos;&eacute;cran n&apos;est disponible que sur ordinateur.
               </div>
             )}
 
