@@ -124,7 +124,7 @@ export default function BilanPhotosUploadModal({
   const s = styles
   return (
     <div className={s.btOverlay} onClick={(e) => { if (e.target === e.currentTarget && !uploading) onClose() }}>
-      <div className={s.btPopup} style={{ width: 540 }}>
+      <div className={`${s.btPopup} ${s.btPopupWide}`}>
         <div className={s.btPopupHeader}>
           <div className={s.btPopupTitle}>
             <div className={s.btPopupAvatar}><i className="fas fa-camera" /></div>
