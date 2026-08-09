@@ -306,6 +306,13 @@
   .daysTableCollapsedMobile { display: none; }
   .daysCardsOpen { display: block; padding: 0 14px 12px; }
   .dayCard .detailGrid { gap: 8px 16px; margin-bottom: 0; }
+  .noteBtn {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
 }
 
 /* ===== PHOTO COMPARE VIEWER (.pc-*) ===== */
@@ -460,7 +467,11 @@
   .pcBody { flex-direction: column; gap: 16px; }
   .pcDivider { width: 100%; height: 1px; margin: 0; }
   .pcCell { flex: none; height: 50vh; max-height: none; }
-  .pcNav { width: 32px; height: 32px; font-size: 12px; }
+  .pcNav { width: 44px; height: 44px; font-size: 14px; }
+  .pcResetLink {
+    padding: 8px;
+    min-height: 44px;
+  }
   .pcExportBtn { padding: 6px 12px; font-size: 12px; }
 }
 
