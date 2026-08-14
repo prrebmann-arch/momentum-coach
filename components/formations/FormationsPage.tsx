@@ -30,6 +30,8 @@ interface FormationVideo {
   video_url: string
   position: number
   available_from_day: number
+  content_type: 'video' | 'pdf'
+  file_path: string | null
 }
 
 interface Athlete {
@@ -90,6 +92,15 @@ export default function FormationsPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
+
+  // Add item modal (video link or PDF upload)
+  const [showAddItemModal, setShowAddItemModal] = useState(false)
+  const [addItemType, setAddItemType] = useState<'video' | 'pdf'>('video')
+  const [addItemTitle, setAddItemTitle] = useState('')
+  const [addItemUrl, setAddItemUrl] = useState('')
+  const [addItemPdfFile, setAddItemPdfFile] = useState<File | null>(null)
+  const [addItemDay, setAddItemDay] = useState('0')
+  const [addItemSaving, setAddItemSaving] = useState(false)
   const [thumbnailUploading, setThumbnailUploading] = useState(false)
 
   // ── Load formations list ──
@@ -132,7 +143,7 @@ export default function FormationsPage() {
     if (!user) return
     const [fRes, vRes, mRes, progRes] = await Promise.all([
       supabase.from('formations').select('id, coach_id, title, description, visibility, video_count, thumbnail_url, created_at').eq('id', formationId).single(),
-      supabase.from('formation_videos').select('id, formation_id, title, video_url, position, available_from_day, created_at').eq('formation_id', formationId).order('position').limit(100),
+      supabase.from('formation_videos').select('id, formation_id, title, video_url, position, available_from_day, content_type, file_path, created_at').eq('formation_id', formationId).order('position').limit(100),
       supabase.from('formation_members').select('athlete_id, athletes(id, prenom, nom, email, user_id)').eq('formation_id', formationId).limit(200),
       supabase.from('formation_video_progress').select('user_id, video_id, watched').limit(1000),
     ])
@@ -210,57 +221,100 @@ export default function FormationsPage() {
     await loadFormations()
   }
 
-  // ── Add video ──
-  const addVideo = async () => {
+  // ── Add item (video link or PDF upload) ──
+  const openAddItemModal = () => {
+    setAddItemType('video')
+    setAddItemTitle('')
+    setAddItemUrl('')
+    setAddItemPdfFile(null)
+    setAddItemDay('0')
+    setShowAddItemModal(true)
+  }
+
+  const submitAddItem = async () => {
     if (!currentFormation) return
-    const title = prompt('Titre de la video :')
-    if (!title?.trim()) return
-    const url = prompt('Lien de la video (YouTube, Vimeo, Loom...) :')
-    if (!url?.trim()) return
-    const dayInput = prompt('Disponible a partir de J+? (0 = immediat, debloque selon date d\'inscription de l\'athlete)', '0')
-    if (dayInput === null) return
-    const parsedDay = parseInt(dayInput.trim(), 10)
+    const title = addItemTitle.trim()
+    if (!title) { toast('Le titre est requis', 'error'); return }
+    if (addItemType === 'video' && !addItemUrl.trim()) { toast('Le lien video est requis', 'error'); return }
+    if (addItemType === 'pdf' && !addItemPdfFile) { toast('Selectionnez un fichier PDF', 'error'); return }
+
+    const parsedDay = parseInt(addItemDay.trim(), 10)
     const day = !isNaN(parsedDay) && parsedDay >= 0 ? parsedDay : 0
 
-    const { data: existing } = await supabase
-      .from('formation_videos')
-      .select('position')
-      .eq('formation_id', currentFormation.id)
-      .order('position', { ascending: false })
-      .limit(1)
+    setAddItemSaving(true)
+    try {
+      const { data: existing } = await supabase
+        .from('formation_videos')
+        .select('position')
+        .eq('formation_id', currentFormation.id)
+        .order('position', { ascending: false })
+        .limit(1)
 
-    const nextPos = existing?.length ? existing[0].position + 1 : 0
+      const nextPos = existing?.length ? existing[0].position + 1 : 0
 
-    const { data: inserted, error } = await supabase.from('formation_videos').insert({
-      formation_id: currentFormation.id,
-      title: title.trim(),
-      video_url: url.trim(),
-      position: nextPos,
-      available_from_day: day,
-    }).select('id').single()
-    if (error) { toast('Erreur ajout video', 'error'); return }
+      const { data: inserted, error } = await supabase.from('formation_videos').insert({
+        formation_id: currentFormation.id,
+        title,
+        video_url: addItemType === 'video' ? addItemUrl.trim() : '',
+        content_type: addItemType,
+        position: nextPos,
+        available_from_day: day,
+      }).select('id').single()
+      if (error || !inserted?.id) { toast('Erreur ajout', 'error'); return }
 
-    await supabase.from('formations').update({ video_count: nextPos + 1 }).eq('id', currentFormation.id)
-
-    // Push athletes only if video is immediately available. Otherwise the
-    // cron at /api/notifications/formation-unlock handles it on the J+X day.
-    if (day === 0 && inserted?.id) {
-      try {
-        const { data: session } = await supabase.auth.getSession()
-        const token = session?.session?.access_token
-        if (token) {
-          await fetch('/api/notifications/formation-new-video', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ formation_id: currentFormation.id, video_id: inserted.id, video_title: title.trim() }),
-          })
+      if (addItemType === 'pdf' && addItemPdfFile) {
+        const path = `${currentFormation.id}/${inserted.id}.pdf`
+        const { error: upErr } = await supabase.storage.from('formation-pdfs').upload(path, addItemPdfFile, { upsert: true })
+        if (upErr) {
+          toast('Erreur upload PDF', 'error')
+          await supabase.from('formation_videos').delete().eq('id', inserted.id)
+          return
         }
-      } catch (e) {
-        console.error('[addVideo] push failed', e)
+        const { error: pathErr } = await supabase.from('formation_videos').update({ file_path: path }).eq('id', inserted.id)
+        if (pathErr) { toast('Erreur sauvegarde PDF', 'error'); return }
       }
-    }
 
-    await viewFormation(currentFormation.id)
+      await supabase.from('formations').update({ video_count: nextPos + 1 }).eq('id', currentFormation.id)
+
+      // Push athletes only if the item is immediately available. Otherwise the
+      // cron at /api/notifications/formation-unlock handles it on the J+X day.
+      if (day === 0) {
+        try {
+          const { data: session } = await supabase.auth.getSession()
+          const token = session?.session?.access_token
+          if (token) {
+            await fetch('/api/notifications/formation-new-video', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ formation_id: currentFormation.id, video_id: inserted.id, video_title: title }),
+            })
+          }
+        } catch (e) {
+          console.error('[submitAddItem] push failed', e)
+        }
+      }
+
+      setShowAddItemModal(false)
+      await viewFormation(currentFormation.id)
+    } finally {
+      setAddItemSaving(false)
+    }
+  }
+
+  // ── Open a PDF item (signed URL, opened in a new tab) ──
+  const openPdf = async (videoId: string) => {
+    try {
+      const { data: session } = await supabase.auth.getSession()
+      const token = session?.session?.access_token
+      const res = await fetch(`/api/formations/pdf-signed-url?id=${videoId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      const json = await res.json()
+      if (!res.ok || !json?.url) { toast('Erreur ouverture PDF', 'error'); return }
+      window.open(json.url, '_blank', 'noopener,noreferrer')
+    } catch {
+      toast('Erreur ouverture PDF', 'error')
+    }
   }
 
   // ── Update video schedule day ──
@@ -433,8 +487,8 @@ export default function FormationsPage() {
             <Button variant="outline" onClick={openMembersModal}>
               <i className="fas fa-users" /> Membres
             </Button>
-            <Button variant="primary" onClick={addVideo}>
-              <i className="fas fa-plus" /> Ajouter une video
+            <Button variant="primary" onClick={openAddItemModal}>
+              <i className="fas fa-plus" /> Ajouter
             </Button>
           </div>
         </div>
@@ -484,12 +538,22 @@ export default function FormationsPage() {
         ) : (
           <div className={styles.fmVideos}>
             {videos.map((v, i) => {
-              const embedUrl = getEmbedUrl(v.video_url)
+              const isPdf = v.content_type === 'pdf'
+              const embedUrl = isPdf ? null : getEmbedUrl(v.video_url)
               return (
                 <div key={v.id} className={styles.fmVideoCard}>
                   <div className={styles.fmVideoNum}>{i + 1}</div>
                   <div className={styles.fmVideoPreview}>
-                    {embedUrl ? (
+                    {isPdf ? (
+                      <button
+                        type="button"
+                        onClick={() => openPdf(v.id)}
+                        className={styles.fmVideoLink}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', width: '100%', height: '100%' }}
+                      >
+                        <i className="fas fa-file-pdf" style={{ color: 'var(--danger)' }} /> Ouvrir le PDF
+                      </button>
+                    ) : embedUrl ? (
                       <iframe src={embedUrl} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
                     ) : (
                       <a href={v.video_url} target="_blank" rel="noopener noreferrer" className={styles.fmVideoLink}>
@@ -583,6 +647,53 @@ export default function FormationsPage() {
             </div>
             <Button variant="primary" style={{ marginTop: 8 }} onClick={submitEdit}>
               <i className="fas fa-check" /> Enregistrer
+            </Button>
+          </div>
+        </Modal>
+
+        {/* Add item modal (video link or PDF upload) */}
+        <Modal isOpen={showAddItemModal} title="Ajouter un contenu" onClose={() => setShowAddItemModal(false)}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label className="field-label">Type</label>
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <Button variant={addItemType === 'video' ? 'primary' : 'outline'} onClick={() => setAddItemType('video')}>
+                  <i className="fas fa-video" /> Video
+                </Button>
+                <Button variant={addItemType === 'pdf' ? 'primary' : 'outline'} onClick={() => setAddItemType('pdf')}>
+                  <i className="fas fa-file-pdf" /> PDF
+                </Button>
+              </div>
+            </div>
+            <div>
+              <label className="field-label">Titre *</label>
+              <input type="text" className="field-input" value={addItemTitle} onChange={e => setAddItemTitle(e.target.value)} />
+            </div>
+            {addItemType === 'video' ? (
+              <div>
+                <label className="field-label">Lien de la video (YouTube, Vimeo, Loom...) *</label>
+                <input type="text" className="field-input" value={addItemUrl} onChange={e => setAddItemUrl(e.target.value)} />
+              </div>
+            ) : (
+              <div>
+                <label className="field-label">Fichier PDF *</label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="field-input"
+                  onChange={e => setAddItemPdfFile(e.target.files?.[0] || null)}
+                />
+              </div>
+            )}
+            <div>
+              <label className="field-label">Disponible a partir de J+</label>
+              <input type="number" min={0} className="field-input" value={addItemDay} onChange={e => setAddItemDay(e.target.value)} />
+              <span style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4, display: 'block' }}>
+                0 = immediat. Sinon, debloque selon la date d&apos;inscription de l&apos;athlete.
+              </span>
+            </div>
+            <Button variant="primary" style={{ marginTop: 8 }} onClick={submitAddItem} disabled={addItemSaving}>
+              {addItemSaving ? <><i className="fas fa-spinner fa-spin" /> Ajout en cours...</> : <><i className="fas fa-check" /> Ajouter</>}
             </Button>
           </div>
         </Modal>

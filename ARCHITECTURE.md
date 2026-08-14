@@ -94,6 +94,7 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/api/bloodtest/extract` | POST | `bloodtest/extract/route.ts` | Calls Claude Haiku with PDF, persists `extracted_data`. Server-only ANTHROPIC_API_KEY. |
 | `/api/bloodtest/validate` | POST | `bloodtest/validate/route.ts` | Coach submits validated markers + dated_at. |
 | `/api/bloodtest/signed-url` | GET `?id=` | `bloodtest/signed-url/route.ts` | 1h signed URL for PDF preview. |
+| `/api/formations/pdf-signed-url` | GET `?id=` (formation_videos.id) | `formations/pdf-signed-url/route.ts` | 1h signed URL for a formation PDF item. Access: owning coach OR any athlete of that coach (mirrors `formations_athlete_read` RLS — not filtered by `formation_members`/`visibility`). |
 | `/api/coach-ai` | POST | `coach-ai/route.ts` | Gathers athlete context (programs, nutrition, exercises, foods) + calls Claude Sonnet → `{type:'clarification'}` or `{type:'preview'}` |
 | `/api/coach-ai/apply` | POST | `coach-ai/apply/route.ts` | Writes validated preview to DB: `workout_programs`+`workout_sessions` or `nutrition_plans` |
 
@@ -262,6 +263,7 @@ Source of truth = SQL migrations in `sql/*.sql` + observed SELECTs.
 
 ### Formations
 - `formations`, `formation_videos`, `formation_members`, `formation_video_progress`.
+- `formation_videos.content_type` (`'video'|'pdf'`, default `'video'`) + `.file_path` (nullable, set only for `'pdf'` items, path in `formation-pdfs` bucket). `video_url` stays video-only (external YouTube/Vimeo/Loom link, unused for PDFs). `formation_video_progress` (the `watched` boolean) is content-agnostic and reused as-is for "read" on PDFs.
 
 ---
 
@@ -286,6 +288,7 @@ Source of truth = SQL migrations in `sql/*.sql` + observed SELECTs.
 | `athlete-photos` | `${user.id}/${date}_{front|side|back}.jpg` (athlete user_id) | Private. |
 | `content-drafts` | IG drafts. **Public** (`getPublicUrl`). |
 | `coach-bloodtest` | `{user_id}/{ts}.pdf` (athlète) or `coach/{coach_id}/{athlete_id}/{ts}.pdf` (coach) | Private. 10MB max, PDF only. Signed URL via `/api/bloodtest/signed-url`. |
+| `formation-pdfs` | `{formationId}/{videoId}.pdf` | Private. Upload/update/delete restricted to the owning coach (RLS via `formations.coach_id`). Signed URL via `/api/formations/pdf-signed-url` (1h) — coach or any athlete of that coach. |
 
 ---
 
