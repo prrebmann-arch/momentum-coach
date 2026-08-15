@@ -494,11 +494,14 @@ export default function InfosPage() {
       data.access_mode = a.access_mode || 'full'
       // Bilan config
       data.bilan_frequency = a.bilan_frequency || 'daily'
+      data.bilan_day = a.bilan_day ?? 1
+      data.bilan_anchor_date = a.bilan_anchor_date || ''
       data.bilan_notif_time = a.bilan_notif_time || DEFAULT_NOTIF_TIME
       data.complete_bilan_frequency = a.complete_bilan_frequency || 'weekly'
       data.complete_bilan_day = a.complete_bilan_day ?? 1
       data.complete_bilan_month_day = a.complete_bilan_month_day || 1
       data.complete_bilan_interval = a.complete_bilan_interval || 14
+      data.complete_bilan_anchor_date = a.complete_bilan_anchor_date || ''
       data.complete_bilan_notif_time = a.complete_bilan_notif_time || DEFAULT_NOTIF_TIME
       // Bilan templates (one per type)
       data.selected_template_quotidien_id = athleteTemplateQuotidien?.template_id || ''
