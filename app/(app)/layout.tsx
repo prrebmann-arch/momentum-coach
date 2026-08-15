@@ -56,19 +56,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, timedOut, router, isReturning, settled])
 
-  // Prefetch the most common routes for instant navigation
+  // Prefetch the most common routes for instant navigation — delayed so this
+  // burst of ~11 RSC requests doesn't compete with the current page's own
+  // data fetch (Supabase queries) right after login/navigation, when the
+  // network and main thread are busiest. Seen in a HAR capture: ~30+ RSC
+  // prefetch requests firing in a ~500ms window on mount, ahead of the
+  // athletes/coach_profiles/etc. requests actually needed to render.
   useEffect(() => {
-    router.prefetch('/dashboard')
-    router.prefetch('/athletes')
-    router.prefetch('/bilans')
-    router.prefetch('/templates')
-    router.prefetch('/videos')
-    router.prefetch('/aliments')
-    router.prefetch('/exercices')
-    router.prefetch('/formations')
-    router.prefetch('/profile')
-    router.prefetch('/business')
-    router.prefetch('/login')
+    const timer = setTimeout(() => {
+      router.prefetch('/dashboard')
+      router.prefetch('/athletes')
+      router.prefetch('/bilans')
+      router.prefetch('/templates')
+      router.prefetch('/videos')
+      router.prefetch('/aliments')
+      router.prefetch('/exercices')
+      router.prefetch('/formations')
+      router.prefetch('/profile')
+      router.prefetch('/business')
+      router.prefetch('/login')
+    }, 2000)
+    return () => clearTimeout(timer)
   }, [router])
 
   // Optimistic rendering: if user exists (from cache or session), show app shell immediately
