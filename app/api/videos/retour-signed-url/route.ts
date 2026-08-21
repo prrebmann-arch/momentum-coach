@@ -74,7 +74,9 @@ export async function GET(request: Request) {
 
   if (error || !retour) return Response.json({ error: 'Not found' }, { status: 404 })
   if (retour.archived_at) return Response.json({ error: 'Archived' }, { status: 410 })
-  if (!retour.video_path || !retour.thumbnail_path) return Response.json({ error: 'No video' }, { status: 404 })
+  // thumbnail_path est optionnel — COACH-MOBILE n'en génère pas encore
+  // (nécessiterait expo-video-thumbnails, module natif non installé).
+  if (!retour.video_path) return Response.json({ error: 'No video' }, { status: 404 })
 
   // Access check: caller must be the coach OR the athlete (via athletes.user_id)
   const isCoach = retour.coach_id === user.id
@@ -88,18 +90,19 @@ export async function GET(request: Request) {
 
   if (!isCoach && !isAthlete) return Response.json({ error: 'Forbidden' }, { status: 403 })
 
-  // Generate signed URLs
-  const [{ data: vidSigned, error: vidErr }, { data: thumbSigned, error: thumbErr }] = await Promise.all([
-    supabase.storage.from('coach-video').createSignedUrl(retour.video_path, TTL_SECONDS),
-    supabase.storage.from('coach-video').createSignedUrl(retour.thumbnail_path, TTL_SECONDS),
-  ])
-
+  // Generate signed URLs (thumbnail optionnelle)
+  const { data: vidSigned, error: vidErr } = await supabase.storage.from('coach-video').createSignedUrl(retour.video_path, TTL_SECONDS)
   if (vidErr || !vidSigned) return Response.json({ error: 'Sign video URL failed' }, { status: 500 })
-  if (thumbErr || !thumbSigned) return Response.json({ error: 'Sign thumb URL failed' }, { status: 500 })
+
+  let thumbnailUrl: string | null = null
+  if (retour.thumbnail_path) {
+    const { data: thumbSigned } = await supabase.storage.from('coach-video').createSignedUrl(retour.thumbnail_path, TTL_SECONDS)
+    thumbnailUrl = thumbSigned?.signedUrl ?? null
+  }
 
   return Response.json({
     videoUrl: vidSigned.signedUrl,
-    thumbnailUrl: thumbSigned.signedUrl,
+    thumbnailUrl,
     expiresAt: new Date(Date.now() + TTL_SECONDS * 1000).toISOString(),
   })
 }
