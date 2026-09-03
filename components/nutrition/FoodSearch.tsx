@@ -25,11 +25,17 @@ interface FoodSearchProps {
   onSelect: (aliment: Aliment) => void
   /** Refresh trigger — increment to reload local DB */
   refreshKey?: number
+  /** Called after an OFF/Ciqual aliment is imported into aliments_db, so the
+   *  caller can invalidate its own aliments cache (MealEditor.calcFoodMacros
+   *  reads from a module-level cache that ignores this component's refreshKey —
+   *  without this, macros for a just-imported aliment resolve to 0 until the
+   *  next full page reload). */
+  onImported?: () => void
 }
 
 type Source = 'local' | 'off' | 'both'
 
-export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
+export default function FoodSearch({ onSelect, refreshKey, onImported }: FoodSearchProps) {
   const supabase = createClient()
   const { user } = useAuth()
   const { toast } = useToast()
@@ -130,8 +136,13 @@ export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
     loadLocal()
   }
 
-  // Import OFF aliment to local DB
-  async function importOff(a: Aliment) {
+  // Import un aliment OFF/Ciqual dans aliments_db AVANT de l'ajouter au repas.
+  // MealEditor.calcFoodMacros résout les macros par nom via un cache qui ne lit
+  // que aliments_db — un aliment jamais importé (ou importé mais avec un cache
+  // pas rafraîchi) retombe sur le fallback kcal:0/p:0/g:0/l:0 à la sauvegarde.
+  // Silencieux (pas de confirm() bloquant) : appelé automatiquement au clic, pas
+  // en action explicite "importer".
+  async function importToLocal(a: Aliment) {
     const { data: existing } = await supabase
       .from('aliments_db')
       .select('id, nom')
@@ -141,7 +152,6 @@ export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
       .maybeSingle()
 
     if (existing) {
-      if (!confirm(`L'aliment "${existing.nom}" existe deja. Mettre a jour ?`)) return
       const { error } = await supabase.from('aliments_db').update({
         calories: a.calories, proteines: a.proteines, glucides: a.glucides, lipides: a.lipides,
       }).eq('id', existing.id)
@@ -152,8 +162,8 @@ export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
       })
       if (error) { toast('Erreur: ' + error.message, 'error'); return }
     }
-    toast('Aliment importe !', 'success')
     loadLocal()
+    onImported?.()
   }
 
   return (
@@ -262,7 +272,7 @@ export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
               </div>
             )}
             {!offLoading && offResults.map((a, i) => (
-              <div key={`off-${i}`} className={styles.libItem} onClick={() => { onSelect(a); importOff(a) }}>
+              <div key={`off-${i}`} className={styles.libItem} onClick={() => { importToLocal(a); onSelect(a) }}>
                 <div className={styles.libIcon} style={{ background: 'rgba(52,152,219,0.12)', color: '#3498db' }}>
                   <i className="fa-solid fa-globe" />
                 </div>
@@ -301,7 +311,7 @@ export default function FoodSearch({ onSelect, refreshKey }: FoodSearchProps) {
               -- Ciqual (ANSES) --
             </div>
             {ciqualResults.map((a, i) => (
-              <div key={`ciqual-${i}`} className={styles.libItem} onClick={() => onSelect(a)}>
+              <div key={`ciqual-${i}`} className={styles.libItem} onClick={() => { importToLocal(a); onSelect(a) }}>
                 <div className={styles.libIcon} style={{ background: 'rgba(155,89,182,0.12)', color: '#9b59b6' }}>
                   <i className="fa-solid fa-leaf" />
                 </div>
