@@ -41,23 +41,26 @@ export async function GET(request: Request) {
 
     type Row = { id: string; coach_id: string; video_path: string | null; thumbnail_path: string | null; archived_at: string | null; athletes: { user_id: string | null } | { user_id: string | null }[] | null }
     const accessible = ((rows || []) as unknown as Row[]).filter((r) => {
-      if (r.archived_at || !r.video_path || !r.thumbnail_path) return false
+      // thumbnail_path est optionnel — COACH-MOBILE n'en génère pas encore
+      // (nécessiterait expo-video-thumbnails, module natif non installé),
+      // même tolérance que le mode single ci-dessous.
+      if (r.archived_at || !r.video_path) return false
       const aRef = r.athletes
       const athleteUserId = Array.isArray(aRef) ? aRef[0]?.user_id : aRef?.user_id ?? null
       return r.coach_id === user.id || (!!athleteUserId && athleteUserId === user.id)
     })
 
-    const results: Record<string, { videoUrl: string; thumbnailUrl: string; expiresAt: string }> = {}
+    const results: Record<string, { videoUrl: string; thumbnailUrl: string | null; expiresAt: string }> = {}
     if (accessible.length) {
-      const paths = accessible.flatMap((r) => [r.video_path!, r.thumbnail_path!])
+      const paths = [...new Set(accessible.flatMap((r) => [r.video_path!, ...(r.thumbnail_path ? [r.thumbnail_path] : [])]))]
       // createSignedUrls = 1 seul appel HTTP au storage pour tous les paths
       const { data: signed } = await supabase.storage.from('coach-video').createSignedUrls(paths, TTL_SECONDS)
       const urlByPath = new Map((signed || []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]))
       const expiresAt = new Date(Date.now() + TTL_SECONDS * 1000).toISOString()
       for (const r of accessible) {
         const videoUrl = urlByPath.get(r.video_path!)
-        const thumbnailUrl = urlByPath.get(r.thumbnail_path!)
-        if (videoUrl && thumbnailUrl) results[r.id] = { videoUrl, thumbnailUrl, expiresAt }
+        const thumbnailUrl = r.thumbnail_path ? (urlByPath.get(r.thumbnail_path) ?? null) : null
+        if (videoUrl) results[r.id] = { videoUrl, thumbnailUrl, expiresAt }
       }
     }
     return Response.json({ results })
