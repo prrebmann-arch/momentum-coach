@@ -37,7 +37,7 @@ type Source = 'local' | 'off' | 'both'
 
 export default function FoodSearch({ onSelect, refreshKey, onImported }: FoodSearchProps) {
   const supabase = createClient()
-  const { user } = useAuth()
+  const { user, accessToken } = useAuth()
   const { toast } = useToast()
 
   const [query, setQuery] = useState('')
@@ -74,10 +74,20 @@ export default function FoodSearch({ onSelect, refreshKey, onImported }: FoodSea
       setOffError(false)
       offTimerRef.current = setTimeout(async () => {
         try {
-          const url = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&page_size=20&langs=fr&fields=product_name,nutriments,brands,code`
-          const resp = await fetch(url, { headers: { Accept: 'application/json' } })
+          // Relai serveur (voir app/api/openfoodfacts/route.ts) — l'API OFF
+          // ne renvoie pas Access-Control-Allow-Origin, un fetch direct
+          // depuis le navigateur est bloqué par CORS (marche sur mobile RN
+          // qui n'applique pas CORS, d'où l'écart web/app).
+          const url = `/api/openfoodfacts?q=${encodeURIComponent(query)}`
+          const resp = await fetch(url, {
+            headers: {
+              Accept: 'application/json',
+              ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+            },
+          })
           if (!resp.ok) throw new Error(`OFF HTTP ${resp.status}`)
           const data = await resp.json()
+          if (data.error) throw new Error(data.error)
           const results: Aliment[] = (data.hits || [])
             .filter((p: any) => p.product_name && p.nutriments?.['energy-kcal_100g'] != null)
             .map((p: any) => {
@@ -107,7 +117,7 @@ export default function FoodSearch({ onSelect, refreshKey, onImported }: FoodSea
       setOffError(false)
     }
     return () => { if (offTimerRef.current) clearTimeout(offTimerRef.current) }
-  }, [query, source])
+  }, [query, source, accessToken])
 
   // Filter local results
   const q = query.toLowerCase()
