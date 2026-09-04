@@ -1160,6 +1160,7 @@ export default function MealEditor({
           <FoodSearch
             onSelect={addFood}
             refreshKey={foodRefreshKey}
+            onImported={() => setFoodRefreshKey((k) => k + 1)}
           />
         )}
 
