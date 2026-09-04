@@ -92,6 +92,9 @@ export default function FoodSearch({ onSelect, refreshKey, onImported }: FoodSea
             .filter((p: any) => p.product_name && p.nutriments?.['energy-kcal_100g'] != null)
             .map((p: any) => {
               const brand = Array.isArray(p.brands) ? p.brands[0] : (p.brands || '')
+              // Valeurs pour 100g ici (affichage + cohérent avec Ciqual) — la
+              // conversion vers le format "par gramme" attendu par
+              // aliments_db se fait dans importToLocal, pas ici.
               return {
                 nom: p.product_name + (brand ? ` — ${brand}` : ''),
                 calories: Math.round(p.nutriments['energy-kcal_100g'] || 0),
@@ -152,7 +155,19 @@ export default function FoodSearch({ onSelect, refreshKey, onImported }: FoodSea
   // pas rafraîchi) retombe sur le fallback kcal:0/p:0/g:0/l:0 à la sauvegarde.
   // Silencieux (pas de confirm() bloquant) : appelé automatiquement au clic, pas
   // en action explicite "importer".
+  //
+  // aliments_db stocke les valeurs PAR GRAMME (calcFoodMacros fait
+  // a.calories * qte_en_grammes), alors que `a` ici est en valeurs pour 100g
+  // (OFF et Ciqual, cohérent avec l'affichage "236 kcal / 100g"). Diviser par
+  // 100 seulement à l'écriture DB — stocker le résultat arrondi de la ligne
+  // FoodSearch (ex 1g de protéines/100g) écrasait les faibles valeurs à 0.
   async function importToLocal(a: Aliment) {
+    const per_g = {
+      calories: a.calories / 100,
+      proteines: a.proteines / 100,
+      glucides: a.glucides / 100,
+      lipides: a.lipides / 100,
+    }
     const { data: existing } = await supabase
       .from('aliments_db')
       .select('id, nom')
@@ -162,13 +177,11 @@ export default function FoodSearch({ onSelect, refreshKey, onImported }: FoodSea
       .maybeSingle()
 
     if (existing) {
-      const { error } = await supabase.from('aliments_db').update({
-        calories: a.calories, proteines: a.proteines, glucides: a.glucides, lipides: a.lipides,
-      }).eq('id', existing.id)
+      const { error } = await supabase.from('aliments_db').update(per_g).eq('id', existing.id)
       if (error) { toast('Erreur: ' + error.message, 'error'); return }
     } else {
       const { error } = await supabase.from('aliments_db').insert({
-        nom: a.nom, calories: a.calories, proteines: a.proteines, glucides: a.glucides, lipides: a.lipides, coach_id: user!.id,
+        nom: a.nom, ...per_g, coach_id: user!.id,
       })
       if (error) { toast('Erreur: ' + error.message, 'error'); return }
     }
