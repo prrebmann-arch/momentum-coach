@@ -61,7 +61,7 @@ const AthleteCard = memo(function AthleteCard({ athlete, href }: { athlete: Athl
       <div className={styles.cardTopBar} style={topBarStyle} />
       <div className={styles.cardHead}>
         {athlete.avatar_url ? (
-          <Image src={athlete.avatar_url} alt="" width={40} height={40} style={{ borderRadius: '50%', objectFit: 'cover' }} className={styles.cardAvatar} />
+          <Image src={athlete.avatar_url} alt="" width={40} height={40} unoptimized style={{ borderRadius: '50%', objectFit: 'cover' }} className={styles.cardAvatar} />
         ) : (
           <div className={styles.cardAvatarFallback}>{initials}</div>
         )}

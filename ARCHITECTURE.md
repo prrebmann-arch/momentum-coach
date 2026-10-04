@@ -96,6 +96,7 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/api/bloodtest/signed-url` | GET `?id=` | `bloodtest/signed-url/route.ts` | 1h signed URL for PDF preview. |
 | `/api/formations/pdf-signed-url` | GET `?id=` (formation_videos.id) | `formations/pdf-signed-url/route.ts` | 1h signed URL for a formation PDF item. Access: owning coach OR any athlete of that coach (mirrors `formations_athlete_read` RLS — not filtered by `formation_members`/`visibility`). |
 | `/api/coach-ai` | POST | `coach-ai/route.ts` | Gathers athlete context (programs, nutrition, exercises, foods) + calls Claude Sonnet → `{type:'clarification'}` or `{type:'preview'}` |
+| `/api/client-log` | POST (sendBeacon, no auth) | `client-log/route.ts` | Reçoit les traces de boot de `lib/bootTrace.ts` (`ready/slow/stalled/abandoned/error/no-hydration`) → `console.log/warn` + insert `client_boot_logs` (service role). Cap 32 KB, cross-site refusé, purge >30 j opportuniste. |
 | `/api/coach-ai/apply` | POST | `coach-ai/apply/route.ts` | Writes validated preview to DB: `workout_programs`+`workout_sessions` or `nutrition_plans` |
 
 All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer JWT -> `supabase.auth.getUser()`).
@@ -183,7 +184,7 @@ Self-contained per-domain components; check folder for the right file.
 
 | Context | Purpose | Key fields |
 |---|---|---|
-| `AuthContext.tsx` | Coach session + profile | `user`, `coach`, `accessToken`, `loading`, `signIn/signUp/signOut`, `refreshCoach`, `updateCoach`. **Uses no-op auth lock + stop/startAutoRefresh on visibility (Safari fix).** Caches `user` & `coach` in localStorage for instant load. Emits `coach:wake` event on tab return. |
+| `AuthContext.tsx` | Coach session + profile | `user`, `coach`, `accessToken`, `loading`, `signIn/signUp/signOut`, `refreshCoach`, `updateCoach`. **Uses no-op auth lock + stop/startAutoRefresh on visibility (Safari fix).** Caches `user` & `coach` in localStorage for instant load (session itself = cookies `sb-<ref>-auth-token`, not localStorage). Emits `coach:wake` event on tab return. **`onAuthStateChange` callback MUST stay synchronous** (Supabase calls deferred via `setTimeout(…,0)`) — awaiting a query inside it deadlocks every request (see lessons 2026-10-04). Coach profile loaded once per user via `loadCoach` (deduped). |
 | `AthleteContext.tsx` | Coach's athletes list | SWR-backed, `athletes`, `selectedAthlete`, `setSelectedAthleteId`, `refreshAthletes`. Triple-parallel fetch (athletes + roadmap_phases + athlete_payment_plans). `revalidateOnFocus: false`. |
 | `RecorderContext.tsx` | Global screen recorder state | Wraps `useScreenRecorder`. Manages `pending`, `isProcessing`, `isUploading`, `uploadProgress`, finalize -> `/api/videos/save-retour`. **Auto-pickup `autoStoppedAt` for browser-end / hard-cap.** |
 | `ToastContext.tsx` | `toast(msg, type)` | Portal-based, mounted post-hydration. |
@@ -247,6 +248,9 @@ Source of truth = SQL migrations in `sql/*.sql` + observed SELECTs.
 - `bloodtest_uploads` (`id, athlete_id, uploaded_by, file_path, dated_at, uploaded_at, validated_at, validated_by, extracted_data jsonb, validated_data jsonb, ai_extraction_meta jsonb, archived_at`). Workflow extract→validate. **`extracted_data.markers[]` inclut depuis 2026-05-02 les champs `marker_key, value_canonical, unit_canonical, matched_by_ai, confirmed_by_coach`** alimentés par Claude. Anciens uploads : ces champs sont absents → l'UI tombe en mode "non identifiés".
 - `coach_custom_markers` (`coach_id, marker_key, label, unit_canonical, category, zones jsonb`). Per-coach custom markers.
 - `athletes.bloodtest_enabled` (bool toggle), `athletes.bloodtest_tracked_markers` (jsonb array).
+
+### Observabilité
+- `client_boot_logs` (`id, created_at, user_id, reason, path, ready_ms, payload jsonb`) — traces de boot navigateur (`sql/client_boot_logs.sql`). RLS on, aucune policy (service role only). `payload` = `events` (marks horodatés auth/athletes), `errors` (JS, chunks, rejections), `supabase` (durée de chaque requête terminée), `nav` (type `reload` = reload manuel).
 
 ### Notif & push
 - `notifications` — `user_id` (athlete auth uid), `type, title, body, metadata jsonb`. **Coach → athlete** direction (via `notifyAthlete()` in `lib/push.ts`).
@@ -319,6 +323,11 @@ await notifyAthlete(athleteUserId, type, title, body, metadata, accessToken)
 - Module-level: SWR (e.g. `AthleteContext`).
 - Page-level: **don't use** `getPageCache/setPageCache` — they are no-ops. For new code, prefer SWR or `useState(() => initFromMemory)`. The localStorage user/profile cache pattern lives in `AuthContext` if you need a precedent.
 
+### Boot tracing (diagnostic chargement)
+- `lib/bootTrace.ts` : `bootMark(ev, data)` (console `[boot] +Xms ev`), `bootReady(source)` (appelé par `AthleteContext` au 1er chargement des athlètes), `bootFail`, `bootExpectReady()` (layout (app) : arme `slow` 5 s / `stalled` 15 s), `abandoned` sur `pagehide` avant ready. Script inline `BOOT_INLINE_SCRIPT` dans `app/layout.tsx` : capte les chunks qui échouent + beacon `no-hydration` si le JS ne démarre jamais.
+- Observation uniquement — aucun reload/retry automatique.
+- Lire les blocages : `select created_at, reason, path, payload->'events', payload->'supabase' from client_boot_logs where reason <> 'ready' order by created_at desc;`
+
 ### Refetch on tab return
 ```ts
 const load = useCallback(async () => { ... }, [...primitives])
@@ -342,6 +351,8 @@ useRefetchOnResume(load, loading)
 5. **DB-first, then storage**. On delete: row first, then best-effort storage cleanup. On insert: upload first, then API route validates path + file existence and inserts metadata.
 6. **No watchdog reloads, no fetch wrapping**. The Supabase client must stay vanilla. Tab-freeze is solved by `stopAutoRefresh/startAutoRefresh` already in `AuthContext`. Don't add timers that mask bugs.
 7. **`npm run build` before push.** Pre-existing TS errors block prod.
+8. **Never `await` a Supabase call inside `onAuthStateChange`.** auth-js runs the callback inside its lock / `initialize()` and awaits it; the query waits on `getSession()` → deadlock, every request of the app hangs. Defer with `setTimeout(() => …, 0)`.
+9. **Data that goes through JSON (sessionStorage/localStorage cache, SWR `fallbackData`) must not contain `Date` objects** — they come back as strings. Store ISO strings, build `new Date()` at render.
 
 ---
 
@@ -366,6 +377,7 @@ useRefetchOnResume(load, loading)
 | Modify the notification bell UI | `components/layout/NotificationBell.tsx` |
 | Modify notification fetch/Realtime/mark-read logic | `contexts/NotificationsContext.tsx`, `lib/notifications.ts` |
 | Modify auth flow / token caching | `contexts/AuthContext.tsx` |
+| Investigate "page ne charge pas" / boot lent en prod | `client_boot_logs` (Supabase) + `lib/bootTrace.ts`, `app/api/client-log/route.ts` |
 | Modify athletes list query | `contexts/AthleteContext.tsx` (`fetchAthletesData`) |
 | Add a new toast call site | Import `useToast()` from `contexts/ToastContext.tsx` |
 | Modify daily report photo upload | `app/api/bilan-photos/upload/route.ts` + `components/bilans/BilanPhotosUploadModal.tsx` |

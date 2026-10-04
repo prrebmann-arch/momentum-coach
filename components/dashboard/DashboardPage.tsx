@@ -41,7 +41,10 @@ interface PendingVideo {
 interface Birthday {
   athlete: Athlete
   daysLeft: number
-  nextBd: Date
+  // ISO string, pas Date : DashboardData passe par JSON (cache sessionStorage
+  // servi en fallbackData) — une Date y redevient une chaîne et
+  // `.toLocaleDateString` plantait le dashboard au remontage/reload.
+  nextBd: string
   age: number
 }
 
@@ -224,7 +227,7 @@ async function fetchDashboardData(userId: string, athletes: Athlete[]): Promise<
     )
     if (diffDays <= 60) {
       const age = nextBd.getFullYear() - bd.getFullYear()
-      bdays.push({ athlete: a, daysLeft: diffDays, nextBd, age })
+      bdays.push({ athlete: a, daysLeft: diffDays, nextBd: nextBd.toISOString(), age })
     }
   })
   bdays.sort((a, b) => a.daysLeft - b.daysLeft)
@@ -644,7 +647,7 @@ export default function DashboardPage() {
               <div className={styles.dashCardBody}>
                 {birthdays.length > 0 ? (
                   birthdays.map(b => {
-                    const bdStr = b.nextBd.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+                    const bdStr = new Date(b.nextBd).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
                     const isToday = b.daysLeft === 0
                     const countdownColor = isToday ? 'var(--warning)' : b.daysLeft <= 7 ? 'var(--primary)' : 'var(--text3)'
                     const countdownText = isToday ? 'Aujourd\'hui !' : `J-${b.daysLeft}`

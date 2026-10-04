@@ -1,3 +1,19 @@
+# Premier chargement qui ne charge pas (reload 1-3x) — 2026-10-04
+
+Branche : `feature/first-load-reliability`
+
+- [x] Fix racine : deadlock auth — `onAuthStateChange` faisait `await fetchCoach()` DANS le callback. auth-js await les callbacks
+      à l'intérieur de son lock/initialize → la requête coach attend `getSession()` → qui attend initialize → qui attend le callback.
+      Déclenché au 1er chargement quand le JWT est expiré (refresh au boot → TOKEN_REFRESHED) et au refresh horaire.
+      Fix : callback synchrone, chargement du profil coach différé (setTimeout 0, pattern officiel Supabase) + dédupliqué.
+- [x] Logs de boot : `lib/bootTrace.ts` (marks auth/données/erreurs, console `[boot]`) + beacon vers `/api/client-log`
+      (ready / slow 5s / stalled 15s / abandoned = reload pendant le chargement) → table `client_boot_logs`.
+- [x] Autres causes trouvées : crash dashboard (`nextBd` Date relue en string depuis le cache JSON) ; avatars /athletes en 400 via l'optimiseur next/image (host non configuré) → `unoptimized`
+- [ ] À surveiller via client_boot_logs : refresh token qui pend côté réseau (pas de timeout fetch dans auth-js), routes /athletes/[id]/* dynamiques (ƒ) = cold start serverless au 1er accès direct
+- [x] `npm run build` OK + vérif runtime : Chrome headless, cookie expiré → prod actuelle = skeleton infini (0 requête REST) ; build fixé = dashboard rendu en ~0,5 s. Scénarios valid+reload, near-expiry, anon OK. Beacons slow/stalled/abandoned vérifiés.
+- [ ] Exécuter `sql/client_boot_logs.sql` dans Supabase SQL Editor (sinon les logs ne vont qu'en console Vercel)
+- [x] ARCHITECTURE.md + lessons.md à jour
+
 # Prochaine session — Priorites
 
 ## Perf audit follow-up (2026-04-30)
