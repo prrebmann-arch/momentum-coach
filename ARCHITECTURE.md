@@ -96,7 +96,7 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/api/bloodtest/signed-url` | GET `?id=` | `bloodtest/signed-url/route.ts` | 1h signed URL for PDF preview. |
 | `/api/formations/pdf-signed-url` | GET `?id=` (formation_videos.id) | `formations/pdf-signed-url/route.ts` | 1h signed URL for a formation PDF item. Access: owning coach OR any athlete of that coach (mirrors `formations_athlete_read` RLS — not filtered by `formation_members`/`visibility`). |
 | `/api/coach-ai` | POST | `coach-ai/route.ts` | Gathers athlete context (programs, nutrition, exercises, foods) + calls Claude Sonnet → `{type:'clarification'}` or `{type:'preview'}` |
-| `/api/client-log` | POST (sendBeacon, no auth) | `client-log/route.ts` | Reçoit les traces de boot de `lib/bootTrace.ts` (`ready/slow/stalled/abandoned/error/no-hydration`) → `console.log/warn` + insert `client_boot_logs` (service role). Cap 32 KB, cross-site refusé, purge >30 j opportuniste. |
+| `/api/client-log` | POST (sendBeacon) | `client-log/route.ts` | Reçoit les traces de boot de `lib/bootTrace.ts` (`ready/slow/stalled/abandoned/error/no-hydration`) → `console.log/warn` + insert `client_boot_logs` (service role). Identité = JWT du cookie de session validé par `auth.getUser(token)` (jamais de refresh serveur) via `lib/api/sessionCookie.ts`. Non vérifié → `user_id` NULL, persisté seulement si ≤ 8 KB et < 200/h. Cap 32 KB, cross-site refusé, purge >30 j opportuniste. |
 | `/api/coach-ai/apply` | POST | `coach-ai/apply/route.ts` | Writes validated preview to DB: `workout_programs`+`workout_sessions` or `nutrition_plans` |
 
 All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer JWT -> `supabase.auth.getUser()`).
@@ -250,7 +250,7 @@ Source of truth = SQL migrations in `sql/*.sql` + observed SELECTs.
 - `athletes.bloodtest_enabled` (bool toggle), `athletes.bloodtest_tracked_markers` (jsonb array).
 
 ### Observabilité
-- `client_boot_logs` (`id, created_at, user_id, reason, path, ready_ms, payload jsonb`) — traces de boot navigateur (`sql/client_boot_logs.sql`). RLS on, aucune policy (service role only). `payload` = `events` (marks horodatés auth/athletes), `errors` (JS, chunks, rejections), `supabase` (durée de chaque requête terminée), `nav` (type `reload` = reload manuel).
+- `client_boot_logs` (`id, created_at, user_id, verified, reason, path, ready_ms, payload jsonb`) — `user_id` seulement si `verified` (JWT cookie validé), sinon id déclaré dans `payload->>'userId'` (non fiable) — traces de boot navigateur (`sql/client_boot_logs.sql`). RLS on, aucune policy (service role only). `payload` = `events` (marks horodatés auth/athletes), `errors` (JS, chunks, rejections), `supabase` (durée de chaque requête terminée), `nav` (type `reload` = reload manuel).
 
 ### Notif & push
 - `notifications` — `user_id` (athlete auth uid), `type, title, body, metadata jsonb`. **Coach → athlete** direction (via `notifyAthlete()` in `lib/push.ts`).
