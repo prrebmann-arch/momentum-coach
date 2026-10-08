@@ -89,13 +89,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className={styles.appLayout}>
       {/* Sidebar skeleton */}
       <div className={styles.sidebarSkeleton}>
-        <div className={styles.skelBrandRow}>
-          <div className="skeleton" style={{ width: 28, height: 28, borderRadius: 8 }} />
-          <div className="skeleton" style={{ width: 90, height: 14, borderRadius: 6 }} />
-        </div>
-        <div className={styles.skelNav}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="skeleton" style={{ width: '100%', height: 36, borderRadius: 10 }} />
+        <div className={styles.skelRailCard}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ width: 36, height: 36, borderRadius: 12 }} />
           ))}
         </div>
       </div>
@@ -115,9 +111,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user && !loading && !isReturning) return (
     <div className={styles.appLayout}>
       <div className={styles.sidebarSkeleton}>
-        <div className={styles.skelBrandRow}>
-          <div className="skeleton" style={{ width: 28, height: 28, borderRadius: 8 }} />
-          <div className="skeleton" style={{ width: 90, height: 14, borderRadius: 6 }} />
+        <div className={styles.skelRailCard}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ width: 36, height: 36, borderRadius: 12 }} />
+          ))}
         </div>
       </div>
       <div className={styles.mainContentSkeleton} />
