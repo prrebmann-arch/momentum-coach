@@ -1,10 +1,11 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react'
 import useSWR from 'swr'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRefetchOnResume } from '@/hooks/useRefetchOnResume'
+import { bootFail, bootMark, bootReady } from '@/lib/bootTrace'
 import type { Athlete } from '@/lib/types'
 
 interface AthleteContextType {
@@ -21,6 +22,8 @@ const AthleteContext = createContext<AthleteContextType | undefined>(undefined)
 // sessionStorage cache removed — JSON.parse of 200+ athletes was blocking the main thread for 2-5s
 
 async function fetchAthletesData(userId: string): Promise<Athlete[]> {
+  const t0 = performance.now()
+  bootMark('athletes:fetch')
   const supabase = createClient()
   // Cutoff for "upcoming" steps query: today + 14 days. We compute today in local TZ
   // to match scheduled_date (which the coach edits in their local calendar).
@@ -98,6 +101,7 @@ async function fetchAthletesData(userId: string): Promise<Athlete[]> {
     }
   }
 
+  bootMark('athletes:done', { ms: Math.round(performance.now() - t0), count: data?.length ?? 0, error: error?.message })
   if (error) throw error
   if (!data) return []
   if (stepsErr) console.error('[AthleteContext] steps fetch error', stepsErr)
@@ -143,7 +147,7 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
 
   const userId = user?.id || null
 
-  const { data: athletes, isLoading, mutate } = useSWR(
+  const { data: athletes, error: athletesError, isLoading, mutate } = useSWR(
     userId ? `athletes:${userId}` : null,
     () => fetchAthletesData(userId!),
     {
@@ -167,6 +171,20 @@ export function AthleteProvider({ children }: { children: ReactNode }) {
   }, [mutate])
 
   // SWR in-memory cache handles cleanup automatically on key change
+
+  // Trace de boot : la liste d'athlètes alimente /dashboard, /athletes et le
+  // header athlète — c'est le signal "l'app est utilisable".
+  const athletesLoaded = athletes !== undefined
+  useEffect(() => {
+    if (athletesLoaded) bootReady('athletes')
+  }, [athletesLoaded])
+  const athletesErrorMsg = athletesError ? String((athletesError as { message?: string }).message ?? athletesError) : null
+  useEffect(() => {
+    if (athletesErrorMsg) {
+      console.error('[AthleteContext] fetch error', athletesErrorMsg)
+      bootFail('athletes', { msg: athletesErrorMsg })
+    }
+  }, [athletesErrorMsg])
 
   const athleteList = athletes ?? []
 

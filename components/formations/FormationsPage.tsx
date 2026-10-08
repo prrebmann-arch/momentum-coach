@@ -10,6 +10,7 @@ import Modal from '@/components/ui/Modal'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import styles from '@/styles/formations.module.css'
+import NotificationBell from '@/components/layout/NotificationBell'
 
 // ── Types ──
 interface Formation {
@@ -757,9 +758,12 @@ export default function FormationsPage() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Formations</h1>
-        <Button variant="primary" size="sm" onClick={openCreateModal}>
-          <i className="fas fa-plus" /> Nouvelle formation
-        </Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Button variant="primary" size="sm" onClick={openCreateModal}>
+            <i className="fas fa-plus" /> Nouvelle formation
+          </Button>
+          <NotificationBell />
+        </div>
       </div>
 
       {formations.length === 0 ? (

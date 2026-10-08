@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { clearAllCaches } from '@/lib/clientCaches'
+import { bootMark, bootSetUser, installBootTrace } from '@/lib/bootTrace'
 import type { User, CoachProfile } from '@/lib/types'
 
 const CACHE_KEY_USER = 'coach_cached_user'
@@ -20,26 +21,6 @@ function getCachedCoach(): CoachProfile | null {
     const raw = localStorage.getItem(CACHE_KEY_PROFILE)
     return raw ? JSON.parse(raw) : null
   } catch { return null }
-}
-
-function hasSupabaseSession(): boolean {
-  try {
-    // Supabase stores session in localStorage with key containing 'auth-token'
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (key && key.includes('auth-token')) {
-        const val = localStorage.getItem(key)
-        if (val) {
-          const parsed = JSON.parse(val)
-          // Check token hasn't expired
-          if (parsed?.expires_at && parsed.expires_at > Date.now() / 1000) return true
-          // Some formats store in a nested structure
-          if (parsed?.access_token) return true
-        }
-      }
-    }
-  } catch { /* ignore */ }
-  return false
 }
 
 interface AuthContextType {
@@ -70,32 +51,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Prevents onAuthStateChange from interfering during explicit signIn/signUp
   const signingInRef = useRef(false)
 
+  // Profil coach en vol / chargé, par user. Au boot, init(), INITIAL_SESSION,
+  // SIGNED_IN et TOKEN_REFRESHED arrivent quasi en même temps : une seule
+  // requête coach_profiles. Un échec (null) libère la place pour réessayer.
+  const coachLoadRef = useRef<{ userId: string; promise: Promise<CoachProfile | null> } | null>(null)
+
   const supabase = createClient()
 
   const fetchCoach = useCallback(async (userId: string): Promise<CoachProfile | null> => {
+    const t0 = performance.now()
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('coach_profiles')
         .select('id, user_id, email, display_name, plan, trial_ends_at, has_payment_method, stripe_account_id, stripe_onboarding_complete, stripe_charges_enabled, avatar_url, created_at')
         .eq('user_id', userId)
         .single()
-      const profile = data as CoachProfile | null
-      setCoach(profile)
-      // Cache for instant load on next visit
-      if (profile) {
-        try { localStorage.setItem(CACHE_KEY_PROFILE, JSON.stringify(profile)) } catch { /* quota */ }
+      const ms = Math.round(performance.now() - t0)
+      if (error) {
+        console.error('[AuthContext] fetchCoach', error)
+        bootMark('auth:coach', { ms, ok: false, code: error.code, msg: error.message })
+        // Pas de profil (PGRST116) = vraiment aucun profil. Toute autre erreur
+        // (réseau, 5xx) : on garde le profil en cache plutôt que de le vider.
+        if (error.code === 'PGRST116') setCoach(null)
+        return null
       }
+      const profile = data as CoachProfile
+      setCoach(profile)
+      bootMark('auth:coach', { ms, ok: true })
+      // Cache for instant load on next visit
+      try { localStorage.setItem(CACHE_KEY_PROFILE, JSON.stringify(profile)) } catch { /* quota */ }
       return profile
     } catch (err) {
-      // fetchCoach error
+      console.error('[AuthContext] fetchCoach', err)
+      bootMark('auth:coach', { ms: Math.round(performance.now() - t0), ok: false, msg: String(err) })
       return null
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const loadCoach = useCallback((userId: string, force = false): Promise<CoachProfile | null> => {
+    const current = coachLoadRef.current
+    if (!force && current && current.userId === userId) return current.promise
+    const promise = fetchCoach(userId).then((profile) => {
+      if (!profile && coachLoadRef.current?.promise === promise) coachLoadRef.current = null
+      return profile
+    })
+    coachLoadRef.current = { userId, promise }
+    return promise
+  }, [fetchCoach])
+
+  const userId = user?.id
   const refreshCoach = useCallback(async () => {
-    if (user) await fetchCoach(user.id)
-  }, [user, fetchCoach])
+    if (userId) await loadCoach(userId, true)
+  }, [userId, loadCoach])
 
   const updateCoach = useCallback((partial: Partial<CoachProfile>) => {
     setCoach((prev) => {
@@ -116,57 +124,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (initRef.current) return
     initRef.current = true
+    installBootTrace()
 
-    // Populate from localStorage immediately after hydration (safe — client only)
+    // Populate from localStorage immediately after hydration (safe — client only).
+    // `loading` reste true jusqu'à getSession() : la session vit dans les cookies
+    // (@supabase/ssr), pas dans localStorage — le layout affiche déjà le shell
+    // grâce au user en cache.
     const cachedU = getCachedUser()
     const cachedC = getCachedCoach()
-    const hasSess = cachedU !== null && hasSupabaseSession()
     if (cachedU) setUser(cachedU)
     if (cachedC) setCoach(cachedC)
-    if (hasSess) setLoading(false)
+    bootSetUser(cachedU?.id ?? null)
+    bootMark('auth:cache', { cachedUser: !!cachedU, cachedCoach: !!cachedC })
 
     const init = async () => {
+      const t0 = performance.now()
+      bootMark('auth:init')
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const { data: { session }, error } = await supabase.auth.getSession()
+        bootMark('auth:session', {
+          ms: Math.round(performance.now() - t0),
+          hasSession: !!session,
+          expiresInS: session?.expires_at ? Math.round(session.expires_at - Date.now() / 1000) : null,
+          error: error?.message,
+        })
         if (session?.user) {
           const u = { id: session.user.id, email: session.user.email! }
           setUserStable(u)
+          bootSetUser(u.id)
           setAccessToken(session.access_token)
           try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
           // Background refresh of coach profile (UI already showing cached data)
-          await fetchCoach(session.user.id)
+          await loadCoach(session.user.id)
         } else {
           // No valid session — clear cache and state
           setUser(null)
           setCoach(null)
           setAccessToken(null)
+          bootSetUser(null)
+          coachLoadRef.current = null
           localStorage.removeItem(CACHE_KEY_USER)
           localStorage.removeItem(CACHE_KEY_PROFILE)
         }
       } catch (err) {
-        // init error
+        console.error('[AuthContext] init', err)
+        bootMark('auth:init-error', { msg: String(err) })
       } finally {
         setLoading(false)
       }
     }
     init()
 
+    // ⚠️ Ce callback doit rester SYNCHRONE : aucun `await` d'appel Supabase ici.
+    // auth-js l'exécute À L'INTÉRIEUR de son verrou interne — et pendant
+    // initialize() quand le JWT expiré est rafraîchi au chargement — et attend
+    // qu'il se termine. Une requête Supabase awaitée ici attend getSession(),
+    // qui attend initialize()/le verrou, qui attend ce callback → deadlock :
+    // toutes les requêtes de l'app restent pendantes (« la page ne charge pas,
+    // il faut recharger »). Pattern officiel : différer avec setTimeout(…, 0).
+    // https://supabase.com/docs/reference/javascript/auth-onauthstatechange
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event: string, session: { user?: { id: string; email?: string }; access_token: string } | null) => {
+      (event: string, session: { user?: { id: string; email?: string }; access_token: string } | null) => {
+        bootMark('auth:event', { event, hasSession: !!session })
         // Skip if signIn/signUp is handling state updates directly
         if (signingInRef.current) return
         if (session?.user) {
           const u = { id: session.user.id, email: session.user.email! }
           setUserStable(u)
+          bootSetUser(u.id)
           setAccessToken(session.access_token)
           setLoading(false)
           try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
-          await fetchCoach(session.user.id)
+          const uid = u.id
+          setTimeout(() => { void loadCoach(uid) }, 0)
         } else {
           setUser(null)
           setCoach(null)
           setAccessToken(null)
           setLoading(false)
+          bootSetUser(null)
+          coachLoadRef.current = null
           localStorage.removeItem(CACHE_KEY_USER)
           localStorage.removeItem(CACHE_KEY_PROFILE)
         }
@@ -226,16 +263,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const u = { id: data.user.id, email: data.user.email! }
       setUserStable(u)
+      bootSetUser(u.id)
       setAccessToken(data.session?.access_token ?? null)
       try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
-      const profile = await fetchCoach(data.user.id)
+      const profile = await loadCoach(data.user.id, true)
       return profile
     } finally {
       signingInRef.current = false
       setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchCoach])
+  }, [loadCoach])
 
   const signUp = useCallback(async (email: string, password: string, plan: string): Promise<CoachProfile | null> => {
     signingInRef.current = true
@@ -262,22 +300,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const u = { id: data.user.id, email: data.user.email! }
       setUserStable(u)
+      bootSetUser(u.id)
       setAccessToken(data.session?.access_token ?? null)
       try { localStorage.setItem(CACHE_KEY_USER, JSON.stringify(u)) } catch { /* quota */ }
-      const profile = await fetchCoach(data.user.id)
+      const profile = await loadCoach(data.user.id, true)
       return profile
     } finally {
       signingInRef.current = false
       setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchCoach])
+  }, [loadCoach])
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
     setUser(null)
     setCoach(null)
     setAccessToken(null)
+    bootSetUser(null)
+    coachLoadRef.current = null
     localStorage.removeItem(CACHE_KEY_USER)
     localStorage.removeItem(CACHE_KEY_PROFILE)
     // Module-level caches (aliments_db, exercices) survive auth events;

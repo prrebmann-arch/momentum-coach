@@ -10,6 +10,7 @@ import styles from '@/styles/sidebar.module.css'
 import { RecorderProvider } from '@/contexts/RecorderContext'
 import { NotificationsProvider } from '@/contexts/NotificationsContext'
 import Topbar from '@/components/layout/Topbar'
+import { bootExpectReady, bootReady } from '@/lib/bootTrace'
 
 // Recorder UI — lazy. Only mounted when actively recording (the components
 // no-op themselves when idle). Keeps RecorderContext provider in tree so the
@@ -28,6 +29,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // has flushed the user state set during signIn.
   const [settled, setSettled] = useState(false)
   useEffect(() => { setSettled(true) }, [])
+  // Trace de boot : à partir d'ici on attend bootReady() (slow 5s / stalled 15s).
+  useEffect(() => { bootExpectReady() }, [])
 
   // Check if returning from external redirect (Stripe, etc.).
   // Must be computed after mount — reading window.location during render
@@ -52,6 +55,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (!shouldRedirect) return
     if (!user && !isReturning && !checkedRef.current) {
       checkedRef.current = true
+      bootReady(timedOut && loading ? 'login-redirect-timeout' : 'login-redirect')
       router.replace('/login')
     }
   }, [user, loading, timedOut, router, isReturning, settled])
@@ -85,13 +89,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className={styles.appLayout}>
       {/* Sidebar skeleton */}
       <div className={styles.sidebarSkeleton}>
-        <div className={styles.skelBrandRow}>
-          <div className="skeleton" style={{ width: 28, height: 28, borderRadius: 8 }} />
-          <div className="skeleton" style={{ width: 90, height: 14, borderRadius: 6 }} />
-        </div>
-        <div className={styles.skelNav}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="skeleton" style={{ width: '100%', height: 36, borderRadius: 10 }} />
+        <div className={styles.skelRailCard}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ width: 36, height: 36, borderRadius: 12 }} />
           ))}
         </div>
       </div>
@@ -111,9 +111,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user && !loading && !isReturning) return (
     <div className={styles.appLayout}>
       <div className={styles.sidebarSkeleton}>
-        <div className={styles.skelBrandRow}>
-          <div className="skeleton" style={{ width: 28, height: 28, borderRadius: 8 }} />
-          <div className="skeleton" style={{ width: 90, height: 14, borderRadius: 6 }} />
+        <div className={styles.skelRailCard}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ width: 36, height: 36, borderRadius: 12 }} />
+          ))}
         </div>
       </div>
       <div className={styles.mainContentSkeleton} />

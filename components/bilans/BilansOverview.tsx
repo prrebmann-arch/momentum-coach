@@ -84,7 +84,7 @@ export default function BilansOverview() {
       // dominate the limit(200) window and starve real ones.
       const todayStr = new Date().toISOString().slice(0, 10)
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('daily_reports')
         .select('id, user_id, date, weight, energy, sleep_quality, stress, adherence, sessions_executed, session_performance, steps, photo_front, photo_side, photo_back, coach_reviewed_at')
         .in('user_id', athleteUserIds)
@@ -92,15 +92,17 @@ export default function BilansOverview() {
         .lte('date', todayStr)
         .order('date', { ascending: false })
         .limit(200)
+      if (error) console.error('[BilansOverview] fetchReports', error)
       setReports((data as DailyReport[]) || [])
     } finally {
       setLoading(false)
     }
   }, [user?.id, athletes.length]) // eslint-disable-line react-hooks-exhaustive-deps
 
-  // Reload reports when athletes list changes
+  // Reload reports when athletes list changes. Aussi avec 0 athlète :
+  // fetchReports coupe alors le skeleton (sinon chargement infini).
   useEffect(() => {
-    if (!athletesLoading && athletes.length) fetchReports()
+    if (!athletesLoading) fetchReports()
   }, [athletesLoading, athletes, fetchReports])
 
   useRefetchOnResume(fetchReports, loading)
