@@ -10,6 +10,8 @@ import { useToast } from '@/contexts/ToastContext'
 import { createClient } from '@/lib/supabase/client'
 import { toDateStr, getLastExpectedBilanDate } from '@/lib/utils'
 import { notifyAthlete } from '@/lib/push'
+import { bootMark } from '@/lib/bootTrace'
+import NotificationBell from '@/components/layout/NotificationBell'
 import StatsCards, { type StatCardData } from './StatsCards'
 import ActivityFeed, { type ActivityItem } from './ActivityFeed'
 import Skeleton from '@/components/ui/Skeleton'
@@ -41,7 +43,10 @@ interface PendingVideo {
 interface Birthday {
   athlete: Athlete
   daysLeft: number
-  nextBd: Date
+  // ISO string, pas Date : DashboardData passe par JSON (cache sessionStorage
+  // servi en fallbackData) — une Date y redevient une chaîne et
+  // `.toLocaleDateString` plantait le dashboard au remontage/reload.
+  nextBd: string
   age: number
 }
 
@@ -77,6 +82,37 @@ function getTimeAgo(date: Date): string {
   return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
 }
 
+type DashboardRpcResult = { data: unknown; error: unknown }
+
+// La RPC du dashboard ne dépend que de l'id coach : on la lance dès le montage,
+// en parallèle du chargement des athlètes (AthleteContext), au lieu d'attendre
+// la liste puis d'enchaîner un aller-retour de plus (~300 ms). fetchDashboardData
+// consomme cette promesse une fois ; les revalidations suivantes refont l'appel.
+const RPC_PREFETCH_MAX_AGE_MS = 10_000
+let rpcPrefetch: { userId: string; at: number; promise: Promise<DashboardRpcResult> } | null = null
+
+function startDashboardRpc(userId: string): Promise<DashboardRpcResult> {
+  const t0 = performance.now()
+  bootMark('dashboard:rpc')
+  // .then() déclenche la requête (les builders Supabase sont paresseux).
+  return createClient().rpc('coach_dashboard_data', { p_coach_id: userId }).then((r: DashboardRpcResult) => {
+    bootMark('dashboard:rpc-done', { ms: Math.round(performance.now() - t0), error: r.error ? String((r.error as { message?: string }).message) : undefined })
+    return r
+  })
+}
+
+function prefetchDashboardRpc(userId: string) {
+  if (rpcPrefetch?.userId === userId && Date.now() - rpcPrefetch.at < RPC_PREFETCH_MAX_AGE_MS) return
+  rpcPrefetch = { userId, at: Date.now(), promise: startDashboardRpc(userId) }
+}
+
+function takeDashboardRpc(userId: string): Promise<DashboardRpcResult> {
+  const p = rpcPrefetch
+  rpcPrefetch = null
+  if (p && p.userId === userId && Date.now() - p.at < RPC_PREFETCH_MAX_AGE_MS) return p.promise
+  return startDashboardRpc(userId)
+}
+
 async function fetchDashboardData(userId: string, athletes: Athlete[]): Promise<DashboardData> {
   const supabase = createClient()
 
@@ -86,7 +122,8 @@ async function fetchDashboardData(userId: string, athletes: Athlete[]): Promise<
   let pendingVideos: Record<string, unknown>[] = []
   let settings: Record<string, unknown> | null = null
 
-  const { data: rpcResult, error: rpcError } = await supabase.rpc('coach_dashboard_data', { p_coach_id: userId })
+  const { data: rpcResult, error: rpcError } = await takeDashboardRpc(userId)
+  if (rpcError) console.error('[dashboard] coach_dashboard_data — fallback requêtes', rpcError)
 
   if (!rpcError && rpcResult) {
     const d = rpcResult as { reports: Record<string, unknown>[]; programs: Record<string, unknown>[]; pending_videos: Record<string, unknown>[]; settings: Record<string, unknown> }
@@ -224,7 +261,7 @@ async function fetchDashboardData(userId: string, athletes: Athlete[]): Promise<
     )
     if (diffDays <= 60) {
       const age = nextBd.getFullYear() - bd.getFullYear()
-      bdays.push({ athlete: a, daysLeft: diffDays, nextBd, age })
+      bdays.push({ athlete: a, daysLeft: diffDays, nextBd: nextBd.toISOString(), age })
     }
   })
   bdays.sort((a, b) => a.daysLeft - b.daysLeft)
@@ -290,6 +327,11 @@ export default function DashboardPage() {
 
   const mainRef = useRef<HTMLDivElement>(null)
   const activityRef = useRef<HTMLDivElement>(null)
+
+  const userId = user?.id
+  useEffect(() => {
+    if (userId) prefetchDashboardRpc(userId)
+  }, [userId])
 
   // Stable key that changes when athletes list changes (forces re-fetch)
   const athleteIds = athletes.map(a => a.id).join(',')
@@ -484,6 +526,7 @@ export default function DashboardPage() {
           <Link href="/athletes?new=1" className="btn btn-red">
             <i className="fas fa-plus" /> Ajouter un athlete
           </Link>
+          <NotificationBell />
         </div>
       </div>
 
@@ -644,7 +687,7 @@ export default function DashboardPage() {
               <div className={styles.dashCardBody}>
                 {birthdays.length > 0 ? (
                   birthdays.map(b => {
-                    const bdStr = b.nextBd.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
+                    const bdStr = new Date(b.nextBd).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
                     const isToday = b.daysLeft === 0
                     const countdownColor = isToday ? 'var(--warning)' : b.daysLeft <= 7 ? 'var(--primary)' : 'var(--text3)'
                     const countdownText = isToday ? 'Aujourd\'hui !' : `J-${b.daysLeft}`

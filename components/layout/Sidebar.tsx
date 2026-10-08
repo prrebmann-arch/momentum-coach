@@ -1,6 +1,9 @@
 'use client'
 
-import { memo, useCallback, useState, useEffect } from 'react'
+// Rail de navigation vertical façon Insyder (même direction que la sidebar de
+// ClosRM desktop) : carte flottante arrondie centrée verticalement, icônes
+// seules, état actif discret, libellé en tooltip au survol.
+import { memo, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
@@ -14,37 +17,26 @@ interface NavItem {
 }
 
 // Module-scope const — referenced once per render, never recreated.
-const navGroups: { label?: string; items: NavItem[] }[] = [
-  {
-    items: [
-      { label: 'Dashboard', icon: 'fa-chart-line', route: '/dashboard' },
-      { label: 'Athlètes', icon: 'fa-users', route: '/athletes' },
-    ],
-  },
-  {
-    label: 'Suivi',
-    items: [
-      { label: 'Bilans', icon: 'fa-clipboard-check', route: '/bilans' },
-      { label: 'Vidéos', icon: 'fa-video', route: '/videos' },
-      { label: 'Questionnaires', icon: 'fa-clipboard-question', route: '/questionnaires' },
-      { label: 'Annonces', icon: 'fa-bullhorn', route: '/annonces' },
-    ],
-  },
-  {
-    label: 'Outils',
-    items: [
-      { label: 'Templates', icon: 'fa-copy', route: '/templates' },
-      { label: 'Aliments', icon: 'fa-utensils', route: '/aliments' },
-      { label: 'Exercices', icon: 'fa-dumbbell', route: '/exercices' },
-      { label: 'Formations', icon: 'fa-graduation-cap', route: '/formations' },
-    ],
-  },
-  {
-    label: 'Business',
-    items: [
-      { label: 'Business', icon: 'fa-briefcase', route: '/business' },
-    ],
-  },
+const navGroups: NavItem[][] = [
+  [
+    { label: 'Dashboard', icon: 'fa-chart-line', route: '/dashboard' },
+    { label: 'Athlètes', icon: 'fa-users', route: '/athletes' },
+  ],
+  [
+    { label: 'Bilans', icon: 'fa-clipboard-check', route: '/bilans' },
+    { label: 'Vidéos', icon: 'fa-video', route: '/videos' },
+    { label: 'Questionnaires', icon: 'fa-clipboard-question', route: '/questionnaires' },
+    { label: 'Annonces', icon: 'fa-bullhorn', route: '/annonces' },
+  ],
+  [
+    { label: 'Templates', icon: 'fa-copy', route: '/templates' },
+    { label: 'Aliments', icon: 'fa-utensils', route: '/aliments' },
+    { label: 'Exercices', icon: 'fa-dumbbell', route: '/exercices' },
+    { label: 'Formations', icon: 'fa-graduation-cap', route: '/formations' },
+  ],
+  [
+    { label: 'Business', icon: 'fa-briefcase', route: '/business' },
+  ],
 ]
 
 function SidebarImpl() {
@@ -52,28 +44,6 @@ function SidebarImpl() {
   const router = useRouter()
   const { user, signOut } = useAuth()
   const { theme, setTheme } = useTheme()
-
-  // localStorage lu en useEffect post-hydration (jamais pendant le render
-  // initial : divergence SSR/client = React #418 = skeleton infini).
-  const [collapsed, setCollapsed] = useState<boolean>(false)
-  useEffect(() => {
-    if (localStorage.getItem('sidebar-collapsed') === 'true') setCollapsed(true)
-  }, [])
-
-  useEffect(() => {
-    document.documentElement.style.setProperty(
-      '--sidebar-width',
-      collapsed ? '60px' : '220px'
-    )
-  }, [collapsed])
-
-  const toggle = useCallback(() => {
-    setCollapsed(prev => {
-      const next = !prev
-      localStorage.setItem('sidebar-collapsed', String(next))
-      return next
-    })
-  }, [])
 
   const isActive = (route: string) => {
     if (route === '/dashboard') return pathname === '/dashboard'
@@ -90,74 +60,55 @@ function SidebarImpl() {
   }, [theme, setTheme])
 
   const userInitial = user?.email?.charAt(0).toUpperCase() ?? 'C'
-  const userName = user?.email?.split('@')[0] ?? 'Coach'
 
   return (
-    <div className={`${styles.sidebar} ${collapsed ? styles.sidebarCollapsed : ''}`}>
-      <button
-        onClick={toggle}
-        className={styles.sidebarToggleBtn}
-        title={collapsed ? 'Développer' : 'Réduire'}
-      >
-        <i className={`fa-solid fa-chevron-${collapsed ? 'right' : 'left'}`} />
-      </button>
+    <nav className={styles.rail} aria-label="Navigation principale">
+      <div className={styles.railCard}>
+        <Link href="/dashboard" className={styles.railLogo} aria-label="Momentum">M</Link>
 
-      <div className={styles.sidebarHeader}>
-        <div className={styles.sidebarBrand}>
-          <div className={styles.brandIcon}>M</div>
-          {!collapsed && <span className={styles.brandText}>Momentum</span>}
-        </div>
-      </div>
-
-      <nav className={styles.sidebarNav}>
         {navGroups.map((group, gi) => (
-          <div key={gi}>
-            {!collapsed
-              ? group.label && <div className={styles.navLabel}>{group.label}</div>
-              : gi > 0 && <div className={styles.navLabelCollapsed} />
-            }
-            {group.items.map((item) => (
-              <Link
-                key={item.route}
-                href={item.route}
-                className={isActive(item.route) ? styles.navItemActive : styles.navItem}
-                title={collapsed ? item.label : undefined}
-              >
-                <i className={`fas ${item.icon}`} />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-            ))}
+          <div key={gi} className={styles.railSection}>
+            <div className={styles.railDivider} />
+            <div className={styles.railGroup}>
+              {group.map((item) => (
+                <Link
+                  key={item.route}
+                  href={item.route}
+                  className={`${styles.railItem} ${isActive(item.route) ? styles.railItemActive : ''}`}
+                  aria-label={item.label}
+                  aria-current={isActive(item.route) ? 'page' : undefined}
+                >
+                  <i className={`fas ${item.icon}`} />
+                  <span className={styles.railTooltip}>{item.label}</span>
+                </Link>
+              ))}
+            </div>
           </div>
         ))}
-      </nav>
 
-      <div className={styles.sidebarFooter}>
-        <div className={styles.sidebarUser}>
-          <Link href="/profile" className={styles.userAvatar} title="Mon profil">
-            {userInitial}
-          </Link>
-          {!collapsed && (
-            <Link href="/profile" className={styles.userInfo} title="Mon profil">
-              <div className={styles.userName}>{userName}</div>
+        <div className={styles.railSection}>
+          <div className={styles.railDivider} />
+          <div className={styles.railGroup}>
+            <Link
+              href="/profile"
+              className={`${styles.railItem} ${isActive('/profile') ? styles.railItemActive : ''}`}
+              aria-label="Mon profil"
+            >
+              <span className={styles.railAvatar}>{userInitial}</span>
+              <span className={styles.railTooltip}>Mon profil</span>
             </Link>
-          )}
-          <button
-            className={styles.footerBtn}
-            onClick={toggleTheme}
-            title="Mode jour / nuit"
-          >
-            <i className={`fas ${theme === 'light' ? 'fa-moon' : 'fa-sun'}`} />
-          </button>
-          <button
-            className={styles.footerBtn}
-            onClick={handleLogout}
-            title="Se déconnecter"
-          >
-            <i className="fas fa-sign-out-alt" />
-          </button>
+            <button type="button" className={styles.railItem} onClick={toggleTheme} aria-label="Mode jour / nuit">
+              <i className={`fas ${theme === 'light' ? 'fa-moon' : 'fa-sun'}`} />
+              <span className={styles.railTooltip}>{theme === 'light' ? 'Mode nuit' : 'Mode jour'}</span>
+            </button>
+            <button type="button" className={styles.railItem} onClick={handleLogout} aria-label="Se déconnecter">
+              <i className="fas fa-sign-out-alt" />
+              <span className={styles.railTooltip}>Se déconnecter</span>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </nav>
   )
 }
 

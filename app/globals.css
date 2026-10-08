@@ -39,7 +39,7 @@
   --shadow-card-hover: 0 4px 16px rgba(0,0,0,0.2);
   --shadow-elevated: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
   --card-border: 1px solid var(--border);
-  --sidebar-width: 220px;
+  --sidebar-width: 88px;
   --transition-fast: 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   --transition-base: 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   --transition-smooth: 0.4s cubic-bezier(0.22, 1, 0.36, 1);

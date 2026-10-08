@@ -82,8 +82,9 @@ export default function QuestionnairesOverview() {
     }
   }, [user?.id, athletes.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Aussi avec 0 athlète : loadData coupe alors le skeleton (sinon chargement infini).
   useEffect(() => {
-    if (!athletesLoading && athletes.length) loadData()
+    if (!athletesLoading) loadData()
   }, [athletesLoading, athletes, loadData])
 
   useRefetchOnResume(loadData, loading)

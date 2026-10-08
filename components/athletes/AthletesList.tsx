@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, memo } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
+import NotificationBell from '@/components/layout/NotificationBell'
 import { useAthleteContext } from '@/contexts/AthleteContext'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
@@ -61,7 +62,7 @@ const AthleteCard = memo(function AthleteCard({ athlete, href }: { athlete: Athl
       <div className={styles.cardTopBar} style={topBarStyle} />
       <div className={styles.cardHead}>
         {athlete.avatar_url ? (
-          <Image src={athlete.avatar_url} alt="" width={40} height={40} style={{ borderRadius: '50%', objectFit: 'cover' }} className={styles.cardAvatar} />
+          <Image src={athlete.avatar_url} alt="" width={40} height={40} unoptimized style={{ borderRadius: '50%', objectFit: 'cover' }} className={styles.cardAvatar} />
         ) : (
           <div className={styles.cardAvatarFallback}>{initials}</div>
         )}
@@ -200,10 +201,13 @@ export default function AthletesList() {
             {activeAthletes.length} athlete{activeAthletes.length > 1 ? 's' : ''} actif{activeAthletes.length > 1 ? 's' : ''}
           </span>
         </h1>
-        <button className="btn btn-red" onClick={() => setShowAddModal(true)}>
-          <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
-          Ajouter un athlete
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="btn btn-red" onClick={() => setShowAddModal(true)}>
+            <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
+            Ajouter un athlete
+          </button>
+          <NotificationBell />
+        </div>
       </div>
 
       <div className={styles.searchBar} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
