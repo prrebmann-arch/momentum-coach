@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { useAthleteContext } from '@/contexts/AthleteContext'
 import Skeleton from '@/components/ui/Skeleton'
+import NotificationBell from '@/components/layout/NotificationBell'
 import styles from '@/styles/athletes.module.css'
 
 const TABS = [
@@ -77,6 +78,9 @@ export default function AthleteDetailShell({ children }: { children: React.React
           ) : (
             'Athlete'
           )}
+        </div>
+        <div style={{ marginLeft: 'auto' }}>
+          <NotificationBell />
         </div>
       </div>
 

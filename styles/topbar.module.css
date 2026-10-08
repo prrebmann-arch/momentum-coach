@@ -1,10 +1,11 @@
+/* Hors du flux : flotte dans la marge droite de .mainContent (position: relative). */
 .topbar {
-  position: sticky;
-  top: 0;
+  position: absolute;
+  top: 28px;
+  right: 2px;
   z-index: 150;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 12px 24px;
-  background: transparent;
+}
+
+@media (max-width: 1024px) {
+  .topbar { top: 16px; right: 0; }
 }

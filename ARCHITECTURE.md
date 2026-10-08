@@ -172,7 +172,7 @@ Self-contained per-domain components; check folder for the right file.
 - `Sidebar.tsx` — main app nav : rail vertical façon Insyder (carte flottante centrée, icônes seules, tooltip au survol), `navGroups` en haut du fichier. Styles `styles/sidebar.module.css` (`.rail*`), largeur `--sidebar-width` (88px, globals.css).
 - `AdminSidebar.tsx` — `/admin` nav.
 - `Navbar.tsx`, `Footer.tsx` — public landing.
-- `Topbar.tsx` — thin global bar rendered above `<main>` in `(app)/layout.tsx`, right-aligned. Currently just wraps `NotificationBell`.
+- `Topbar.tsx` — cloche flottante (absolute, marge droite, hors flux) ; masquée sur /dashboard, /athletes, /athletes/* où `NotificationBell` est intégrée à l’en-tête de page.
 - `NotificationBell.tsx` — bell icon + unread badge + dropdown, consumes `useNotifications()`. Click = mark read + navigate to `resourceLink`; "tout marquer lu" button.
 
 ### `ui/` — primitives

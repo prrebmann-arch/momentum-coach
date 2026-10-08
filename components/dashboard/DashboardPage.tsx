@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { toDateStr, getLastExpectedBilanDate } from '@/lib/utils'
 import { notifyAthlete } from '@/lib/push'
 import { bootMark } from '@/lib/bootTrace'
+import NotificationBell from '@/components/layout/NotificationBell'
 import StatsCards, { type StatCardData } from './StatsCards'
 import ActivityFeed, { type ActivityItem } from './ActivityFeed'
 import Skeleton from '@/components/ui/Skeleton'
@@ -525,6 +526,7 @@ export default function DashboardPage() {
           <Link href="/athletes?new=1" className="btn btn-red">
             <i className="fas fa-plus" /> Ajouter un athlete
           </Link>
+          <NotificationBell />
         </div>
       </div>
 
