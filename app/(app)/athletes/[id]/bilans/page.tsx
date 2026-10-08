@@ -398,9 +398,9 @@ export default function BilansPage() {
               .createSignedUrl(path, 3600)
               .then(({ data }: { data: { signedUrl: string } | null }) => {
                 if (data?.signedUrl) {
-                  history[pos].push({ date: b.date, url: data.signedUrl })
+                  history[pos].push({ date: b.date, url: data.signedUrl, weight: b.weight ?? null })
                 } else if (raw.startsWith('http')) {
-                  history[pos].push({ date: b.date, url: raw })
+                  history[pos].push({ date: b.date, url: raw, weight: b.weight ?? null })
                 }
               })
           )
