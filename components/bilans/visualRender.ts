@@ -165,7 +165,15 @@ export function renderVisual(canvas: HTMLCanvasElement, o: VisualOptions) {
   const name = o.name.trim().toUpperCase()
   let namePx = 0
   if (o.showName && name) namePx = fitFontSize(ctx, name, (px) => font(px), o.format === 'story' ? 190 : 160, W - pad * 2)
-  const nameBlock = namePx ? namePx * 0.95 + 44 : 0
+  // Hauteur RÉELLE du texte (les polices condensées type Anton dépassent 1em).
+  let nameH = 0
+  if (namePx) {
+    ctx.font = font(namePx)
+    ctx.textBaseline = 'alphabetic'
+    const m = ctx.measureText(name)
+    nameH = (m.actualBoundingBoxAscent || namePx * 0.8) + (m.actualBoundingBoxDescent || 0)
+  }
+  const nameBlock = namePx ? nameH + 48 : 0
   const datesBlock = o.showDates ? 78 : 0
   const logoBlock = o.showLogo ? 140 : 0
   const total = nameBlock + frameH + datesBlock + logoBlock
@@ -174,19 +182,23 @@ export function renderVisual(canvas: HTMLCanvasElement, o: VisualOptions) {
   if (namePx) {
     ctx.font = font(namePx)
     ctx.textAlign = 'center'
-    ctx.textBaseline = 'top'
+    ctx.textBaseline = 'alphabetic'
+    const m = ctx.measureText(name)
+    const baseline = y + (m.actualBoundingBoxAscent || namePx * 0.8)
     if (o.ambiance === 'noir') {
-      const g = ctx.createLinearGradient(0, y, 0, y + namePx)
+      const g = ctx.createLinearGradient(0, y, 0, y + nameH)
       g.addColorStop(0, ACCENT_LIGHT)
       g.addColorStop(1, ACCENT)
       ctx.fillStyle = g
     } else {
       ctx.fillStyle = '#ffffff'
     }
-    ctx.shadowColor = 'rgba(0,0,0,0.45)'
-    ctx.shadowBlur = 24
-    ctx.fillText(name, W / 2, y)
-    ctx.shadowBlur = 0
+    // Ombre nette (pas de shadowBlur : il donnait un halo flou autour du texte).
+    const fill = ctx.fillStyle
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'
+    ctx.fillText(name, W / 2 + 4, baseline + 5)
+    ctx.fillStyle = fill
+    ctx.fillText(name, W / 2, baseline)
     y += nameBlock
   }
 
