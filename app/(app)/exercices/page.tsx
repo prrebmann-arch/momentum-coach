@@ -9,6 +9,7 @@ import Modal from '@/components/ui/Modal'
 import FormGroup from '@/components/ui/FormGroup'
 import EmptyState from '@/components/ui/EmptyState'
 import styles from '@/styles/exercices.module.css'
+import NotificationBell from '@/components/layout/NotificationBell'
 
 interface Exercice {
   id: string
@@ -251,6 +252,7 @@ export default function ExercicesPage() {
             <i className="fa-solid fa-plus" style={{ marginRight: 6 }} />
             Nouvel exercice
           </Button>
+          <NotificationBell />
         </div>
       </div>
 

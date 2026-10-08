@@ -1,11 +1,12 @@
-/* Hors du flux : flotte dans la marge droite de .mainContent (position: relative). */
+/* Hors du flux : alignée sur le bord droit du contenu, à la hauteur du titre
+   de page (.mainContent a padding 32px 40px et position: relative). */
 .topbar {
   position: absolute;
   top: 28px;
-  right: 2px;
+  right: 40px;
   z-index: 150;
 }
 
 @media (max-width: 1024px) {
-  .topbar { top: 16px; right: 0; }
+  .topbar { top: 16px; right: 20px; }
 }
