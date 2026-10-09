@@ -3,6 +3,7 @@ export interface CoachProfile {
   user_id: string
   email: string
   display_name: string
+  avatar_url?: string | null
   plan: 'athlete' | 'business' | 'free'
   trial_ends_at: string | null
   has_payment_method: boolean

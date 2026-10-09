@@ -60,8 +60,9 @@ export async function POST(request: NextRequest) {
   const verified = userId !== null;
 
   const line = `[client-boot] ${reason} path=${path} readyMs=${readyMs} user=${userId ?? 'unverified'}`;
-  if (reason === 'ready') console.log(line);
-  else console.warn(line, text.slice(0, MAX_BYTES_UNVERIFIED));
+  // Boot lent (> 3 s) : on journalise le détail complet (events + durées Supabase).
+  if (reason === 'ready' && (readyMs ?? 0) <= 3000) console.log(line);
+  else console.warn(line, text.slice(0, MAX_BYTES));
 
   let persist = true;
   if (!verified) {
