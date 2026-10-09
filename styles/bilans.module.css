@@ -903,3 +903,8 @@
   .bpMetricRowLabel { width: 60px; font-size: 11px; }
   .bpMetricRowCurrent { font-size: 14px; }
 }
+
+/* Cadres du comparateur à ratio fixe 3:4 (= cadres du visuel Instagram) :
+   deux photos de formats différents s'affichent à la même taille, sans
+   déformation (img en object-fit: cover). */
+.pcCell { aspect-ratio: 3 / 4; width: auto; max-width: 46vw; }
