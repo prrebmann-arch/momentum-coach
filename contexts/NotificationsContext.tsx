@@ -1,7 +1,6 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   fetchUnreadNotifications,
@@ -17,55 +16,46 @@ interface NotificationsContextValue {
   markAllRead: () => Promise<void>
 }
 
+const POLL_MS = 60_000
+
 const NotificationsContext = createContext<NotificationsContextValue | null>(null)
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [notifications, setNotifications] = useState<CoachNotification[]>([])
 
+  const userId = user?.id
   const reload = useCallback(async () => {
-    if (!user) return
+    if (!userId) return
     try {
-      const rows = await fetchUnreadNotifications(user.id)
+      const rows = await fetchUnreadNotifications(userId)
       setNotifications(rows)
     } catch (err) {
       console.error('[Notifications] fetch failed:', err)
     }
-  }, [user])
+  }, [userId])
 
+  // Vérification périodique (60 s, onglet visible uniquement) au lieu de
+  // Supabase Realtime : le temps réel (postgres_changes) faisait tourner
+  // realtime.list_changes en continu = ~55 % du temps de la base sur une
+  // petite instance, pour quelques notifications par jour. Une minute de
+  // délai sur la cloche est acceptable. + resync au retour d'onglet.
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       setNotifications([])
       return
     }
     reload()
-
-    const supabase = createClient()
-    const channel = supabase
-      .channel(`coach_notifications:${user.id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'coach_notifications', filter: `coach_id=eq.${user.id}` },
-        () => {
-          // Any insert/update for this coach — just reload the unread set.
-          // Simpler and safer than hand-merging partial payloads.
-          reload()
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [user, reload])
-
-  // Filet de sécurité: resynchronise au retour d'onglet si le canal
-  // Realtime a été coupé pendant la veille (cf. hooks/useRefetchOnResume.ts).
-  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') reload()
+    }, POLL_MS)
     const handleWake = () => reload()
     window.addEventListener('coach:wake', handleWake)
-    return () => window.removeEventListener('coach:wake', handleWake)
-  }, [reload])
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('coach:wake', handleWake)
+    }
+  }, [userId, reload])
 
   const markRead = useCallback(async (id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id))
@@ -78,15 +68,15 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [reload])
 
   const markAllRead = useCallback(async () => {
-    if (!user) return
+    if (!userId) return
     setNotifications([])
     try {
-      await markAllNotificationsReadApi(user.id)
+      await markAllNotificationsReadApi(userId)
     } catch (err) {
       console.error('[Notifications] markAllRead failed:', err)
       reload()
     }
-  }, [user, reload])
+  }, [userId, reload])
 
   const value = useMemo<NotificationsContextValue>(
     () => ({ notifications, unreadCount: notifications.length, markRead, markAllRead }),
