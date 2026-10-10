@@ -68,9 +68,17 @@ export async function POST(request: Request) {
       body: JSON.stringify(messages),
     });
 
-    const result = await expoRes.json();
-    return NextResponse.json(result, { status: expoRes.status });
+    // Ne JAMAIS renvoyer la réponse Expo brute à l'athlète : elle contient les
+    // tokens push du coach (ex. erreurs DeviceNotRegistered → details.expoPushToken).
+    const result = await expoRes.json().catch(() => null) as { data?: { status?: string }[] } | null;
+    const tickets = Array.isArray(result?.data) ? result!.data : [];
+    const sent = tickets.filter((t) => t?.status === 'ok').length;
+    if (!expoRes.ok || sent < tokens.length) {
+      console.warn('[push-coach] expo', expoRes.status, JSON.stringify(result).slice(0, 500));
+    }
+    return NextResponse.json({ sent }, { status: expoRes.ok ? 200 : 502 });
   } catch (err: unknown) {
-    return NextResponse.json({ error: 'Push request failed', message: (err as Error).message }, { status: 500 });
+    console.error('[push-coach]', err);
+    return NextResponse.json({ error: 'Push request failed' }, { status: 500 });
   }
 }
