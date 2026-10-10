@@ -57,12 +57,8 @@ All routes inside `(app)` are protected by `app/(app)/layout.tsx` (auth gate, pr
 | `/exercices` | `app/(app)/exercices/page.tsx` | Coach's exercises DB CRUD |
 | `/formations` | `app/(app)/formations/page.tsx` -> `FormationsPage.tsx` | Course content |
 | `/profile` | `app/(app)/profile/page.tsx` -> `ProfilePage.tsx` | Coach profile, Stripe Connect, IG layout |
-| `/business` | `business/page.tsx` -> `BusinessDashboard.tsx` | Top-level KPIs |
-| `/business/leads` | `LeadsPipeline.tsx` | Sales pipeline |
-| `/business/messages` | `MessagesInbox.tsx` | IG inbox |
-| `/business/instagram` | `InstagramAnalytics.tsx` | IG metrics |
-| `/business/content` | `ContentPlanner.tsx` | Drafts, hashtags, captions |
-| `/business/automations` | `AutomationsPage.tsx` | DM/comment automations |
+
+**Business (`/business/*`) supprimé le 2026-10-10** (pages + composants). Les routes API Instagram/Facebook et leurs crons existent encore.
 
 **Outside `(app)`**: `/` (landing), `/login`, `/privacy`, `/delete-account`, `/setup-payment`, `/admin/*` (separate `AdminSidebar`).
 
@@ -159,8 +155,6 @@ All non-cron endpoints use `verifyAuth(request)` from `lib/api/auth.ts` (Bearer 
 - `ComplementChip.tsx` — puce assignation (clic=édition, X=retrait `actif=false`+`end_date`).
 - Logique pure : `lib/complement.ts` (zones ↔ moment_prise, `extractDietMeals`).
 
-### `business/`
-- `BusinessDashboard.tsx`, `LeadsPipeline.tsx`, `MessagesInbox.tsx`, `InstagramAnalytics.tsx`, `ContentPlanner.tsx`, `AutomationsPage.tsx`.
 
 ### `roadmap/`
 - `RoadmapTimeline.tsx`, `RoadmapCalendar.tsx`, `PhaseModal.tsx`. Tables: `roadmap_phases`, `programming_weeks`, `weekly_objectives`.
@@ -395,8 +389,6 @@ useRefetchOnResume(load, loading)
 | Stripe webhook handlers | `app/api/stripe/webhook/route.ts` |
 | Monthly platform invoicing | `app/api/stripe/cron/route.ts` |
 | IG OAuth + token storage | `app/api/instagram/auth/route.ts` + `lib/api/crypto.ts` (encrypt) |
-| IG inbox UI | `components/business/MessagesInbox.tsx` |
-| IG content drafts (storage upload) | `components/business/ContentPlanner.tsx` (uses `content-drafts` bucket, public) |
 | Roadmap phases (Seche/Reverse/Masse) | `components/roadmap/*` + `lib/constants.ts` (`PROG_PHASES`) |
 | Onboarding workflow assignment | `app/api/athlete-onboarding/init/route.ts` (server-side insert) |
 | Modify bloodtest coach UI | `app/(app)/athletes/[id]/bloodtest/page.tsx` |
