@@ -34,9 +34,6 @@ const navGroups: NavItem[][] = [
     { label: 'Exercices', icon: 'fa-dumbbell', route: '/exercices' },
     { label: 'Formations', icon: 'fa-graduation-cap', route: '/formations' },
   ],
-  [
-    { label: 'Business', icon: 'fa-briefcase', route: '/business' },
-  ],
 ]
 
 function SidebarImpl() {
