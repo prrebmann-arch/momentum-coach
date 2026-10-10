@@ -77,7 +77,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       router.prefetch('/exercices')
       router.prefetch('/formations')
       router.prefetch('/profile')
-      router.prefetch('/business')
       router.prefetch('/login')
     }, 2000)
     return () => clearTimeout(timer)
