@@ -16,41 +16,49 @@ function getSupabaseAdmin() {
 
 type PushMessage = { to?: unknown } & Record<string, unknown>;
 
+// Types de notif qu'un athlète peut envoyer à son coach (routage côté app coach).
+const ALLOWED_TYPES = new Set(['checkin', 'bilan', 'execution_video', 'posing_video', 'questionnaire', 'fodmap']);
+
 export async function POST(request: Request) {
   let user: { id: string };
   try { ({ user } = await verifyAuth(request)); } catch (e) { return authErrorResponse(e); }
 
   try {
-    const body = await request.json();
-    const messages: PushMessage[] = Array.isArray(body) ? body : [body];
-    const tokens = [...new Set(messages.map((m) => m?.to).filter((t): t is string => typeof t === 'string'))];
-    if (!tokens.length || tokens.length !== messages.length || tokens.length > 100) {
-      return NextResponse.json({ error: 'Invalid recipients' }, { status: 400 });
+    const raw = await request.json();
+    // Accepte { title, body, data } ou l'ancien tableau de messages Expo : on ne
+    // garde que le contenu du 1er message, JAMAIS les destinataires (`to`).
+    // Avant, l'app athlète devait lire elle-même les tokens du coach — ce que
+    // la RLS de push_tokens interdit (à raison) → liste vide → aucune push.
+    const msg = (Array.isArray(raw) ? raw[0] : raw) as PushMessage & { title?: unknown; body?: unknown; data?: unknown };
+    const title = typeof msg?.title === 'string' ? msg.title.slice(0, 120) : '';
+    const bodyText = typeof msg?.body === 'string' ? msg.body.slice(0, 500) : '';
+    const data = (msg?.data && typeof msg.data === 'object' ? msg.data : {}) as Record<string, unknown>;
+    if (!title || !ALLOWED_TYPES.has(String(data.type))) {
+      return NextResponse.json({ error: 'Invalid notification' }, { status: 400 });
     }
 
     const supabase = getSupabaseAdmin();
 
-    // The caller must be an athlete row's user_id, and every target token
-    // must belong to that athlete's coach_id — nothing else.
+    // L'appelant doit être un athlète ; la notif part uniquement vers SON coach.
     const { data: athleteRow } = await supabase
       .from('athletes')
       .select('coach_id')
       .eq('user_id', user.id)
       .maybeSingle();
-    if (!athleteRow?.coach_id) {
+    const coachId = (athleteRow as { coach_id?: string } | null)?.coach_id;
+    if (!coachId) {
       return NextResponse.json({ error: 'Forbidden: caller is not an athlete' }, { status: 403 });
     }
 
-    const { data: rowsRaw } = await supabase
+    const { data: rowsRaw, error: tokErr } = await supabase
       .from('push_tokens')
-      .select('token, user_id')
-      .in('token', tokens);
-    const rows = (rowsRaw || []) as unknown as { token: string; user_id: string }[];
-    const allowedTokens = new Set(rows.filter((r) => r.user_id === athleteRow.coach_id).map((r) => r.token));
-    if (tokens.some((t) => !allowedTokens.has(t))) {
-      return NextResponse.json({ error: 'Forbidden: recipient is not your coach' }, { status: 403 });
-    }
+      .select('token')
+      .eq('user_id', coachId);
+    if (tokErr) throw tokErr;
+    const tokens = [...new Set(((rowsRaw || []) as unknown as { token: string }[]).map((r) => r.token))].slice(0, 100);
+    if (!tokens.length) return NextResponse.json({ sent: 0 });
 
+    const messages = tokens.map((to) => ({ to, sound: 'default', title, body: bodyText, data }));
     const expoRes = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: {
@@ -60,8 +68,8 @@ export async function POST(request: Request) {
       body: JSON.stringify(messages),
     });
 
-    const data = await expoRes.json();
-    return NextResponse.json(data, { status: expoRes.status });
+    const result = await expoRes.json();
+    return NextResponse.json(result, { status: expoRes.status });
   } catch (err: unknown) {
     return NextResponse.json({ error: 'Push request failed', message: (err as Error).message }, { status: 500 });
   }
