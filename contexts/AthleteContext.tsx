@@ -44,10 +44,11 @@ async function fetchAthletesData(userId: string): Promise<Athlete[]> {
       .limit(200),
     supabase
       .from('roadmap_phases')
-      .select('athlete_id, phase, name')
+      .select('athlete_id, phase, name, status, start_date, end_date')
       .eq('coach_id', userId)
-      .eq('status', 'en_cours')
-      .limit(200),
+      .in('status', ['en_cours', 'planifiee'])
+      .order('start_date', { ascending: false })
+      .limit(1000),
     supabase
       .from('athlete_payment_plans')
       .select('athlete_id, payment_status, amount, frequency, is_free')
@@ -106,10 +107,19 @@ async function fetchAthletesData(userId: string): Promise<Athlete[]> {
   if (!data) return []
   if (stepsErr) console.error('[AthleteContext] steps fetch error', stepsErr)
 
-  const phaseMap: Record<string, { athlete_id: string; phase: string; name: string }> = {}
-  ;(phases || []).forEach((p: { athlete_id: string; phase: string; name: string }) => {
-    if (!phaseMap[p.athlete_id]) phaseMap[p.athlete_id] = p
+  // Phase affichée = celle dont les dates couvrent aujourd'hui (la plus
+  // récemment commencée), sinon la phase « en cours » la plus récente.
+  // Avant : 1re ligne « en_cours » renvoyée sans ordre → une ancienne phase
+  // jamais clôturée pouvait masquer le mini cut actuel.
+  type PhaseRow = { athlete_id: string; phase: string; name: string; status: string; start_date: string | null; end_date: string | null }
+  const phaseMap: Record<string, PhaseRow> = {}
+  const covering: Record<string, PhaseRow> = {}
+  ;((phases || []) as PhaseRow[]).forEach((p) => {
+    const inRange = !!p.start_date && p.start_date <= todayIso && (!p.end_date || p.end_date >= todayIso)
+    if (inRange && !covering[p.athlete_id]) covering[p.athlete_id] = p
+    if (p.status === 'en_cours' && !phaseMap[p.athlete_id]) phaseMap[p.athlete_id] = p
   })
+  Object.assign(phaseMap, covering)
   const planMap: Record<string, { payment_status: string; amount: number; frequency: string; is_free: boolean }> = {}
   ;(plans || []).forEach((p: { athlete_id: string; payment_status: string; amount: number; frequency: string; is_free: boolean }) => {
     planMap[p.athlete_id] = { payment_status: p.payment_status, amount: p.amount, frequency: p.frequency, is_free: p.is_free }
