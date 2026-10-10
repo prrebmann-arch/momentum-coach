@@ -9,7 +9,6 @@ import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import AddAthleteForm from './AddAthleteForm'
 import Modal from '@/components/ui/Modal'
-import OnboardingStepBadge from '@/components/onboarding/OnboardingStepBadge'
 import { computeUrgency, todayIso } from '@/lib/onboarding'
 import styles from '@/styles/athletes.module.css'
 import type { Athlete } from '@/lib/types'
@@ -34,19 +33,31 @@ function getPaymentBadge(athlete: Athlete) {
   return PAYMENT_STATUS_MAP[plan.payment_status] || { label: 'En attente', color: '#f59e0b' }
 }
 
-const badgeContainerStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }
+// Ligne d'action compacte (remplace le gros badge) : même code couleur.
+const ACTION_LOOK = {
+  overdue: { word: 'En retard', icon: 'fa-triangle-exclamation', cls: 'actionOverdue' },
+  today: { word: "Aujourd'hui", icon: 'fa-bolt', cls: 'actionOverdue' },
+  imminent: { word: 'À faire', icon: 'fa-circle-exclamation', cls: 'actionSoon' },
+  soon: { word: 'Prochaine action', icon: 'fa-circle-arrow-right', cls: 'actionLater' },
+  later: { word: 'Prochaine action', icon: 'fa-circle-arrow-right', cls: 'actionLater' },
+  far: { word: 'Prochaine action', icon: 'fa-circle-arrow-right', cls: 'actionLater' },
+} as const
 
 const AthleteCard = memo(function AthleteCard({ athlete, href }: { athlete: Athlete; href: string }) {
   const nextStep = athlete._nextStep
   const urgentCount = athlete._urgentCount || 0
   const extraCount = urgentCount > 1 ? urgentCount - 1 : 0
   const initials = (athlete.prenom?.charAt(0) || '') + (athlete.nom?.charAt(0) || '')
-  const poids = athlete.poids_actuel ? `${athlete.poids_actuel} kg` : '\u2014'
   const activePhase = athlete._phase
   const phaseInfo = activePhase?.phase ? (PROG_PHASES as Record<string, { label: string; short: string; color: string }>)[activePhase.phase] : null
   const phaseLabel = phaseInfo ? phaseInfo.label : (activePhase?.name || '')
   const phaseColor = phaseInfo ? phaseInfo.color : 'var(--primary)'
   const payBadge = getPaymentBadge(athlete)
+  // « Gratuit » sur chaque carte = bruit : on n'affiche le paiement que s'il
+  // y a quelque chose à savoir (payé, en attente, impayé, annulé…).
+  const showPay = payBadge.label !== 'Gratuit'
+  const urgency = nextStep ? computeUrgency(nextStep.scheduled_date, todayIso()) : null
+  const action = urgency ? ACTION_LOOK[urgency.level] : null
 
   const topBarStyle = useMemo(() => ({
     background: phaseInfo ? phaseColor : 'var(--border)',
@@ -55,14 +66,13 @@ const AthleteCard = memo(function AthleteCard({ athlete, href }: { athlete: Athl
 
   const phaseBadgeStyle = useMemo(() => phaseLabel ? { color: phaseColor, background: `${phaseColor}18` } : undefined, [phaseLabel, phaseColor])
   const payBadgeStyle = useMemo(() => ({ color: payBadge.color, background: `${payBadge.color}18` }), [payBadge.color])
-  const phaseValueStyle = useMemo(() => phaseInfo ? { color: phaseColor } : undefined, [phaseInfo, phaseColor])
 
   return (
     <Link href={href} className={styles.athleteCard} style={{ textDecoration: 'none', color: 'inherit' }}>
       <div className={styles.cardTopBar} style={topBarStyle} />
       <div className={styles.cardHead}>
         {athlete.avatar_url ? (
-          <Image src={athlete.avatar_url} alt="" width={40} height={40} unoptimized style={{ borderRadius: '50%', objectFit: 'cover' }} className={styles.cardAvatar} />
+          <Image src={athlete.avatar_url} alt="" width={44} height={44} unoptimized style={{ objectFit: 'cover' }} className={styles.cardAvatar} />
         ) : (
           <div className={styles.cardAvatarFallback}>{initials}</div>
         )}
@@ -72,44 +82,34 @@ const AthleteCard = memo(function AthleteCard({ athlete, href }: { athlete: Athl
           </div>
           <div className={styles.cardEmail}>{athlete.email || ''}</div>
         </div>
-        <div style={badgeContainerStyle}>
-          {phaseLabel && (
-            <span className={styles.phaseBadge} style={phaseBadgeStyle}>
-              {phaseLabel}
-            </span>
-          )}
+        {phaseLabel && (
+          <span className={styles.phaseBadge} style={phaseBadgeStyle}>
+            {phaseLabel}
+          </span>
+        )}
+      </div>
+
+      {nextStep && action && urgency && (
+        <div className={`${styles.cardAction} ${styles[action.cls]}`} title={`${nextStep.title} (${nextStep.scheduled_date})`}>
+          <i className={`fa-solid ${action.icon}`} />
+          <span className={styles.cardActionWord}>{action.word}</span>
+          <span className={styles.cardActionSep}>·</span>
+          <span className={styles.cardActionDay}>{urgency.label}</span>
+          <span className={styles.cardActionTitle}>{nextStep.title}</span>
+          {extraCount > 0 && <span className={styles.cardActionExtra}>+{extraCount}</span>}
+        </div>
+      )}
+
+      <div className={styles.cardFooter}>
+        <span className={styles.cardWeight}>
+          <i className="fa-solid fa-weight-scale" />
+          {athlete.poids_actuel ? `${athlete.poids_actuel} kg` : '\u2014'}
+        </span>
+        {showPay && (
           <span className={styles.phaseBadge} style={payBadgeStyle}>
             {payBadge.label}
           </span>
-        </div>
-      </div>
-      {nextStep && (
-        <div style={{ marginTop: 8, marginBottom: 4 }}>
-          <OnboardingStepBadge
-            scheduledDate={nextStep.scheduled_date}
-            type={nextStep.type}
-            title={nextStep.title}
-            extraCount={extraCount}
-          />
-        </div>
-      )}
-      <div className={styles.statGrid}>
-        <div className={styles.statBox}>
-          <div className={styles.statValue}>{poids}</div>
-          <div className={styles.statLabel}>Poids</div>
-        </div>
-        <div className={styles.statBox}>
-          <div className={styles.statValue}>
-            {athlete.poids_objectif ? `${athlete.poids_objectif} kg` : '\u2014'}
-          </div>
-          <div className={styles.statLabel}>Objectif</div>
-        </div>
-        <div className={styles.statBox}>
-          <div className={styles.statValue} style={phaseValueStyle}>
-            {phaseInfo ? phaseInfo.short : '\u2014'}
-          </div>
-          <div className={styles.statLabel}>Phase</div>
-        </div>
+        )}
       </div>
     </Link>
   )

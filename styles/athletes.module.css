@@ -676,3 +676,53 @@
   .athleteGrid { grid-template-columns: 1fr; }
   .statGrid { grid-template-columns: 1fr 1fr; }
 }
+
+/* ===== Carte athlète compacte (2026-10-10) ===== */
+.athleteCard { padding: 20px 20px 16px; display: flex; flex-direction: column; gap: 12px; }
+.cardHead { margin-bottom: 0; gap: 12px; }
+.cardAvatar, .cardAvatarFallback { width: 44px; height: 44px; border-radius: 14px; font-size: 14px; }
+.cardAction {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  min-width: 0;
+  border: 1px solid transparent;
+}
+.cardAction i { font-size: 11px; flex-shrink: 0; }
+.cardActionWord { font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; font-size: 11px; flex-shrink: 0; }
+.cardActionSep { opacity: 0.5; flex-shrink: 0; }
+.cardActionDay { font-weight: 800; flex-shrink: 0; }
+.cardActionTitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.9; }
+.cardActionExtra {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.cardActionExtra { background: rgba(255, 255, 255, 0.14); }
+.actionOverdue { color: #ff6b6b; background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.3); }
+.actionSoon { color: #fb923c; background: rgba(249, 115, 22, 0.12); border-color: rgba(249, 115, 22, 0.3); }
+.actionLater { color: #4ade80; background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.25); }
+:global([data-theme="light"]) .actionOverdue { color: #dc2626; }
+:global([data-theme="light"]) .actionSoon { color: #ea580c; }
+:global([data-theme="light"]) .actionLater { color: #16a34a; }
+:global([data-theme="light"]) .cardActionExtra { background: rgba(0, 0, 0, 0.08); }
+.cardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.cardWeight { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 800; color: var(--text); }
+.cardWeight i { font-size: 12px; color: var(--text3); }
